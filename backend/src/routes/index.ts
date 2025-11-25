@@ -1,0 +1,26 @@
+import { Express } from 'express';
+import { healthRouter } from './health';
+import { authRouter } from './modules/auth';
+import { schoolsRouter } from './modules/schools';
+import { studentsRouter } from './modules/students';
+import { subjectsRouter } from './modules/subjects';
+import { assessmentsRouter } from './modules/assessments';
+import { examsRouter } from './modules/exams';
+import { attendanceRouter } from './modules/attendance';
+import { resultsRouter } from './modules/results';
+import { usersRouter } from './modules/users';
+import { schemesRouter } from './modules/schemes';
+
+export const registerRoutes = (app: Express) => {
+  app.use('/api/health', healthRouter);
+  app.use('/api/auth', authRouter);
+  app.use('/api/schools', schoolsRouter);
+  app.use('/api/users', usersRouter);
+  app.use('/api/students', studentsRouter);
+  app.use('/api/subjects', subjectsRouter);
+  app.use('/api/assessments', assessmentsRouter);
+  app.use('/api/results', resultsRouter);
+  app.use('/api/exams', examsRouter);
+  app.use('/api/attendance', attendanceRouter);
+  app.use('/api/schemes', schemesRouter);
+};

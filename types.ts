@@ -1,0 +1,137 @@
+
+
+export enum UserRole {
+  SUPER_ADMIN = 'SUPER_ADMIN', // The Creator
+  ADMIN = 'ADMIN', // School Administrator
+  TEACHER = 'TEACHER',
+  STUDENT = 'STUDENT',
+}
+
+export interface User {
+  id: string;
+  name: string;
+  email?: string;
+  role: UserRole;
+  avatar?: string;
+  schoolId?: string;
+  gender?: 'Male' | 'Female';
+  phone?: string;
+  bio?: string;
+}
+
+export interface School {
+  id: string;
+  name: string;
+  code: string; // Unique School Code
+  region: string;
+  adminName: string;
+  status: 'Active' | 'Inactive';
+  studentCount: number;
+}
+
+export interface Student {
+  id: string;
+  name: string;
+  gender: 'Male' | 'Female';
+  grade: string;
+  enrollmentDate: string;
+  status: 'Active' | 'Inactive' | 'Suspended';
+  gpa: number;
+  attendance: number; // percentage
+  schoolId: string;
+  accessCode: string; // Unique Student Access Code
+}
+
+export interface Subject {
+  id: string;
+  name: string;
+  teacherId: string;
+  schedule: string;
+  room: string;
+}
+
+export interface SchemeOfWork {
+  id: string;
+  subjectId: string;
+  term: string;
+  week: number;
+  topic: string;
+  objectives: string;
+  resources: string;
+}
+
+export interface SchemeSubmission {
+  id: string;
+  subjectName: string;
+  term: string;
+  uploadDate: string;
+  status: 'Pending' | 'Approved' | 'Rejected';
+  fileName: string;
+}
+
+export interface Assessment {
+  id: string;
+  studentId: string;
+  studentName: string;
+  subjectId: string;
+  term: string;
+  ca1: number; // Max 10
+  ca2: number; // Max 10
+  ca3: number; // Max 10
+  exam: number; // Max 70
+  [key: string]: string | number | undefined; // Allow dynamic CA columns
+}
+
+export interface ResultData {
+  id: string;
+  studentName: string;
+  studentId: string;
+  subjectName?: string; // Added to support multi-subject reports
+  average: number;
+  grade: string;
+  status: 'Published' | 'Draft' | 'withheld';
+  remarks?: string;
+  details?: {
+    ca1?: number;
+    ca2?: number;
+    ca3?: number;
+    exam?: number;
+    [key: string]: number | undefined;
+  };
+}
+
+export interface ExamQuestion {
+  id: string;
+  type: 'multiple-choice' | 'true-false' | 'short-answer' | 'essay';
+  text: string;
+  options?: string[];
+  correctAnswer: string;
+  points: number;
+}
+
+export interface ActiveExam {
+  id: string;
+  title: string;
+  status: 'scheduled' | 'active' | 'ended';
+  duration: number; // minutes
+  questions: ExamQuestion[];
+  teacherId?: string; // Owner of the exam
+}
+
+export interface ExamSession {
+  id: string;
+  examId: string;
+  studentId: string;
+  status: 'not-started' | 'in-progress' | 'submitted';
+  progress: number; // 0 to 100
+  score?: number;
+  startTime?: string;
+  endTime?: string;
+  answers?: Record<string, string>; // Persist draft answers
+}
+
+export interface ApiResponse<T> {
+  data: T;
+  message?: string;
+  ok: boolean;
+}

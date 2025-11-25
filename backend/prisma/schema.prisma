@@ -1,0 +1,203 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  TEACHER
+  STUDENT
+}
+
+enum SchoolStatus {
+  Active
+  Inactive
+}
+
+enum StudentStatus {
+  Active
+  Inactive
+  Suspended
+}
+
+enum ExamStatus {
+  scheduled
+  active
+  ended
+}
+
+enum AttendanceStatus {
+  Present
+  Absent
+  Late
+  Excused
+}
+
+enum SchemeStatus {
+  Pending
+  Approved
+  Rejected
+}
+
+model School {
+  id           String        @id @default(cuid())
+  name         String
+  code         String        @unique
+  region       String
+  adminName    String
+  status       SchoolStatus  @default(Active)
+  studentCount Int           @default(0)
+  users        User[]
+  students     Student[]
+  subjects     Subject[]
+}
+
+model User {
+  id        String    @id @default(cuid())
+  name      String
+  email     String?   @unique
+  role      UserRole
+  avatar    String?
+  schoolId  String?
+  school    School?   @relation(fields: [schoolId], references: [id])
+  gender    String?
+  phone     String?
+  bio       String?
+  subjects  Subject[] @relation("SubjectTeacher")
+  exams     Exam[]    @relation("ExamTeacher")
+}
+
+model Student {
+  id             String           @id @default(cuid())
+  name           String
+  gender         String
+  grade          String
+  enrollmentDate DateTime
+  status         StudentStatus    @default(Active)
+  gpa            Float            @default(0)
+  attendance     Int              @default(0)
+  accessCode     String           @unique
+  schoolId       String
+  school         School           @relation(fields: [schoolId], references: [id])
+  assessments    Assessment[]
+  results        Result[]
+  examSessions   ExamSession[]
+  attendanceLogs AttendanceRecord[]
+}
+
+model Subject {
+  id         String        @id @default(cuid())
+  name       String
+  teacherId  String?
+  teacher    User?         @relation("SubjectTeacher", fields: [teacherId], references: [id])
+  schedule   String?
+  room       String?
+  schoolId   String?
+  school     School?       @relation(fields: [schoolId], references: [id])
+  assessments Assessment[]
+  results     Result[]
+  exams       Exam[]
+  schemes     SchemeSubmission[]
+}
+
+model Assessment {
+  id        String   @id @default(cuid())
+  studentId String
+  student   Student  @relation(fields: [studentId], references: [id])
+  subjectId String
+  subject   Subject  @relation(fields: [subjectId], references: [id])
+  term      String
+  ca1       Float    @default(0)
+  ca2       Float    @default(0)
+  ca3       Float    @default(0)
+  exam      Float    @default(0)
+}
+
+model Result {
+  id          String   @id @default(cuid())
+  studentId   String
+  student     Student  @relation(fields: [studentId], references: [id])
+  subjectId   String?
+  subject     Subject? @relation(fields: [subjectId], references: [id])
+  subjectName String
+  average     Float
+  grade       String
+  status      String
+  remarks     String?
+  details     Json?
+
+  @@unique([studentId, subjectName])
+}
+
+model SchemeSubmission {
+  id          String       @id @default(cuid())
+  subjectId   String?
+  subject     Subject?     @relation(fields: [subjectId], references: [id])
+  subjectName String
+  term        String
+  uploadDate  DateTime     @default(now())
+  status      SchemeStatus @default(Pending)
+  fileName    String
+}
+
+model Exam {
+  id        String     @id @default(cuid())
+  title     String
+  status    ExamStatus @default(scheduled)
+  duration  Int        @default(60)
+  teacherId String?
+  teacher   User?      @relation("ExamTeacher", fields: [teacherId], references: [id])
+  subjectId String?
+  subject   Subject?   @relation(fields: [subjectId], references: [id])
+  questions ExamQuestion[]
+  sessions  ExamSession[]
+}
+
+model ExamQuestion {
+  id            String   @id @default(cuid())
+  examId        String
+  exam          Exam     @relation(fields: [examId], references: [id])
+  type          String
+  text          String
+  options       Json?
+  correctAnswer String
+  points        Int      @default(1)
+}
+
+model ExamSession {
+  id         String  @id @default(cuid())
+  examId     String
+  exam       Exam    @relation(fields: [examId], references: [id])
+  studentId  String
+  student    Student @relation(fields: [studentId], references: [id])
+  status     String  @default("in-progress")
+  progress   Int     @default(0)
+  score      Float?
+  startTime  DateTime? @default(now())
+  endTime    DateTime?
+  answers    Json?
+
+  @@unique([examId, studentId])
+}
+
+model AttendanceRecord {
+  id        String           @id @default(cuid())
+  studentId String
+  student   Student          @relation(fields: [studentId], references: [id])
+  status    AttendanceStatus
+  date      DateTime
+
+  @@unique([studentId, date])
+}
+
+model ClassMaster {
+  id        String @id @default(cuid())
+  grade     String @unique
+  teacherId String
+  teacher   User   @relation(fields: [teacherId], references: [id])
+}
