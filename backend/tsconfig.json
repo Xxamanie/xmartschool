@@ -8,7 +8,7 @@
     "skipLibCheck": true,
     "strict": true,
     "outDir": "dist",
-    "rootDir": "src"
+    "rootDir": "."
   },
   "include": ["src", "prisma/**/*.ts"],
   "exclude": ["node_modules", "dist"]

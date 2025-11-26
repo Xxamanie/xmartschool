@@ -70,6 +70,7 @@ model User {
   bio       String?
   subjects  Subject[] @relation("SubjectTeacher")
   exams     Exam[]    @relation("ExamTeacher")
+  classMasters ClassMaster[]
 }
 
 model Student {

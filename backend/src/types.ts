@@ -50,6 +50,7 @@ export interface Subject {
 
 export interface SchemeSubmission {
   id: string;
+  subjectId?: string;
   subjectName: string;
   term: string;
   uploadDate: string;
