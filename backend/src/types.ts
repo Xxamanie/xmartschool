@@ -83,13 +83,17 @@ export interface ResultData {
   details?: Record<string, number | undefined>;
 }
 
-export interface ExamQuestion {
-  id: string;
+export interface ExamQuestionInput {
+  id?: string;
   type: 'multiple-choice' | 'true-false' | 'short-answer' | 'essay';
   text: string;
   options?: string[];
   correctAnswer: string;
   points: number;
+}
+
+export interface ExamQuestion extends ExamQuestionInput {
+  id: string;
 }
 
 export interface ActiveExam {

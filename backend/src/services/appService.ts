@@ -1,4 +1,18 @@
-import { Prisma } from '@prisma/client';
+import {
+  Prisma,
+  User as PrismaUserModel,
+  School as PrismaSchoolModel,
+  Student as PrismaStudentModel,
+  Subject as PrismaSubjectModel,
+  SchemeSubmission as PrismaSchemeModel,
+  Assessment as PrismaAssessmentModel,
+  Result as PrismaResultModel,
+  Exam as PrismaExamModel,
+  ExamQuestion as PrismaExamQuestionModel,
+  ExamSession as PrismaExamSessionModel,
+  AttendanceRecord as PrismaAttendanceRecordModel,
+  ClassMaster as PrismaClassMasterModel,
+} from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import {
   ActiveExam,
@@ -6,6 +20,7 @@ import {
   Assessment,
   AttendanceRecord as AppAttendanceRecord,
   ExamQuestion,
+  ExamQuestionInput,
   ExamSession,
   ResultData,
   SchemeSubmission,
@@ -29,19 +44,6 @@ const failure = async <T>(message: string, data: T): Promise<ApiResponse<T>> => 
   data,
   message,
 });
-
-type PrismaUserModel = Prisma.User;
-type PrismaSchoolModel = Prisma.School;
-type PrismaStudentModel = Prisma.Student;
-type PrismaSubjectModel = Prisma.Subject;
-type PrismaSchemeModel = Prisma.SchemeSubmission;
-type PrismaAssessment = Prisma.Assessment;
-type PrismaResultModel = Prisma.Result;
-type PrismaExam = Prisma.Exam;
-type PrismaExamQuestionModel = Prisma.ExamQuestion;
-type PrismaExamSessionModel = Prisma.ExamSession;
-type PrismaAttendanceRecord = Prisma.AttendanceRecord;
-type PrismaClassMaster = Prisma.ClassMaster;
 
 const toISODate = (date: Date) => date.toISOString().split('T')[0];
 const toDateOnly = (value: string) => new Date(`${value}T00:00:00.000Z`);
@@ -102,7 +104,7 @@ const mapSchemeModel = (scheme: PrismaSchemeModel): SchemeSubmission => ({
 });
 
 const mapAssessmentModel = (
-  assessment: PrismaAssessment & { student?: PrismaStudentModel },
+  assessment: PrismaAssessmentModel & { student?: PrismaStudentModel },
 ): Assessment => ({
   id: assessment.id,
   studentId: assessment.studentId,
@@ -136,7 +138,7 @@ const mapExamQuestionModel = (question: PrismaExamQuestionModel): ExamQuestion =
   points: question.points,
 });
 
-const mapExamModel = (exam: PrismaExam & { questions: PrismaExamQuestionModel[] }): ActiveExam => ({
+const mapExamModel = (exam: PrismaExamModel & { questions: PrismaExamQuestionModel[] }): ActiveExam => ({
   id: exam.id,
   title: exam.title,
   status: exam.status as ActiveExam['status'],
@@ -158,7 +160,7 @@ const mapExamSessionModel = (session: PrismaExamSessionModel): ExamSession => ({
 });
 
 const mapAttendanceModel = (
-  record: PrismaAttendanceRecord,
+  record: PrismaAttendanceRecordModel,
 ): AppAttendanceRecord => ({
   studentId: record.studentId,
   status: record.status as AppAttendanceRecord['status'],
@@ -497,7 +499,7 @@ export const appService = {
   },
 
   updateExamQuestions: async (
-    questions: ExamQuestion[],
+    questions: ExamQuestionInput[],
     title: string,
     examId?: string,
     teacherId?: string,
@@ -693,7 +695,7 @@ export const appService = {
 
   getClassMasters: async (): Promise<ApiResponse<Record<string, string>>> => {
     await wait(100);
-    const masters: PrismaClassMaster[] = await prisma.classMaster.findMany();
+    const masters: PrismaClassMasterModel[] = await prisma.classMaster.findMany();
     const store = masters.reduce<Record<string, string>>((acc, item) => {
       acc[item.grade] = item.teacherId;
       return acc;
