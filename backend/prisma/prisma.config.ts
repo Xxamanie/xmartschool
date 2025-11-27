@@ -1,11 +1,8 @@
-import { defineConfig } from 'prisma';
+import { defineConfig, env } from '@prisma/config';
 
 export default defineConfig({
-  schema: './backend/prisma/schema.prisma',
-
-  // prisma client config
-  client: {
-    output: './backend/node_modules/.prisma/client',
-    // optional for accelerateUrl, but skip for now
+  schema: './prisma/schema.prisma',
+  datasource: {
+    url: env('DATABASE_URL'),
   },
 });
