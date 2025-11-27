@@ -1,4 +1,4 @@
-import { defineConfig } from '@prisma/config';
+import { defineConfig } from 'prisma';
 
 export default defineConfig({
   schema: './backend/prisma/schema.prisma',

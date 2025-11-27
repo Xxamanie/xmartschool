@@ -83,8 +83,9 @@ const seedAssessments = async () => {
 
 const seedResults = async () => {
   await prisma.result.createMany({
-    data: MOCK_RESULTS.map(({ studentName, ...result }) => ({
+    data: MOCK_RESULTS.map(({ studentName, subjectName, ...result }) => ({
       ...result,
+      subjectName: subjectName ?? 'General Studies',
     })),
   });
 };
