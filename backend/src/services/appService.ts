@@ -1,5 +1,6 @@
 import {
   Prisma,
+  PrismaClient,
   User as PrismaUserModel,
   School as PrismaSchoolModel,
   Student as PrismaStudentModel,

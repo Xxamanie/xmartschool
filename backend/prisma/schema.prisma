@@ -1,9 +1,9 @@
-generator client {
-  provider = "prisma-client-js"
-}
-
 datasource db {
   provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
 }
 
 enum UserRole {
@@ -57,18 +57,18 @@ model School {
 }
 
 model User {
-  id        String    @id @default(cuid())
-  name      String
-  email     String?   @unique
-  role      UserRole
-  avatar    String?
-  schoolId  String?
-  school    School?   @relation(fields: [schoolId], references: [id])
-  gender    String?
-  phone     String?
-  bio       String?
-  subjects  Subject[] @relation("SubjectTeacher")
-  exams     Exam[]    @relation("ExamTeacher")
+  id          String        @id @default(cuid())
+  name        String
+  email       String?       @unique
+  role        UserRole
+  avatar      String?
+  schoolId    String?
+  school      School?       @relation(fields: [schoolId], references: [id])
+  gender      String?
+  phone       String?
+  bio         String?
+  subjects    Subject[]     @relation("SubjectTeacher")
+  exams       Exam[]        @relation("ExamTeacher")
   classMasters ClassMaster[]
 }
 
@@ -91,14 +91,14 @@ model Student {
 }
 
 model Subject {
-  id         String        @id @default(cuid())
-  name       String
-  teacherId  String?
-  teacher    User?         @relation("SubjectTeacher", fields: [teacherId], references: [id])
-  schedule   String?
-  room       String?
-  schoolId   String?
-  school     School?       @relation(fields: [schoolId], references: [id])
+  id          String            @id @default(cuid())
+  name        String
+  teacherId   String?
+  teacher     User?             @relation("SubjectTeacher", fields: [teacherId], references: [id])
+  schedule    String?
+  room        String?
+  schoolId    String?
+  school      School?           @relation(fields: [schoolId], references: [id])
   assessments Assessment[]
   results     Result[]
   exams       Exam[]
@@ -170,13 +170,13 @@ model ExamQuestion {
 }
 
 model ExamSession {
-  id         String  @id @default(cuid())
+  id         String    @id @default(cuid())
   examId     String
-  exam       Exam    @relation(fields: [examId], references: [id])
+  exam       Exam      @relation(fields: [examId], references: [id])
   studentId  String
-  student    Student @relation(fields: [studentId], references: [id])
-  status     String  @default("in-progress")
-  progress   Int     @default(0)
+  student    Student   @relation(fields: [studentId], references: [id])
+  status     String    @default("in-progress")
+  progress   Int       @default(0)
   score      Float?
   startTime  DateTime? @default(now())
   endTime    DateTime?
