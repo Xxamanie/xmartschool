@@ -4,6 +4,7 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
   Users,
+  UserPlus,
   BookOpen,
   FileText,
   Settings,
@@ -71,6 +72,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       // Standard School Admin / Teacher items
       return [
         { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+        { to: '/teachers', icon: UserPlus, label: 'Teachers' },
         { to: '/classes', icon: Layers, label: 'Classes' },
         { to: '/students', icon: Users, label: 'Students' },
         { to: '/attendance', icon: CalendarCheck, label: 'Attendance' },

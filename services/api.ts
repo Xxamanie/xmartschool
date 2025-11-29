@@ -915,5 +915,66 @@ export const api = {
       await delay(500);
       return { ok: true, data: true, message: 'Class added successfully' };
     }
+  },
+
+  createTeacher: async (teacherData: Omit<User, 'id'>): Promise<ApiResponse<User>> => {
+    try {
+      const response = await http('/teachers', {
+        method: 'POST',
+        body: JSON.stringify(teacherData)
+      });
+      return { ok: true, data: response.data, message: 'Teacher added successfully' };
+    } catch (error) {
+      console.error('Failed to create teacher:', error);
+      // Fallback to mock for development
+      await delay(800);
+      const users = await loadUsers();
+      const newTeacher: User = {
+        ...teacherData,
+        id: `teacher_${Date.now()}`,
+        role: UserRole.TEACHER,
+      };
+      users.push(newTeacher);
+      return { ok: true, data: newTeacher, message: 'Teacher added successfully' };
+    }
+  },
+
+  updateTeacher: async (teacherId: string, updates: Partial<User>): Promise<ApiResponse<User>> => {
+    try {
+      const response = await http(`/teachers/${teacherId}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates)
+      });
+      return { ok: true, data: response.data, message: 'Teacher updated successfully' };
+    } catch (error) {
+      console.error('Failed to update teacher:', error);
+      // Fallback to mock for development
+      await delay(500);
+      const users = await loadUsers();
+      const idx = users.findIndex(u => u.id === teacherId);
+      if (idx !== -1) {
+        users[idx] = { ...users[idx], ...updates };
+        return { ok: true, data: users[idx], message: 'Teacher updated successfully' };
+      }
+      return { ok: false, data: {} as User, message: 'Teacher not found' };
+    }
+  },
+
+  deleteTeacher: async (teacherId: string): Promise<ApiResponse<boolean>> => {
+    try {
+      await http(`/teachers/${teacherId}`, { method: 'DELETE' });
+      return { ok: true, data: true, message: 'Teacher deleted successfully' };
+    } catch (error) {
+      console.error('Failed to delete teacher:', error);
+      // Fallback to mock for development
+      await delay(500);
+      const users = await loadUsers();
+      const index = users.findIndex(u => u.id === teacherId);
+      if (index >= 0) {
+        users.splice(index, 1);
+        return { ok: true, data: true, message: 'Teacher deleted successfully' };
+      }
+      return { ok: false, data: false, message: 'Teacher not found' };
+    }
   }
 };

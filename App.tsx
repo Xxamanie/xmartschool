@@ -12,6 +12,7 @@ import { SchemeOfWork } from './pages/SchemeOfWork';
 import { Subjects } from './pages/Subjects';
 import { Assessments } from './pages/Assessments';
 import { Results } from './pages/Results';
+import { Teachers } from './pages/Teachers';
 import { SuperAdmin } from './pages/SuperAdmin';
 import { StudentPortal } from './pages/StudentPortal';
 import { Settings } from './pages/Settings';
@@ -69,6 +70,7 @@ const App: React.FC = () => {
             } />
 
             {/* Regular Admin/Teacher Routes */}
+            <Route path="teachers" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Teachers /></ProtectedRoute>} />
             <Route path="classes" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Classes /></ProtectedRoute>} />
             <Route path="attendance" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Attendance /></ProtectedRoute>} />
             <Route path="students" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Students /></ProtectedRoute>} />
