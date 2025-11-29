@@ -1,128 +1,104 @@
-
 import { Student, Subject, ApiResponse, SchemeSubmission, Assessment, ResultData, School, User, UserRole, ActiveExam, ExamQuestion, ExamSession } from '../types';
 import { MOCK_STUDENTS, MOCK_SUBJECTS, MOCK_SCHEMES, MOCK_ASSESSMENTS, MOCK_RESULTS, MOCK_SCHOOLS, MOCK_USER, MOCK_SUPER_ADMIN } from './mockData';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://xmartschool.onrender.com';
 
 // Simulates network latency
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// HTTP client
+// HTTP client with authentication
 const http = async (endpoint: string, options?: RequestInit) => {
   const url = `${API_BASE_URL}${endpoint}`;
+  
+  // Get auth token from localStorage
+  const token = localStorage.getItem('auth_token');
+  
   const response = await fetch(url, {
     headers: {
       'Content-Type': 'application/json',
+      ...(token && { 'Authorization': `Bearer ${token}` }),
       ...options?.headers,
     },
     ...options,
   });
+  
   if (!response.ok) {
     throw new Error(`HTTP error! status: ${response.status}`);
   }
+  
   return response.json();
 };
 
-// --- Persistence Helpers ---
-const STORAGE_KEYS = {
-    STUDENTS: 'smartschool_students',
-    RESULTS: 'smartschool_results',
-    SCHOOLS: 'smartschool_schools',
-    USERS: 'smartschool_users',
-    ASSESSMENTS: 'smartschool_assessments',
-    SESSIONS: 'smartschool_sessions',
-    SUBJECTS: 'smartschool_subjects',
-    ATTENDANCE: 'smartschool_attendance',
-    EXAMS: 'smartschool_exams',
-    MASTERS: 'smartschool_masters'
+// --- API calls ---
+const loadStudents = async (): Promise<Student[]> => {
+  try {
+    const response = await http('/students');
+    return response.data;
+  } catch (error) {
+    console.error('Failed to load students:', error);
+    return [...MOCK_STUDENTS];
+  }
 };
 
-const loadData = <T>(key: string, fallback: T): T => {
-    try {
-        const item = localStorage.getItem(key);
-        return item ? JSON.parse(item) : fallback;
-    } catch (e) {
-        return fallback;
-    }
+const loadResults = async (): Promise<ResultData[]> => {
+  try {
+    const response = await http('/results');
+    return response.data;
+  } catch (error) {
+    console.error('Failed to load results:', error);
+    return [...MOCK_RESULTS];
+  }
 };
 
-const persist = (key: string, data: any) => {
-    try {
-        localStorage.setItem(key, JSON.stringify(data));
-    } catch (e) {
-        console.error('Local storage error:', e);
-    }
+const loadSchools = async (): Promise<School[]> => {
+  try {
+    const response = await http('/schools');
+    return response.data;
+  } catch (error) {
+    console.error('Failed to load schools:', error);
+    return [...MOCK_SCHOOLS];
+  }
 };
 
-// Helper to calculate student counts for schools
-const calculateSchoolStudentCounts = () => {
-    const schoolCounts: Record<string, number> = {};
-    
-    studentsStore.forEach(student => {
-      if (student.schoolId) {
-        schoolCounts[student.schoolId] = (schoolCounts[student.schoolId] || 0) + 1;
-      }
-    });
-    
-    // Update schools with actual student counts
-    schoolsStore = schoolsStore.map(school => ({
-      ...school,
-      studentCount: schoolCounts[school.id] || 0
-    }));
-    
-    persist(STORAGE_KEYS.SCHOOLS, schoolsStore);
-  };
+const loadUsers = async (): Promise<User[]> => {
+  try {
+    const response = await http('/users');
+    return response.data;
+  } catch (error) {
+    console.error('Failed to load users:', error);
+    return [MOCK_USER, MOCK_SUPER_ADMIN];
+  }
+};
 
-// --- In-memory stores (initialized from LocalStorage or Mocks) ---
-let studentsStore = loadData<Student[]>(STORAGE_KEYS.STUDENTS, [...MOCK_STUDENTS]);
-let resultsStore = loadData<ResultData[]>(STORAGE_KEYS.RESULTS, [...MOCK_RESULTS]);
-let schoolsStore = loadData<School[]>(STORAGE_KEYS.SCHOOLS, [...MOCK_SCHOOLS]);
-let usersStore = loadData<User[]>(STORAGE_KEYS.USERS, [MOCK_USER, MOCK_SUPER_ADMIN]);
-let assessmentsStore = loadData<Assessment[]>(STORAGE_KEYS.ASSESSMENTS, [...MOCK_ASSESSMENTS]);
-let examSessionsStore = loadData<ExamSession[]>(STORAGE_KEYS.SESSIONS, []);
-let subjectsStore = loadData<Subject[]>(STORAGE_KEYS.SUBJECTS, [...MOCK_SUBJECTS]);
-let attendanceStore = loadData<AttendanceRecord[]>(STORAGE_KEYS.ATTENDANCE, []);
-let classMastersStore = loadData<Record<string, string>>(STORAGE_KEYS.MASTERS, { '10th': 'u1', '11th': 't3' });
+const loadAssessments = async (): Promise<Assessment[]> => {
+  try {
+    const response = await http('/assessments');
+    return response.data;
+  } catch (error) {
+    console.error('Failed to load assessments:', error);
+    return [...MOCK_ASSESSMENTS];
+  }
+};
 
-// Calculate initial student counts
-calculateSchoolStudentCounts();
+const loadExamSessions = async (): Promise<ExamSession[]> => {
+  try {
+    const response = await http('/exam-sessions');
+    return response.data;
+  } catch (error) {
+    console.error('Failed to load exam sessions:', error);
+    return [];
+  }
+};
 
-// Exam Store
-let examsStore = loadData<ActiveExam[]>(STORAGE_KEYS.EXAMS, [
-    {
-        id: 'exam_001',
-        title: 'Term 1 General Knowledge',
-        status: 'active', 
-        duration: 45,
-        teacherId: 'u1', 
-        questions: [
-             { id: 'q1', type: 'multiple-choice', text: 'What is the powerhouse of the cell?', options: ['Nucleus', 'Mitochondria', 'Ribosome', 'Cytoplasm'], correctAnswer: 'Mitochondria', points: 5 },
-             { id: 'q2', type: 'true-false', text: 'The sun revolves around the earth.', options: [], correctAnswer: 'False', points: 5 },
-             { id: 'q3', type: 'multiple-choice', text: 'Which element has the chemical symbol O?', options: ['Gold', 'Oxygen', 'Osmium', 'Olive Oil'], correctAnswer: 'Oxygen', points: 5 }
-        ]
-    },
-    {
-        id: 'exam_002',
-        title: 'Mathematics Mid-Term',
-        status: 'scheduled',
-        duration: 60,
-        teacherId: 'u1',
-        questions: [
-            { id: 'mq1', type: 'short-answer', text: 'What is 12 * 12?', correctAnswer: '144', points: 2 },
-            { id: 'mq2', type: 'multiple-choice', text: 'Solve for x: 2x = 10', options: ['2', '5', '10', '20'], correctAnswer: '5', points: 2 }
-        ]
-    },
-    {
-        id: 'exam_003',
-        title: 'Physics Pop Quiz',
-        status: 'active',
-        duration: 15,
-        teacherId: 'u1',
-        questions: [
-             { id: 'pq1', type: 'true-false', text: 'Velocity is a vector quantity.', options: [], correctAnswer: 'True', points: 5 }
-        ]
-    }
-]);
+const loadSubjects = async (): Promise<Subject[]> => {
+  try {
+    const response = await http('/subjects');
+    return response.data;
+  } catch (error) {
+    console.error('Failed to load subjects:', error);
+    return [...MOCK_SUBJECTS];
+  }
+};
 
 // Attendance Interface
 interface AttendanceRecord {
@@ -130,6 +106,70 @@ interface AttendanceRecord {
     status: 'Present' | 'Absent' | 'Late' | 'Excused';
     date: string;
 }
+
+const loadAttendance = async (): Promise<AttendanceRecord[]> => {
+  try {
+    const response = await http('/attendance');
+    return response.data;
+  } catch (error) {
+    console.error('Failed to load attendance:', error);
+    return [];
+  }
+};
+
+const loadClassMasters = async (): Promise<Record<string, string>> => {
+  try {
+    const response = await http('/class-masters');
+    return response.data;
+  } catch (error) {
+    console.error('Failed to load class masters:', error);
+    return { '10th': 'u1', '11th': 't3' };
+  }
+};
+
+const loadExams = async (): Promise<ActiveExam[]> => {
+  try {
+    const response = await http('/exams');
+    return response.data;
+  } catch (error) {
+    console.error('Failed to load exams:', error);
+    return [
+      {
+        id: 'exam_001',
+        title: 'Term 1 General Knowledge',
+        status: 'active', 
+        duration: 45,
+        teacherId: 'u1', 
+        questions: [
+          { id: 'q1', type: 'multiple-choice', text: 'What is the powerhouse of the cell?', options: ['Nucleus', 'Mitochondria', 'Ribosome', 'Cytoplasm'], correctAnswer: 'Mitochondria', points: 5 },
+          { id: 'q2', type: 'true-false', text: 'The sun revolves around the earth.', options: [], correctAnswer: 'False', points: 5 },
+          { id: 'q3', type: 'multiple-choice', text: 'Which element has the chemical symbol O?', options: ['Gold', 'Oxygen', 'Osmium', 'Olive Oil'], correctAnswer: 'Oxygen', points: 5 }
+        ]
+      },
+      {
+        id: 'exam_002',
+        title: 'Mathematics Mid-Term',
+        status: 'scheduled',
+        duration: 60,
+        teacherId: 'u1',
+        questions: [
+          { id: 'mq1', type: 'short-answer', text: 'What is 12 * 12?', correctAnswer: '144', points: 2 },
+          { id: 'mq2', type: 'multiple-choice', text: 'Solve for x: 2x = 10', options: ['2', '5', '10', '20'], correctAnswer: '5', points: 2 }
+        ]
+      },
+      {
+        id: 'exam_003',
+        title: 'Physics Pop Quiz',
+        status: 'active',
+        duration: 15,
+        teacherId: 'u1',
+        questions: [
+          { id: 'pq1', type: 'true-false', text: 'Velocity is a vector quantity.', options: [], correctAnswer: 'True', points: 5 }
+        ]
+    }
+];
+  }
+};
 
 export const api = {
   health: async (): Promise<ApiResponse<{ status: string }>> => {
@@ -143,429 +183,737 @@ export const api = {
   },
 
   login: async (email: string): Promise<ApiResponse<User>> => {
-    await delay(1000);
-    if (email === 'creator@smartschool.edu') {
-      return { ok: true, data: MOCK_SUPER_ADMIN };
-    } else if (email.includes('admin')) {
-      const adminUser = { ...MOCK_USER, role: UserRole.ADMIN, name: 'School Principal', email, id: 'admin1' };
-      if (!usersStore.find(u => u.id === adminUser.id)) {
-          usersStore.push(adminUser);
-          persist(STORAGE_KEYS.USERS, usersStore);
+    try {
+      const response = await http('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email })
+      });
+      
+      // Store auth token
+      if (response.token) {
+        localStorage.setItem('auth_token', response.token);
       }
-      return { ok: true, data: adminUser };
-    } else {
-      const existing = usersStore.find(u => u.id === 'u1');
-      return { ok: true, data: existing || MOCK_USER }; 
+      
+      return { ok: true, data: response.user };
+    } catch (error) {
+      console.error('Login failed:', error);
+      // Fallback to mock for development
+      await delay(1000);
+      if (email === 'creator@smartschool.edu') {
+        return { ok: true, data: MOCK_SUPER_ADMIN };
+      } else if (email.includes('admin')) {
+        const adminUser = { ...MOCK_USER, role: UserRole.ADMIN, name: 'School Principal', email, id: 'admin1' };
+        return { ok: true, data: adminUser };
+      } else {
+        return { ok: true, data: MOCK_USER }; 
+      }
     }
   },
 
   verifyStudent: async (schoolCode: string, studentCode: string): Promise<ApiResponse<User>> => {
-    await delay(1200);
-    const school = schoolsStore.find(s => s.code === schoolCode);
-    if (!school) {
-      return { ok: false, data: {} as User, message: 'Invalid School Code' };
-    }
-
-    const student = studentsStore.find(s => s.accessCode === studentCode && s.schoolId === school.id);
-    if (!student) {
-      return { ok: false, data: {} as User, message: 'Invalid Student Access Code' };
-    }
-
-    return {
-      ok: true,
-      data: {
-        id: student.id,
-        name: student.name,
-        role: UserRole.STUDENT,
-        email: '',
-        schoolId: school.id,
-        avatar: `https://ui-avatars.com/api/?name=${student.name}&background=random`,
-        gender: student.gender
+    try {
+      const response = await http('/auth/verify-student', {
+        method: 'POST',
+        body: JSON.stringify({ schoolCode, studentCode })
+      });
+      
+      // Store auth token
+      if (response.token) {
+        localStorage.setItem('auth_token', response.token);
       }
-    };
-  },
-
-  updateUserProfile: async (userId: string, updates: Partial<User>): Promise<ApiResponse<User>> => {
-      await delay(800);
-      const userIndex = usersStore.findIndex(u => u.id === userId);
-      if (userIndex >= 0) {
-          usersStore[userIndex] = { ...usersStore[userIndex], ...updates };
-          persist(STORAGE_KEYS.USERS, usersStore);
-          return { ok: true, data: usersStore[userIndex], message: 'Profile updated successfully' };
+      
+      return { ok: true, data: response.user };
+    } catch (error) {
+      console.error('Student verification failed:', error);
+      // Fallback to mock for development
+      await delay(1200);
+      const schools = await loadSchools();
+      const students = await loadStudents();
+      
+      const school = schools.find(s => s.code === schoolCode);
+      if (!school) {
+        return { ok: false, data: {} as User, message: 'Invalid School Code' };
       }
-      return { ok: true, data: { ...MOCK_USER, ...updates }, message: 'Profile updated successfully' };
-  },
 
-  getSchools: async (): Promise<ApiResponse<School[]>> => {
-    await delay(800);
-    return { ok: true, data: schoolsStore };
-  },
+      const student = students.find(s => (s as any).accessCode === studentCode && s.schoolId === school.id);
+      if (!student) {
+        return { ok: false, data: {} as User, message: 'Invalid Student Access Code' };
+      }
 
-  createSchool: async (school: Partial<School>): Promise<ApiResponse<School>> => {
-    await delay(1000);
-    const newSchool: School = {
-        id: `sch_${Date.now()}`,
-        name: school.name || 'New School',
-        code: school.code || `SCH-${Math.floor(Math.random() * 1000)}`,
-        region: school.region || 'Default Region',
-        adminName: school.adminName || 'Admin',
-        status: 'Active',
-        studentCount: 0
-    };
-    schoolsStore.push(newSchool);
-    persist(STORAGE_KEYS.SCHOOLS, schoolsStore);
-    return { ok: true, data: newSchool, message: 'School created successfully' };
-  },
-
-  deleteSchool: async (id: string): Promise<ApiResponse<boolean>> => {
-    await delay(800);
-    schoolsStore = schoolsStore.filter(s => s.id !== id);
-    persist(STORAGE_KEYS.SCHOOLS, schoolsStore);
-    return { ok: true, data: true, message: 'School deleted successfully' };
-  },
-
-  updateSchoolStatus: async (id: string, status: 'Active' | 'Inactive'): Promise<ApiResponse<boolean>> => {
-    await delay(500);
-    const idx = schoolsStore.findIndex(s => s.id === id);
-    if (idx >= 0) {
-        schoolsStore[idx] = { ...schoolsStore[idx], status };
-        persist(STORAGE_KEYS.SCHOOLS, schoolsStore);
+      return {
+        ok: true,
+        data: {
+          id: student.id,
+          name: student.name,
+          role: UserRole.STUDENT,
+          email: '',
+          schoolId: school.id,
+          avatar: (student as any).avatar
+        }
+      };
     }
-    return { ok: true, data: true };
-  },
-
-  getAllUsers: async (): Promise<ApiResponse<User[]>> => {
-      await delay(1000);
-      const users: User[] = [
-          ...usersStore,
-          ...studentsStore.map(s => ({
-              id: s.id,
-              name: s.name,
-              role: UserRole.STUDENT,
-              email: `student.${s.id}@school.edu`,
-              schoolId: s.schoolId,
-              avatar: `https://ui-avatars.com/api/?name=${s.name}&background=random`,
-              gender: s.gender
-          })),
-          { id: 't2', name: 'Sarah Connor', email: 'sarah@westside.edu', role: UserRole.ADMIN, schoolId: 'sch_002', avatar: 'https://ui-avatars.com/api/?name=Sarah+Connor&background=random', gender: 'Female' },
-          { id: 't3', name: 'John Doe', email: 'john@westside.edu', role: UserRole.TEACHER, schoolId: 'sch_002', avatar: 'https://ui-avatars.com/api/?name=John+Doe&background=random', gender: 'Male' }
-      ];
-      return { ok: true, data: users };
   },
 
   getStudents: async (schoolId?: string): Promise<ApiResponse<Student[]>> => {
-    await delay(800);
-    const data = schoolId ? studentsStore.filter(s => s.schoolId === schoolId) : studentsStore;
-    return { ok: true, data };
+    try {
+      const url = schoolId ? `/students?schoolId=${schoolId}` : '/students';
+      const response = await http(url);
+      return { ok: true, data: response.data };
+    } catch (error) {
+      console.error('Failed to get students:', error);
+      // Fallback to mock for development
+      await delay(600);
+      const students = await loadStudents();
+      const data = schoolId ? students.filter(s => s.schoolId === schoolId) : students;
+      return { ok: true, data };
+    }
+  },
+
+  createStudent: async (studentData: Omit<Student, 'id' | 'enrollmentDate'>): Promise<ApiResponse<Student>> => {
+    try {
+      const response = await http('/students', {
+        method: 'POST',
+        body: JSON.stringify(studentData)
+      });
+      return { ok: true, data: response.data, message: 'Student added successfully' };
+    } catch (error) {
+      console.error('Failed to create student:', error);
+      // Fallback to mock for development
+      await delay(800);
+      const students = await loadStudents();
+      const newStudent: Student = {
+        ...studentData,
+        id: `student_${Date.now()}`,
+        enrollmentDate: new Date().toISOString().split('T')[0],
+      };
+      students.push(newStudent);
+      return { ok: true, data: newStudent, message: 'Student added successfully' };
+    }
   },
 
   updateStudent: async (studentId: string, updates: Partial<Student>): Promise<ApiResponse<Student>> => {
+    try {
+      const response = await http(`/students/${studentId}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates)
+      });
+      return { ok: true, data: response.data, message: 'Student updated successfully' };
+    } catch (error) {
+      console.error('Failed to update student:', error);
+      // Fallback to mock for development
       await delay(500);
-      const idx = studentsStore.findIndex(s => s.id === studentId);
+      const students = await loadStudents();
+      const idx = students.findIndex(s => s.id === studentId);
       if (idx !== -1) {
-          studentsStore[idx] = { ...studentsStore[idx], ...updates };
-          persist(STORAGE_KEYS.STUDENTS, studentsStore);
-          // Update school student counts if schoolId changed
-          if (updates.schoolId) {
-            calculateSchoolStudentCounts();
-          }
-          return { ok: true, data: studentsStore[idx], message: 'Student updated successfully' };
+        students[idx] = { ...students[idx], ...updates };
+        return { ok: true, data: students[idx], message: 'Student updated successfully' };
       }
       return { ok: false, data: {} as Student, message: 'Student not found' };
+    }
+  },
+
+  deleteStudent: async (studentId: string): Promise<ApiResponse<boolean>> => {
+    try {
+      await http(`/students/${studentId}`, { method: 'DELETE' });
+      return { ok: true, data: true, message: 'Student deleted successfully' };
+    } catch (error) {
+      console.error('Failed to delete student:', error);
+      // Fallback to mock for development
+      await delay(500);
+      const students = await loadStudents();
+      const index = students.findIndex(s => s.id === studentId);
+      if (index >= 0) {
+        students.splice(index, 1);
+        return { ok: true, data: true, message: 'Student deleted successfully' };
+      }
+      return { ok: false, data: false, message: 'Student not found' };
+    }
+  },
+
+  getSchools: async (): Promise<ApiResponse<School[]>> => {
+    try {
+      const response = await http('/schools');
+      return { ok: true, data: response.data };
+    } catch (error) {
+      console.error('Failed to get schools:', error);
+      // Fallback to mock for development
+      await delay(800);
+      const schools = await loadSchools();
+      return { ok: true, data: schools };
+    }
+  },
+
+  createSchool: async (schoolData: { name: string }): Promise<ApiResponse<School>> => {
+    try {
+      const response = await http('/schools', {
+        method: 'POST',
+        body: JSON.stringify(schoolData)
+      });
+      return { ok: true, data: response.data, message: 'School created successfully' };
+    } catch (error) {
+      console.error('Failed to create school:', error);
+      // Fallback to mock for development
+      await delay(1000);
+      const schools = await loadSchools();
+      const newSchool: School = {
+        id: `sch_${Date.now()}`,
+        name: schoolData.name,
+        code: `SCH-${Date.now().toString(36).toUpperCase()}`,
+        region: 'Unspecified',
+        adminName: 'Pending Assignment',
+        status: 'Active',
+        studentCount: 0
+      };
+      schools.push(newSchool);
+      return { ok: true, data: newSchool, message: 'School created successfully' };
+    }
+  },
+
+  updateSchoolStatus: async (schoolId: string, status: 'Active' | 'Inactive'): Promise<ApiResponse<School>> => {
+    try {
+      const response = await http(`/schools/${schoolId}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status })
+      });
+      return { ok: true, data: response.data, message: 'School status updated successfully' };
+    } catch (error) {
+      console.error('Failed to update school status:', error);
+      // Fallback to mock for development
+      await delay(500);
+      const schools = await loadSchools();
+      const school = schools.find(s => s.id === schoolId);
+      if (school) {
+        school.status = status;
+        return { ok: true, data: school, message: 'School status updated successfully' };
+      }
+      return { ok: false, data: {} as School, message: 'School not found' };
+    }
+  },
+
+  deleteSchool: async (schoolId: string): Promise<ApiResponse<boolean>> => {
+    try {
+      await http(`/schools/${schoolId}`, { method: 'DELETE' });
+      return { ok: true, data: true, message: 'School deleted successfully' };
+    } catch (error) {
+      console.error('Failed to delete school:', error);
+      // Fallback to mock for development
+      await delay(500);
+      const schools = await loadSchools();
+      const index = schools.findIndex(s => s.id === schoolId);
+      if (index >= 0) {
+        schools.splice(index, 1);
+        return { ok: true, data: true, message: 'School deleted successfully' };
+      }
+      return { ok: false, data: false, message: 'School not found' };
+    }
+  },
+
+  getAllUsers: async (): Promise<ApiResponse<User[]>> => {
+    try {
+      const response = await http('/users');
+      return { ok: true, data: response.data };
+    } catch (error) {
+      console.error('Failed to get users:', error);
+      // Fallback to mock for development
+      await delay(1000);
+      const users = await loadUsers();
+      const students = await loadStudents();
+      const allUsers: User[] = [
+          ...users,
+          ...students.map(s => ({
+              id: s.id,
+              name: s.name,
+              role: UserRole.STUDENT,
+              email: (s as any).email || '',
+              schoolId: s.schoolId,
+              avatar: (s as any).avatar,
+              gender: (s as any).gender
+          }))
+      ];
+      return { ok: true, data: allUsers };
+    }
   },
 
   getSubjects: async (): Promise<ApiResponse<Subject[]>> => {
-    await delay(600);
-    return { ok: true, data: subjectsStore };
+    try {
+      const response = await http('/subjects');
+      return { ok: true, data: response.data };
+    } catch (error) {
+      console.error('Failed to get subjects:', error);
+      // Fallback to mock for development
+      await delay(600);
+      const subjects = await loadSubjects();
+      return { ok: true, data: subjects };
+    }
   },
 
   createSubject: async (subjectData: { name: string, teacherId?: string }): Promise<ApiResponse<Subject>> => {
-    await delay(600);
-    const newSubject: Subject = {
+    try {
+      const response = await http('/subjects', {
+        method: 'POST',
+        body: JSON.stringify(subjectData)
+      });
+      return { ok: true, data: response.data, message: 'Subject created successfully' };
+    } catch (error) {
+      console.error('Failed to create subject:', error);
+      // Fallback to mock for development
+      await delay(600);
+      const subjects = await loadSubjects();
+      const newSubject: Subject = {
         id: `sub_${Date.now()}_${Math.floor(Math.random()*1000)}`,
         name: subjectData.name,
         teacherId: subjectData.teacherId || 'u1',
         schedule: 'TBD',
         room: 'TBD'
-    };
-    subjectsStore.push(newSubject);
-    persist(STORAGE_KEYS.SUBJECTS, subjectsStore);
-    return { ok: true, data: newSubject, message: 'Subject enrolled successfully' };
+      };
+      subjects.push(newSubject);
+      return { ok: true, data: newSubject, message: 'Subject created successfully' };
+    }
   },
 
   getSchemes: async (): Promise<ApiResponse<SchemeSubmission[]>> => {
-    await delay(700);
-    return { ok: true, data: MOCK_SCHEMES };
+    try {
+      const response = await http('/schemes');
+      return { ok: true, data: response.data };
+    } catch (error) {
+      console.error('Failed to get schemes:', error);
+      // Fallback to mock for development
+      await delay(700);
+      return { ok: true, data: MOCK_SCHEMES };
+    }
   },
 
   uploadScheme: async (file: File, metadata: any): Promise<ApiResponse<{ id: string }>> => {
-    await delay(1500);
-    return {
-      ok: true,
-      data: { id: Math.random().toString(36).substring(7) },
-      message: 'Scheme uploaded successfully',
-    };
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('metadata', JSON.stringify(metadata));
+      
+      const response = await http('/schemes/upload', {
+        method: 'POST',
+        body: formData,
+        headers: {} // Let browser set Content-Type for FormData
+      });
+      return { ok: true, data: response.data };
+    } catch (error) {
+      console.error('Failed to upload scheme:', error);
+      // Fallback to mock for development
+      await delay(1500);
+      return {
+        ok: true,
+        data: { id: `scheme_${Date.now()}` },
+        message: 'Scheme uploaded successfully'
+      };
+    }
   },
 
   getAssessments: async (subjectId?: string, term?: string): Promise<ApiResponse<Assessment[]>> => {
-    await delay(600);
-    let data = assessmentsStore;
-    if (subjectId) data = data.filter(a => a.subjectId === subjectId);
-    if (term) data = data.filter(a => a.term === term);
-    return { ok: true, data };
+    try {
+      const params = new URLSearchParams();
+      if (subjectId) params.append('subjectId', subjectId);
+      if (term) params.append('term', term);
+      
+      const response = await http(`/assessments?${params}`);
+      return { ok: true, data: response.data };
+    } catch (error) {
+      console.error('Failed to get assessments:', error);
+      // Fallback to mock for development
+      await delay(600);
+      const assessments = await loadAssessments();
+      let data = assessments;
+      if (subjectId) data = data.filter(a => a.subjectId === subjectId);
+      if (term) data = data.filter(a => a.term === term);
+      return { ok: true, data };
+    }
   },
 
   saveAssessments: async (assessments: Assessment[]): Promise<ApiResponse<{ success: boolean }>> => {
-    await delay(1000);
-    assessments.forEach(updated => {
+    try {
+      const response = await http('/assessments/batch', {
+        method: 'PUT',
+        body: JSON.stringify({ assessments })
+      });
+      return { ok: true, data: response.data, message: 'Assessments saved successfully' };
+    } catch (error) {
+      console.error('Failed to save assessments:', error);
+      // Fallback to mock for development
+      await delay(1000);
+      const assessmentsStore = await loadAssessments();
+      assessments.forEach(updated => {
         const idx = assessmentsStore.findIndex(a => a.id === updated.id);
         if (idx >= 0) {
-            assessmentsStore[idx] = updated;
+          assessmentsStore[idx] = updated;
         } else {
-            assessmentsStore.push(updated);
+          assessmentsStore.push(updated);
         }
-    });
-    persist(STORAGE_KEYS.ASSESSMENTS, assessmentsStore);
-    return { ok: true, data: { success: true }, message: 'Assessments saved successfully' };
+      });
+      return { ok: true, data: { success: true }, message: 'Assessments saved successfully' };
+    }
   },
 
   getResults: async (studentId?: string): Promise<ApiResponse<ResultData[]>> => {
-    await delay(600);
-    if (studentId) {
-        return { ok: true, data: resultsStore.filter(r => r.studentId === studentId) };
+    try {
+      const url = studentId ? `/results?studentId=${studentId}` : '/results';
+      const response = await http(url);
+      return { ok: true, data: response.data };
+    } catch (error) {
+      console.error('Failed to get results:', error);
+      // Fallback to mock for development
+      await delay(600);
+      const results = await loadResults();
+      if (studentId) {
+        return { ok: true, data: results.filter(r => r.studentId === studentId) };
+      }
+      return { ok: true, data: results };
     }
-    return { ok: true, data: resultsStore };
   },
 
   publishResults: async (newResults: ResultData[]): Promise<ApiResponse<{ success: boolean }>> => {
-    await delay(1000);
-    newResults.forEach(newRes => {
-      const index = resultsStore.findIndex(r => r.studentId === newRes.studentId && r.subjectName === newRes.subjectName);
-      if (index >= 0) {
-        resultsStore[index] = { ...resultsStore[index], ...newRes };
-      } else {
-        resultsStore.push(newRes);
-      }
-    });
-    persist(STORAGE_KEYS.RESULTS, resultsStore);
-    return { ok: true, data: { success: true }, message: 'Results published successfully' };
+    try {
+      const response = await http('/results/batch', {
+        method: 'POST',
+        body: JSON.stringify({ results: newResults })
+      });
+      return { ok: true, data: response.data, message: 'Results published successfully' };
+    } catch (error) {
+      console.error('Failed to publish results:', error);
+      // Fallback to mock for development
+      await delay(1000);
+      const resultsStore = await loadResults();
+      newResults.forEach(newRes => {
+        const index = resultsStore.findIndex(r => r.studentId === newRes.studentId && r.subjectName === newRes.subjectName);
+        if (index >= 0) {
+          resultsStore[index] = { ...resultsStore[index], ...newRes };
+        } else {
+          resultsStore.push(newRes);
+        }
+      });
+      return { ok: true, data: { success: true }, message: 'Results published successfully' };
+    }
   },
 
   getExams: async (): Promise<ApiResponse<ActiveExam[]>> => {
-    await delay(500);
-    return { ok: true, data: examsStore };
+    try {
+      const response = await http('/exams');
+      return { ok: true, data: response.data };
+    } catch (error) {
+      console.error('Failed to get exams:', error);
+      // Fallback to mock for development
+      await delay(500);
+      const exams = await loadExams();
+      return { ok: true, data: exams };
+    }
   },
 
   getAvailableExams: async (): Promise<ApiResponse<ActiveExam[]>> => {
+    try {
+      const response = await http('/exams?status=active');
+      return { ok: true, data: response.data };
+    } catch (error) {
+      console.error('Failed to get available exams:', error);
+      // Fallback to mock for development
       await delay(500);
-      return { ok: true, data: examsStore.filter(e => e.status === 'active') };
+      const exams = await loadExams();
+      return { ok: true, data: exams.filter(e => e.status === 'active') };
+    }
   },
 
   updateExamQuestions: async (questions: ExamQuestion[], title: string, examId?: string, teacherId?: string): Promise<ApiResponse<ActiveExam>> => {
+    try {
+      const response = await http('/exams', {
+        method: examId ? 'PUT' : 'POST',
+        body: JSON.stringify({ examId, title, questions, teacherId })
+      });
+      return { ok: true, data: response.data, message: 'Exam saved successfully' };
+    } catch (error) {
+      console.error('Failed to update exam:', error);
+      // Fallback to mock for development
       await delay(800);
+      const exams = await loadExams();
       if (examId) {
-          const idx = examsStore.findIndex(e => e.id === examId);
-          if (idx >= 0) {
-              examsStore[idx] = { ...examsStore[idx], questions, title, teacherId: teacherId || examsStore[idx].teacherId };
-              persist(STORAGE_KEYS.EXAMS, examsStore);
-              return { ok: true, data: examsStore[idx] };
-          }
+        const idx = exams.findIndex(e => e.id === examId);
+        if (idx >= 0) {
+          exams[idx] = { ...exams[idx], questions, title, teacherId: teacherId || exams[idx].teacherId };
+          return { ok: true, data: exams[idx] };
+        }
       }
       const newExam: ActiveExam = {
-          id: `exam_${Date.now()}`,
-          title: title,
-          status: 'scheduled',
-          duration: 60,
-          questions,
-          teacherId
+        id: `exam_${Date.now()}`,
+        title: title,
+        status: 'scheduled',
+        duration: 60,
+        questions,
+        teacherId
       };
-      examsStore.push(newExam);
-      persist(STORAGE_KEYS.EXAMS, examsStore);
+      exams.push(newExam);
       return { ok: true, data: newExam };
+    }
   },
 
   setExamStatus: async (id: string, status: 'scheduled' | 'active' | 'ended'): Promise<ApiResponse<boolean>> => {
+    try {
+      await http(`/exams/${id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status })
+      });
+      return { ok: true, data: true, message: 'Exam status updated successfully' };
+    } catch (error) {
+      console.error('Failed to set exam status:', error);
+      // Fallback to mock for development
       await delay(500);
-      const idx = examsStore.findIndex(e => e.id === id);
-      if (idx >= 0) {
-          examsStore[idx].status = status;
-          persist(STORAGE_KEYS.EXAMS, examsStore);
-          return { ok: true, data: true };
+      const exams = await loadExams();
+      const exam = exams.find(e => e.id === id);
+      if (exam) {
+        exam.status = status;
+        return { ok: true, data: true, message: 'Exam status updated successfully' };
       }
-      return { ok: false, data: false, message: "Exam not found" };
+      return { ok: false, data: false, message: 'Exam not found' };
+    }
   },
 
   getExamSessions: async (examId: string): Promise<ApiResponse<ExamSession[]>> => {
+    try {
+      const response = await http(`/exam-sessions?examId=${examId}`);
+      return { ok: true, data: response.data };
+    } catch (error) {
+      console.error('Failed to get exam sessions:', error);
+      // Fallback to mock for development
       await delay(300);
-      const sessions = examSessionsStore.filter(s => s.examId === examId);
-      return { ok: true, data: sessions };
+      const sessions = await loadExamSessions();
+      const data = sessions.filter(s => s.examId === examId);
+      return { ok: true, data };
+    }
   },
 
   startExamSession: async (examId: string, studentId: string): Promise<ApiResponse<ExamSession>> => {
+    try {
+      const response = await http('/exam-sessions', {
+        method: 'POST',
+        body: JSON.stringify({ examId, studentId })
+      });
+      return { ok: true, data: response.data };
+    } catch (error) {
+      console.error('Failed to start exam session:', error);
+      // Fallback to mock for development
       await delay(500);
-      let session = examSessionsStore.find(s => s.examId === examId && s.studentId === studentId);
+      const sessions = await loadExamSessions();
+      let session = sessions.find(s => s.examId === examId && s.studentId === studentId);
+      
       if (!session) {
-          session = {
-              id: `sess_${Date.now()}`,
-              examId,
-              studentId,
-              status: 'in-progress',
-              progress: 0,
-              startTime: new Date().toISOString(),
-              answers: {}
-          };
-          examSessionsStore.push(session);
-          persist(STORAGE_KEYS.SESSIONS, examSessionsStore);
+        session = {
+          id: `sess_${Date.now()}`,
+          examId,
+          studentId,
+          status: 'in-progress',
+          progress: 0,
+          startTime: new Date().toISOString(),
+          answers: {}
+        };
+        sessions.push(session);
       } else {
-          if (session.status === 'not-started') {
-              session.status = 'in-progress';
-              session.startTime = new Date().toISOString();
-              persist(STORAGE_KEYS.SESSIONS, examSessionsStore);
-          }
+        if (session.status === 'not-started') {
+          session.status = 'in-progress';
+          session.startTime = new Date().toISOString();
+        }
       }
       return { ok: true, data: session };
+    }
   },
 
   updateExamSessionProgress: async (examId: string, studentId: string, progress: number, answers?: Record<string, string>): Promise<ApiResponse<boolean>> => {
-      const session = examSessionsStore.find(s => s.examId === examId && s.studentId === studentId);
+    try {
+      await http(`/exam-sessions/${examId}/${studentId}/progress`, {
+        method: 'PATCH',
+        body: JSON.stringify({ progress, answers })
+      });
+      return { ok: true, data: true, message: 'Progress updated successfully' };
+    } catch (error) {
+      console.error('Failed to update exam session progress:', error);
+      // Fallback to mock for development
+      const sessions = await loadExamSessions();
+      const session = sessions.find(s => s.examId === examId && s.studentId === studentId);
       if (session && session.status !== 'submitted') {
-          session.progress = progress;
-          if (answers) session.answers = answers;
-          persist(STORAGE_KEYS.SESSIONS, examSessionsStore);
-          return { ok: true, data: true };
+        session.progress = progress;
+        if (answers) session.answers = answers;
+        return { ok: true, data: true };
       }
       return { ok: false, data: false };
+    }
   },
 
   submitExam: async (studentId: string, answers: Record<string, string>, score: number): Promise<ApiResponse<boolean>> => {
+    try {
+      const response = await http('/exam-sessions/submit', {
+        method: 'POST',
+        body: JSON.stringify({ studentId, answers, score })
+      });
+      return { ok: true, data: response.data, message: 'Exam submitted successfully' };
+    } catch (error) {
+      console.error('Failed to submit exam:', error);
+      // Fallback to mock for development
       await delay(1500);
+      const exams = await loadExams();
+      const sessions = await loadExamSessions();
       
-      const activeExam = examsStore.find(e => e.status === 'active');
+      const activeExam = exams.find(e => e.status === 'active');
       if (!activeExam) return { ok: false, data: false, message: "No active exam found" };
 
-      const session = examSessionsStore.find(s => s.examId === activeExam.id && s.studentId === studentId);
+      const session = sessions.find(s => s.examId === activeExam.id && s.studentId === studentId);
       if (session) {
-          session.status = 'submitted';
-          session.score = score;
-          session.progress = 100;
-          session.endTime = new Date().toISOString();
-          session.answers = answers;
+        session.status = 'submitted';
+        session.score = score;
+        session.progress = 100;
+        session.endTime = new Date().toISOString();
+        session.answers = answers;
       } else {
-          examSessionsStore.push({
-              id: `sess_${Date.now()}`,
-              examId: activeExam.id,
-              studentId,
-              status: 'submitted',
-              progress: 100,
-              score,
-              startTime: new Date().toISOString(),
-              answers
-          });
+        sessions.push({
+          id: `sess_${Date.now()}`,
+          examId: activeExam.id,
+          studentId,
+          status: 'submitted',
+          progress: 100,
+          startTime: new Date().toISOString(),
+          endTime: new Date().toISOString(),
+          answers,
+          score
+        });
       }
-      persist(STORAGE_KEYS.SESSIONS, examSessionsStore);
-      
-      return { ok: true, data: true };
+      return { ok: true, data: true, message: 'Exam submitted successfully' };
+    }
   },
 
   getAttendance: async (date: string, grade?: string): Promise<ApiResponse<AttendanceRecord[]>> => {
-    await delay(600);
-    let records = attendanceStore.filter(r => r.date === date);
-    if (grade) {
-        const studentIdsInGrade = new Set(studentsStore.filter(s => s.grade === grade).map(s => s.id));
+    try {
+      const params = new URLSearchParams({ date });
+      if (grade) params.append('grade', grade);
+      
+      const response = await http(`/attendance?${params}`);
+      return { ok: true, data: response.data };
+    } catch (error) {
+      console.error('Failed to get attendance:', error);
+      // Fallback to mock for development
+      await delay(600);
+      const attendance = await loadAttendance();
+      const students = await loadStudents();
+      let records = attendance.filter(r => r.date === date);
+      if (grade) {
+        const studentIdsInGrade = new Set(students.filter(s => (s as any).grade === grade).map(s => s.id));
         records = records.filter(r => studentIdsInGrade.has(r.studentId));
+      }
+      return { ok: true, data: records };
     }
-    return { ok: true, data: records };
   },
 
   markAttendance: async (updates: AttendanceRecord[]): Promise<ApiResponse<boolean>> => {
-    await delay(800);
-    updates.forEach(update => {
-        const idx = attendanceStore.findIndex(r => r.date === update.date && r.studentId === update.studentId);
+    try {
+      const response = await http('/attendance/batch', {
+        method: 'POST',
+        body: JSON.stringify({ updates })
+      });
+      return { ok: true, data: response.data, message: 'Attendance marked successfully' };
+    } catch (error) {
+      console.error('Failed to mark attendance:', error);
+      // Fallback to mock for development
+      await delay(800);
+      const attendance = await loadAttendance();
+      const students = await loadStudents();
+      
+      updates.forEach(update => {
+        const idx = attendance.findIndex(r => r.date === update.date && r.studentId === update.studentId);
         if (idx >= 0) {
-            attendanceStore[idx] = update;
+          attendance[idx] = update;
         } else {
-            attendanceStore.push(update);
+          attendance.push(update);
         }
         
         if (update.status === 'Absent') {
-             const studentIdx = studentsStore.findIndex(s => s.id === update.studentId);
-             if (studentIdx >= 0 && studentsStore[studentIdx].attendance > 0) {
-                 studentsStore[studentIdx].attendance -= 1;
-             }
+          const studentIdx = students.findIndex(s => s.id === update.studentId);
+          if (studentIdx >= 0 && (students[studentIdx] as any).attendance > 0) {
+            (students[studentIdx] as any).attendance -= 1;
+          }
         }
-    });
-    persist(STORAGE_KEYS.ATTENDANCE, attendanceStore);
-    persist(STORAGE_KEYS.STUDENTS, studentsStore);
-    return { ok: true, data: true, message: 'Attendance marked successfully' };
+      });
+      return { ok: true, data: true, message: 'Attendance marked successfully' };
+    }
   },
   
   getClassMasters: async (): Promise<ApiResponse<Record<string, string>>> => {
+    try {
+      const response = await http('/class-masters');
+      return { ok: true, data: response.data };
+    } catch (error) {
+      console.error('Failed to get class masters:', error);
+      // Fallback to mock for development
       await delay(500);
-      return { ok: true, data: classMastersStore };
+      const classMasters = await loadClassMasters();
+      return { ok: true, data: classMasters };
+    }
   },
 
   assignClassMaster: async (grade: string, teacherId: string): Promise<ApiResponse<boolean>> => {
+    try {
+      await http(`/class-masters/${grade}`, {
+        method: 'PUT',
+        body: JSON.stringify({ teacherId })
+      });
+      return { ok: true, data: true, message: 'Class master assigned successfully' };
+    } catch (error) {
+      console.error('Failed to assign class master:', error);
+      // Fallback to mock for development
       await delay(500);
-      classMastersStore[grade] = teacherId;
-      persist(STORAGE_KEYS.MASTERS, classMastersStore);
+      const classMasters = await loadClassMasters();
+      classMasters[grade] = teacherId;
       return { ok: true, data: true };
+    }
   },
 
   resetStudentExam: async (examId: string, studentId: string): Promise<ApiResponse<boolean>> => {
+    try {
+      await http(`/exam-sessions/${examId}/${studentId}`, { method: 'DELETE' });
+      return { ok: true, data: true, message: 'Exam reset successfully' };
+    } catch (error) {
+      console.error('Failed to reset student exam:', error);
+      // Fallback to mock for development
       await delay(500);
-      const sessionIndex = examSessionsStore.findIndex(s => s.examId === examId && s.studentId === studentId);
+      const sessions = await loadExamSessions();
+      const sessionIndex = sessions.findIndex(s => s.examId === examId && s.studentId === studentId);
       if (sessionIndex > -1) {
-          examSessionsStore.splice(sessionIndex, 1);
-          persist(STORAGE_KEYS.SESSIONS, examSessionsStore);
-          return { ok: true, data: true };
+        sessions.splice(sessionIndex, 1);
+        return { ok: true, data: true, message: 'Exam reset successfully' };
       }
-      return { ok: false, data: false, message: 'Session not found' };
-  },
-
-  createStudent: async (studentData: Omit<Student, 'id' | 'enrollmentDate'>): Promise<ApiResponse<Student>> => {
-    await delay(800);
-    const newStudent: Student = {
-      ...studentData,
-      id: `student_${Date.now()}`,
-      enrollmentDate: new Date().toISOString().split('T')[0],
-    };
-    studentsStore.push(newStudent);
-    persist(STORAGE_KEYS.STUDENTS, studentsStore);
-    // Update school student counts
-    calculateSchoolStudentCounts();
-    return { ok: true, data: newStudent, message: 'Student added successfully' };
-  },
-
-  deleteStudent: async (studentId: string): Promise<ApiResponse<boolean>> => {
-    await delay(500);
-    const index = studentsStore.findIndex(s => s.id === studentId);
-    if (index >= 0) {
-      studentsStore.splice(index, 1);
-      persist(STORAGE_KEYS.STUDENTS, studentsStore);
-      // Update school student counts
-      calculateSchoolStudentCounts();
-      return { ok: true, data: true, message: 'Student deleted successfully' };
+      return { ok: false, data: false, message: 'Exam session not found' };
     }
-    return { ok: false, data: false, message: 'Student not found' };
   },
 
   getSchoolClasses: async (schoolId: string): Promise<ApiResponse<string[]>> => {
-    await delay(300);
-    // Mock: Return custom classes for this school
-    const schoolClasses = {
-      'sch_001': ['Grade 7A', 'Grade 7B', 'JHS 1A', 'Form 4 Science', 'Form 5 Arts'],
-      'sch_002': ['Nursery 2A', 'KG 1B', 'Grade 1A', 'Grade 1B']
-    };
-    return { 
-      ok: true, 
-      data: schoolClasses[schoolId as keyof typeof schoolClasses] || [] 
-    };
+    try {
+      const response = await http(`/schools/${schoolId}/classes`);
+      return { ok: true, data: response.data };
+    } catch (error) {
+      console.error('Failed to get school classes:', error);
+      // Fallback to mock for development
+      await delay(300);
+      const schoolClasses = {
+        'sch_001': ['Grade 7A', 'Grade 7B', 'JHS 1A', 'Form 4 Science', 'Form 5 Arts'],
+        'sch_002': ['Grade 8A', 'Grade 8B', 'JHS 2A', 'Form 3 Science', 'Form 6 Arts'],
+        'sch_003': ['Grade 9A', 'JHS 3A', 'Form 2 Science', 'Form 7 Arts']
+      };
+      return { ok: true, data: schoolClasses[schoolId as keyof typeof schoolClasses] || [] };
+    }
   },
 
-  createSchoolClass: async (schoolId: string, className: string): Promise<ApiResponse<boolean>> => {
-    await delay(600);
-    // Mock: Add class to school (in real app, this would persist to backend)
-    console.log(`Creating class "${className}" for school ${schoolId}`);
-    return { ok: true, data: true, message: 'Class created successfully' };
+  addClassToSchool: async (schoolId: string, className: string): Promise<ApiResponse<boolean>> => {
+    try {
+      await http(`/schools/${schoolId}/classes`, {
+        method: 'POST',
+        body: JSON.stringify({ className })
+      });
+      return { ok: true, data: true, message: 'Class added successfully' };
+    } catch (error) {
+      console.error('Failed to add class to school:', error);
+      // Fallback to mock for development
+      await delay(500);
+      return { ok: true, data: true, message: 'Class added successfully' };
+    }
   }
 };

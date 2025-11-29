@@ -15,6 +15,7 @@ import { Results } from './pages/Results';
 import { SuperAdmin } from './pages/SuperAdmin';
 import { StudentPortal } from './pages/StudentPortal';
 import { Settings } from './pages/Settings';
+import { SchoolDetail } from './pages/SchoolDetail';
 import { UserRole } from './types';
 
 const ProtectedRoute = ({ children, allowedRoles }: React.PropsWithChildren<{ allowedRoles?: UserRole[] }>) => {
@@ -52,6 +53,11 @@ const App: React.FC = () => {
             <Route path="schools" element={
                <ProtectedRoute allowedRoles={[UserRole.SUPER_ADMIN]}>
                   <SuperAdmin />
+               </ProtectedRoute>
+            } />
+            <Route path="schools/:schoolId" element={
+               <ProtectedRoute allowedRoles={[UserRole.SUPER_ADMIN]}>
+                  <SchoolDetail />
                </ProtectedRoute>
             } />
 
