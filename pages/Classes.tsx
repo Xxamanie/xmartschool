@@ -51,7 +51,26 @@ export const Classes: React.FC = () => {
     return allClasses.sort();
   };
 
-  const currentClasses = useMemo(() => getClassesForTab(activeTab), [activeTab]);
+  const currentClasses = useMemo(() => getClassesForTab(activeTab), [activeTab, customClasses, user?.schoolId]);
+
+  // Get all classes for dropdown (across all tabs)
+  const allClassesForDropdown = useMemo(() => {
+    const allTabs = ['primary', 'junior', 'senior'] as const;
+    const allClasses = allTabs.flatMap(tab => getClassesForTab(tab));
+    return [...new Set(allClasses)].sort();
+  }, [customClasses, user?.schoolId]);
+
+  // Determine which tab a class belongs to
+  const getClassTab = (className: string): 'primary' | 'junior' | 'senior' => {
+    const name = className.toLowerCase();
+    if (name.includes('grade') || name.includes('primary') || /nursery|kg|kindergarten/.test(name)) return 'primary';
+    if (name.includes('jss') || name.includes('junior') || name.includes('jhs')) return 'junior';
+    if (name.includes('sss') || name.includes('senior') || name.includes('shs') || name.includes('form')) return 'senior';
+    // Default to primary for numbers 1-6
+    const match = name.match(/(\d+)/);
+    if (match && parseInt(match[1]) <= 6) return 'primary';
+    return 'junior'; // Default fallback
+  };
 
   const fetchData = async () => {
     try {
@@ -170,32 +189,39 @@ export const Classes: React.FC = () => {
           </button>
       </div>
 
-      {/* Grid of Classes */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-          {currentClasses.map((className) => {
+      {/* Class Dropdown */}
+      <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Select Class ({allClassesForDropdown.length} available)
+        </label>
+        <select
+          value={selectedClass || ''}
+          onChange={(e) => {
+    const value = e.target.value || null;
+    setSelectedClass(value);
+    // Auto-switch to appropriate tab when selecting a class
+    if (value) {
+      const classTab = getClassTab(value);
+      setActiveTab(classTab);
+    }
+  }}
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white"
+        >
+          <option value="">-- Choose a class --</option>
+          {allClassesForDropdown.map((className) => {
               const count = getStudentCount(className);
-              const isSelected = selectedClass === className;
               return (
-                  <button 
-                    key={className}
-                    onClick={() => setSelectedClass(className)}
-                    className={`p-4 rounded-xl border text-left transition-all hover:shadow-md relative overflow-hidden group ${isSelected ? 'bg-primary-50 border-primary-500 ring-1 ring-primary-500' : 'bg-white border-gray-200 hover:border-primary-300'}`}
-                  >
-                      <div className="flex justify-between items-start mb-3">
-                          <div className={`p-2 rounded-lg ${isSelected ? 'bg-white text-primary-600' : 'bg-gray-100 text-gray-600 group-hover:bg-primary-50 group-hover:text-primary-600'}`}>
-                              <Layers size={18} />
-                          </div>
-                          {count > 0 && (
-                             <span className="bg-green-100 text-green-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                                {count}
-                             </span>
-                          )}
-                      </div>
-                      <h3 className="text-base font-bold text-gray-900">{className}</h3>
-                      <p className="text-xs text-gray-500 mt-1">{count === 0 ? 'Empty' : 'Students'}</p>
-                  </button>
+                  <option key={className} value={className}>
+                      {className} ({count} student{count !== 1 ? 's' : ''})
+                  </option>
               );
           })}
+        </select>
+        {selectedClass && (
+          <div className="mt-2 text-xs text-gray-500">
+            Category: {getClassTab(selectedClass).charAt(0).toUpperCase() + getClassTab(selectedClass).slice(1)}
+          </div>
+        )}
       </div>
 
       {/* Detail View / Management Section */}
