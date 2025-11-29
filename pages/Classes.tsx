@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
 import { Student, UserRole, School } from '../types';
 import { useAuth } from '../context/AuthContext';
@@ -14,6 +15,7 @@ const ARMS = ["A", "B", "C", "D"];
 
 export const Classes: React.FC = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const isAdmin = user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN;
 
   const [activeTab, setActiveTab] = useState<'primary' | 'junior' | 'senior'>('junior');
@@ -164,11 +166,11 @@ export const Classes: React.FC = () => {
               Create Class
             </button>
             <button 
-              onClick={() => window.location.href = '/students'}
+              onClick={() => navigate('/students')}
               className="inline-flex items-center justify-center px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm font-medium shadow-sm"
             >
               <UserPlus size={16} className="mr-2" />
-              Add Student
+              Enroll Student
             </button>
           </div>
         )}
