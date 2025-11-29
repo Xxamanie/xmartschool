@@ -163,6 +163,13 @@ export const Classes: React.FC = () => {
               <Plus size={16} className="mr-2" />
               Create Class
             </button>
+            <button 
+              onClick={() => window.location.href = '/students'}
+              className="inline-flex items-center justify-center px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm font-medium shadow-sm"
+            >
+              <UserPlus size={16} className="mr-2" />
+              Add Student
+            </button>
           </div>
         )}
       </div>
