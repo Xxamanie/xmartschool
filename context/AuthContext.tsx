@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, PropsWithChildren } from 'react';
+import React, { createContext, useContext, useState, useEffect, PropsWithChildren } from 'react';
 import { User, UserRole } from '../types';
 import { api } from '../services/api';
 
@@ -22,12 +22,40 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
   const [originalUser, setOriginalUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  // Check localStorage on mount for persisted user session
+  useEffect(() => {
+    const savedUser = localStorage.getItem('user');
+    const savedOriginalUser = localStorage.getItem('originalUser');
+    
+    if (savedUser) {
+      try {
+        const userData = JSON.parse(savedUser);
+        setUser(userData);
+      } catch (error) {
+        console.error('Failed to parse saved user data:', error);
+        localStorage.removeItem('user');
+      }
+    }
+    
+    if (savedOriginalUser) {
+      try {
+        const originalUserData = JSON.parse(savedOriginalUser);
+        setOriginalUser(originalUserData);
+      } catch (error) {
+        console.error('Failed to parse saved original user data:', error);
+        localStorage.removeItem('originalUser');
+      }
+    }
+  }, []);
+
   const login = async (email: string, password?: string) => {
     setIsLoading(true);
     try {
       const response = await api.login(email);
       if (response.ok) {
         setUser(response.data);
+        // Save to localStorage for persistence
+        localStorage.setItem('user', JSON.stringify(response.data));
       } else {
         throw new Error('Login failed');
       }
@@ -45,6 +73,8 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
         const response = await api.verifyStudent(schoolCode, studentCode);
         if (response.ok) {
             setUser(response.data);
+            // Save to localStorage for persistence
+            localStorage.setItem('user', JSON.stringify(response.data));
         } else {
             throw new Error(response.message || 'Verification failed');
         }
@@ -58,7 +88,10 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
 
   const updateUser = (userData: Partial<User>) => {
      if (user) {
-         setUser({ ...user, ...userData });
+         const updatedUser = { ...user, ...userData };
+         setUser(updatedUser);
+         // Update localStorage
+         localStorage.setItem('user', JSON.stringify(updatedUser));
      }
   };
 
@@ -70,14 +103,22 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
         if (!school) throw new Error("School not found");
 
         setOriginalUser(user);
-        setUser({
+        // Save original user to localStorage
+        if (user) {
+            localStorage.setItem('originalUser', JSON.stringify(user));
+        }
+
+        const impersonatedUser = {
             id: `imp_${school.id}`,
             name: `${school.adminName} (Impersonated)`,
             email: `admin@${school.code.toLowerCase()}.edu`,
             role: UserRole.ADMIN,
             schoolId: school.id,
             avatar: `https://ui-avatars.com/api/?name=${school.adminName}&background=random`
-        });
+        };
+        setUser(impersonatedUser);
+        // Save impersonated user to localStorage
+        localStorage.setItem('user', JSON.stringify(impersonatedUser));
     } catch (e) {
         console.error(e);
     } finally {
@@ -89,12 +130,18 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
     if (originalUser) {
         setUser(originalUser);
         setOriginalUser(null);
+        // Restore original user in localStorage and remove impersonation
+        localStorage.setItem('user', JSON.stringify(originalUser));
+        localStorage.removeItem('originalUser');
     }
   };
 
   const logout = () => {
     setUser(null);
     setOriginalUser(null);
+    // Clear all auth data from localStorage
+    localStorage.removeItem('user');
+    localStorage.removeItem('originalUser');
   };
 
   return (

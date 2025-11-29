@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { School, User, UserRole } from '../types';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -7,7 +8,7 @@ import {
   Building2, MapPin, Users, Plus, Search, 
   CheckCircle2, XCircle, BarChart3, Crown, 
   LogIn, Trash2, Ban, RefreshCcw, Lock, Unlock,
-  GraduationCap, TrendingUp, Activity, Filter
+  GraduationCap, TrendingUp, Activity, Filter, ExternalLink
 } from 'lucide-react';
 
 // Helper function for role badges - Defined outside component for stability
@@ -26,6 +27,7 @@ const getRoleBadgeClasses = (role: string | undefined) => {
 
 export const SuperAdmin: React.FC = () => {
   const { impersonateSchool } = useAuth();
+  const navigate = useNavigate();
   const [schools, setSchools] = useState<School[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -84,6 +86,16 @@ export const SuperAdmin: React.FC = () => {
               console.error(e);
           }
       }
+  };
+
+  const handleViewSchool = (schoolId: string) => {
+    // Navigate to school admin view while maintaining creator context
+    navigate(`/schools/${schoolId}`);
+  };
+
+  const handleViewUser = (userId: string) => {
+    // Navigate to user profile or management page
+    navigate(`/users/${userId}`);
   };
 
   const toggleSchoolStatus = async (school: School) => {
@@ -324,17 +336,23 @@ export const SuperAdmin: React.FC = () => {
                        <tr key={school.id} className="hover:bg-slate-50 transition-colors group">
                           <td className="px-6 py-4 whitespace-nowrap">
                              <div className="flex items-center">
-                                <div className="h-10 w-10 rounded-lg bg-slate-100 text-slate-500 group-hover:bg-amber-100 group-hover:text-amber-600 flex items-center justify-center mr-3 transition-colors">
+                                <div className="h-10 w-10 rounded-lg bg-slate-100 text-slate-500 group-hover:bg-amber-100 group-hover:text-amber-600 flex items-center justify-center mr-3 transition-colors cursor-pointer"
+                                     onClick={() => handleViewSchool(school.id)}
+                                     title="View School Dashboard">
                                    <Building2 size={20} />
                                 </div>
-                                <div>
+                                <div className="cursor-pointer hover:bg-slate-50 px-2 py-1 rounded transition-colors"
+                                     onClick={() => handleViewSchool(school.id)}
+                                     title="View School Dashboard">
                                    <div className="text-sm font-bold text-slate-900">{school.name}</div>
                                    <div className="text-xs text-slate-400 font-mono">{school.code}</div>
                                 </div>
                              </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
-                             <div className="flex items-center gap-1">
+                             <div className="cursor-pointer hover:bg-slate-50 px-2 py-1 rounded transition-colors inline-flex items-center gap-1"
+                                  onClick={() => handleViewSchool(school.id)}
+                                  title="View School Dashboard">
                                 <MapPin size={14} className="text-slate-400" /> {school.region}
                              </div>
                           </td>
@@ -350,7 +368,11 @@ export const SuperAdmin: React.FC = () => {
                              </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
-                             {school.adminName}
+                             <div className="cursor-pointer hover:bg-slate-50 px-2 py-1 rounded transition-colors"
+                                  onClick={() => handleViewSchool(school.id)}
+                                  title="View School Dashboard">
+                                {school.adminName}
+                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border ${school.status === 'Active' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
@@ -432,7 +454,9 @@ export const SuperAdmin: React.FC = () => {
                      {filteredUsers.slice(0, 50).map((user) => (
                         <tr key={user.id} className="hover:bg-slate-50 transition-colors">
                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center">
+                              <div className="flex items-center cursor-pointer hover:bg-slate-50 px-2 py-1 rounded transition-colors"
+                                   onClick={() => handleViewUser(user.id)}
+                                   title="View User Profile">
                                  <img className="h-8 w-8 rounded-full mr-3 bg-slate-200" src={user.avatar} alt="" />
                                  <div>
                                     <div className="text-sm font-bold text-slate-900">{user.name}</div>
@@ -441,23 +465,41 @@ export const SuperAdmin: React.FC = () => {
                               </div>
                            </td>
                            <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
+                              <div className="cursor-pointer hover:bg-slate-50 px-2 py-1 rounded transition-colors inline-flex items-center gap-1"
+                                   onClick={() => handleViewUser(user.id)}
+                                   title="View User Profile">
                                 {user.gender || '-'}
+                              </div>
                            </td>
                            <td className="px-6 py-4 whitespace-nowrap">
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider ${getRoleBadgeClasses(user.role)}`}>
-                                 {user.role}
-                              </span>
+                              <div className="cursor-pointer hover:bg-slate-50 px-2 py-1 rounded transition-colors inline-flex items-center"
+                                   onClick={() => handleViewUser(user.id)}
+                                   title="View User Profile">
+                                 <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider ${getRoleBadgeClasses(user.role)}`}>
+                                     {user.role}
+                                 </span>
+                              </div>
                            </td>
                            <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
-                              {user.schoolId ? (
-                                 <div className="flex items-center gap-1">
-                                    <Building2 size={12} />
-                                    {schools.find(s => s.id === user.schoolId)?.name || 'Unknown School'}
-                                 </div>
-                              ) : <span className="text-slate-400">-</span>}
+                              <div className="cursor-pointer hover:bg-slate-50 px-2 py-1 rounded transition-colors"
+                                   onClick={() => handleViewUser(user.id)}
+                                   title="View User Profile">
+                                {user.schoolId ? (
+                                   <div className="flex items-center gap-1">
+                                      <Building2 size={12} />
+                                      {schools.find(s => s.id === user.schoolId)?.name || 'Unknown School'}
+                                   </div>
+                                ) : <span className="text-slate-400">Global</span>}
+                              </div>
                            </td>
                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                               <div className="flex items-center justify-end gap-2">
+                                 <button 
+                                    onClick={() => handleViewUser(user.id)}
+                                    className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                    title="View User Profile">
+                                    <ExternalLink size={16} />
+                                 </button>
                                  <button className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Reset Password">
                                     <RefreshCcw size={16} />
                                  </button>
