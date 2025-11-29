@@ -61,120 +61,122 @@ const InlineTeacherForm: React.FC<InlineTeacherFormProps> = ({ teacher, onSubmit
   };
 
   return (
-    <form onSubmit={handleSubmit} className="p-6 space-y-4">
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
-          <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
-              <UserIcon size={16} />
+    <form onSubmit={handleSubmit} className="flex flex-col h-full space-y-4">
+      <div className="flex-1 space-y-4 overflow-y-auto">
+        <div className="space-y-3 sm:space-y-4">
+          <div>
+            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Full Name</label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                <UserIcon size={14} className="sm:w-4 sm:h-4" />
+              </div>
+              <input
+                type="text"
+                value={formData.name}
+                onChange={(e) => handleChange('name', e.target.value)}
+                className={`pl-9 pr-3 py-2 sm:py-2 border rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent block w-full ${
+                  errors.name ? 'border-red-300' : 'border-gray-300'
+                }`}
+                placeholder="Enter teacher's full name"
+              />
             </div>
-            <input
-              type="text"
-              value={formData.name}
-              onChange={(e) => handleChange('name', e.target.value)}
-              className={`pl-9 pr-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent block w-full ${
-                errors.name ? 'border-red-300' : 'border-gray-300'
-              }`}
-              placeholder="Enter teacher's full name"
-            />
+            {errors.name && <p className="mt-1 text-xs text-red-600">{errors.name}</p>}
           </div>
-          {errors.name && <p className="mt-1 text-xs text-red-600">{errors.name}</p>}
-        </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
-          <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
-              <Mail size={16} />
+          <div>
+            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Email Address</label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                <Mail size={14} className="sm:w-4 sm:h-4" />
+              </div>
+              <input
+                type="email"
+                value={formData.email}
+                onChange={(e) => handleChange('email', e.target.value)}
+                className={`pl-9 pr-3 py-2 sm:py-2 border rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent block w-full ${
+                  errors.email ? 'border-red-300' : 'border-gray-300'
+                }`}
+                placeholder="teacher@school.edu"
+              />
             </div>
-            <input
-              type="email"
-              value={formData.email}
-              onChange={(e) => handleChange('email', e.target.value)}
-              className={`pl-9 pr-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent block w-full ${
-                errors.email ? 'border-red-300' : 'border-gray-300'
-              }`}
-              placeholder="teacher@school.edu"
-            />
+            {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email}</p>}
           </div>
-          {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email}</p>}
-        </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
-          <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
-              <Phone size={16} />
+          <div>
+            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                <Phone size={14} className="sm:w-4 sm:h-4" />
+              </div>
+              <input
+                type="tel"
+                value={formData.phone}
+                onChange={(e) => handleChange('phone', e.target.value)}
+                className={`pl-9 pr-3 py-2 sm:py-2 border rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent block w-full ${
+                  errors.phone ? 'border-red-300' : 'border-gray-300'
+                }`}
+                placeholder="+1234567890"
+              />
             </div>
-            <input
-              type="tel"
-              value={formData.phone}
-              onChange={(e) => handleChange('phone', e.target.value)}
-              className={`pl-9 pr-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent block w-full ${
-                errors.phone ? 'border-red-300' : 'border-gray-300'
-              }`}
-              placeholder="+1234567890"
-            />
+            {errors.phone && <p className="mt-1 text-xs text-red-600">{errors.phone}</p>}
           </div>
-          {errors.phone && <p className="mt-1 text-xs text-red-600">{errors.phone}</p>}
-        </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
-          <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
-              <Briefcase size={16} />
+          <div>
+            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Role</label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                <Briefcase size={14} className="sm:w-4 sm:h-4" />
+              </div>
+              <select
+                value={formData.role}
+                onChange={(e) => handleChange('role', e.target.value)}
+                className="pl-9 pr-8 py-2 sm:py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent block w-full appearance-none"
+              >
+                <option value={UserRole.TEACHER}>Teacher</option>
+                <option value={UserRole.ADMIN}>Administrator</option>
+              </select>
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Gender</label>
             <select
-              value={formData.role}
-              onChange={(e) => handleChange('role', e.target.value)}
-              className="pl-9 pr-8 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent block w-full appearance-none"
+              value={formData.gender}
+              onChange={(e) => handleChange('gender', e.target.value)}
+              className="px-3 py-2 sm:py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent block w-full"
             >
-              <option value={UserRole.TEACHER}>Teacher</option>
-              <option value={UserRole.ADMIN}>Administrator</option>
+              <option value="">Select Gender</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
             </select>
           </div>
-        </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Gender</label>
-          <select
-            value={formData.gender}
-            onChange={(e) => handleChange('gender', e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent block w-full"
-          >
-            <option value="">Select Gender</option>
-            <option value="Male">Male</option>
-            <option value="Female">Female</option>
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Bio (Optional)</label>
-          <textarea
-            value={formData.bio}
-            onChange={(e) => handleChange('bio', e.target.value)}
-            rows={3}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent block w-full resize-none"
-            placeholder="Brief description about the teacher..."
-          />
+          <div>
+            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Bio (Optional)</label>
+            <textarea
+              value={formData.bio}
+              onChange={(e) => handleChange('bio', e.target.value)}
+              rows={3}
+              className="px-3 py-2 sm:py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent block w-full resize-none"
+              placeholder="Brief description about the teacher..."
+            />
+          </div>
         </div>
       </div>
 
-      <div className="flex gap-3 pt-4 border-t border-gray-200">
+      <div className="flex gap-2 sm:gap-3 pt-3 sm:pt-4 border-t border-gray-200 bg-white sticky bottom-0">
         <button
           type="button"
           onClick={onCancel}
-          className="flex-1 px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm"
+          className="flex-1 px-3 py-2 sm:px-4 sm:py-2 bg-white border border-gray-300 rounded-lg text-xs sm:text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm"
         >
           Cancel
         </button>
         <button
           type="submit"
-          className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors shadow-sm flex items-center justify-center gap-2"
+          className="flex-1 px-3 py-2 sm:px-4 sm:py-2 bg-primary-600 text-white rounded-lg text-xs sm:text-sm font-medium hover:bg-primary-700 transition-colors shadow-sm flex items-center justify-center gap-2"
         >
-          <Save size={16} />
+          <Save size={12} className="sm:w-4 sm:h-4" />
           {teacher ? 'Update Teacher' : 'Add Teacher'}
         </button>
       </div>
@@ -480,14 +482,14 @@ export const Teachers: React.FC = () => {
 
       {/* Add/Edit Teacher Modal */}
       {(showAddModal || editingTeacher) && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-md rounded-xl shadow-2xl flex flex-col">
-            <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50 rounded-t-xl">
-              <div>
-                <h2 className="text-lg font-bold text-gray-900">
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-md rounded-xl shadow-2xl flex flex-col max-h-[95vh] sm:max-h-[90vh]">
+            <div className="p-4 sm:p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50 rounded-t-xl flex-shrink-0">
+              <div className="flex-1 min-w-0">
+                <h2 className="text-base sm:text-lg font-bold text-gray-900 truncate">
                   {editingTeacher ? 'Edit Teacher' : 'Add New Teacher'}
                 </h2>
-                <p className="text-sm text-gray-500">
+                <p className="text-xs sm:text-sm text-gray-500 mt-1">
                   {editingTeacher ? 'Update teacher information.' : 'Enter details to add a new teacher.'}
                 </p>
               </div>
@@ -496,13 +498,13 @@ export const Teachers: React.FC = () => {
                   setShowAddModal(false);
                   setEditingTeacher(null);
                 }} 
-                className="text-gray-400 hover:text-gray-600"
+                className="text-gray-400 hover:text-gray-600 ml-2 flex-shrink-0"
               >
-                <X size={24} />
+                <X size={20} className="sm:w-6 sm:h-6" />
               </button>
             </div>
             
-            <div className="flex-1 overflow-y-auto max-h-[60vh]">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6">
               <InlineTeacherForm
                 teacher={editingTeacher}
                 onSubmit={editingTeacher ? handleEditTeacher : handleAddTeacher}
