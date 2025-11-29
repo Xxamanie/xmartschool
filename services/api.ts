@@ -517,5 +517,25 @@ export const api = {
       return { ok: true, data: true, message: 'Student deleted successfully' };
     }
     return { ok: false, data: false, message: 'Student not found' };
+  },
+
+  getSchoolClasses: async (schoolId: string): Promise<ApiResponse<string[]>> => {
+    await delay(300);
+    // Mock: Return custom classes for this school
+    const schoolClasses = {
+      'sch_001': ['Grade 7A', 'Grade 7B', 'JHS 1A', 'Form 4 Science', 'Form 5 Arts'],
+      'sch_002': ['Nursery 2A', 'KG 1B', 'Grade 1A', 'Grade 1B']
+    };
+    return { 
+      ok: true, 
+      data: schoolClasses[schoolId as keyof typeof schoolClasses] || [] 
+    };
+  },
+
+  createSchoolClass: async (schoolId: string, className: string): Promise<ApiResponse<boolean>> => {
+    await delay(600);
+    // Mock: Add class to school (in real app, this would persist to backend)
+    console.log(`Creating class "${className}" for school ${schoolId}`);
+    return { ok: true, data: true, message: 'Class created successfully' };
   }
 };

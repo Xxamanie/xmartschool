@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../services/api';
-import { Student, UserRole } from '../types';
+import { Student, UserRole, School } from '../types';
 import { useAuth } from '../context/AuthContext';
-import { Layers, Search, ChevronRight, UserPlus, X, GraduationCap, Users } from 'lucide-react';
+import { Layers, Search, ChevronRight, UserPlus, X, GraduationCap, Users, Plus, Settings } from 'lucide-react';
+import { CreateClassForm } from '../components/CreateClassForm';
 
 // Class Constants
 const PRIMARY_CLASSES = ["Grade 1", "Grade 2", "Grade 3", "Grade 4", "Grade 5", "Grade 6"];
@@ -17,33 +18,64 @@ export const Classes: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<'primary' | 'junior' | 'senior'>('junior');
   const [students, setStudents] = useState<Student[]>([]);
+  const [schools, setSchools] = useState<School[]>([]);
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
   const [showEnrollModal, setShowEnrollModal] = useState(false);
+  const [showCreateClassModal, setShowCreateClassModal] = useState(false);
   const [enrollSearchTerm, setEnrollSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
+  const [customClasses, setCustomClasses] = useState<Record<string, string[]>>({}); // schoolId -> class names
 
   // Helper to generate full class lists
   const getClassesForTab = (tab: string) => {
-    if (tab === 'primary') return PRIMARY_CLASSES;
-    if (tab === 'junior') {
-        return JSS_LEVELS.flatMap(level => ARMS.map(arm => `${level}${arm}`));
-    }
-    if (tab === 'senior') {
-        return SSS_LEVELS.flatMap(level => ARMS.map(arm => `${level}${arm}`));
-    }
-    return [];
+    // Get custom classes for current user's school
+    const userSchoolClasses = user?.schoolId && customClasses[user.schoolId] ? customClasses[user.schoolId] : [];
+    
+    // Combine standard classes with custom classes
+    let standardClasses: string[] = [];
+    if (tab === 'primary') standardClasses = PRIMARY_CLASSES;
+    if (tab === 'junior') standardClasses = JSS_LEVELS.flatMap(level => ARMS.map(arm => `${level}${arm}`));
+    if (tab === 'senior') standardClasses = SSS_LEVELS.flatMap(level => ARMS.map(arm => `${level}${arm}`));
+    
+    // Filter custom classes by tab type (simple heuristic)
+    const filteredCustom = userSchoolClasses.filter(className => {
+      const name = className.toLowerCase();
+      if (tab === 'primary') return name.includes('grade') || name.includes('primary') || /\d+/.test(name);
+      if (tab === 'junior') return name.includes('jss') || name.includes('junior') || name.includes('jhs');
+      if (tab === 'senior') return name.includes('sss') || name.includes('senior') || name.includes('shs');
+      return true;
+    });
+    
+    // Merge and deduplicate
+    const allClasses = [...new Set([...standardClasses, ...filteredCustom])];
+    return allClasses.sort();
   };
 
   const currentClasses = useMemo(() => getClassesForTab(activeTab), [activeTab]);
 
   const fetchData = async () => {
     try {
-        const response = await api.getStudents();
-        if (response.ok) {
-            setStudents(response.data);
+        const [studentsRes, schoolsRes] = await Promise.all([
+            api.getStudents(),
+            api.getSchools()
+        ]);
+        if (studentsRes.ok) {
+            setStudents(studentsRes.data);
+        }
+        if (schoolsRes.ok) {
+            setSchools(schoolsRes.data);
+            // Load custom classes for each school
+            const customData: Record<string, string[]> = {};
+            for (const school of schoolsRes.data) {
+                const classRes = await api.getSchoolClasses(school.id);
+                if (classRes.ok) {
+                    customData[school.id] = classRes.data;
+                }
+            }
+            setCustomClasses(customData);
         }
     } catch (error) {
-        console.error("Failed to fetch students", error);
+        console.error("Failed to fetch data", error);
     } finally {
         setLoading(false);
     }
@@ -69,6 +101,22 @@ export const Classes: React.FC = () => {
       }
   };
 
+  const handleCreateClass = async (className: string) => {
+      if (!user?.schoolId || !className.trim()) return;
+      try {
+          const res = await api.createSchoolClass(user.schoolId, className.trim());
+          if (res.ok) {
+              setCustomClasses(prev => ({
+                  ...prev,
+                  [user.schoolId!]: [...(prev[user.schoolId!] || []), className.trim()]
+              }));
+              setShowCreateClassModal(false);
+          }
+      } catch (e) {
+          console.error("Failed to create class", e);
+      }
+  };
+
   // Filter students for the enrollment modal (exclude those already in the selected class)
   const studentsAvailableForEnrollment = useMemo(() => {
       if (!showEnrollModal || !selectedClass) return [];
@@ -82,9 +130,22 @@ export const Classes: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Class Management</h1>
-        <p className="text-gray-500">Organize students into specific grades and arms.</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Class Management</h1>
+          <p className="text-gray-500">Organize students into specific grades and arms.</p>
+        </div>
+        {isAdmin && (
+          <div className="flex gap-2">
+            <button 
+              onClick={() => setShowCreateClassModal(true)}
+              className="inline-flex items-center justify-center px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium shadow-sm"
+            >
+              <Plus size={16} className="mr-2" />
+              Create Class
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Tabs */}
@@ -282,6 +343,37 @@ export const Classes: React.FC = () => {
                     </button>
                 </div>
             </div>
+        </div>
+      )}
+
+      {/* Create Class Modal */}
+      {showCreateClassModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-md rounded-xl shadow-2xl flex flex-col">
+            <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50 rounded-t-xl">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                  <Plus size={20} className="text-primary-600" />
+                  Create Custom Class
+                </h2>
+                <p className="text-sm text-gray-500">
+                  Add a class specific to your school's structure
+                </p>
+              </div>
+              <button 
+                onClick={() => setShowCreateClassModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            
+            <CreateClassForm
+              onSubmit={handleCreateClass}
+              onCancel={() => setShowCreateClassModal(false)}
+              existingClasses={user?.schoolId ? customClasses[user.schoolId] || [] : []}
+            />
+          </div>
         </div>
       )}
     </div>
