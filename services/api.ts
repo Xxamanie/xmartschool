@@ -494,5 +494,28 @@ export const api = {
           return { ok: true, data: true };
       }
       return { ok: false, data: false, message: 'Session not found' };
+  },
+
+  createStudent: async (studentData: Omit<Student, 'id' | 'enrollmentDate'>): Promise<ApiResponse<Student>> => {
+    await delay(800);
+    const newStudent: Student = {
+      ...studentData,
+      id: `student_${Date.now()}`,
+      enrollmentDate: new Date().toISOString().split('T')[0],
+    };
+    studentsStore.push(newStudent);
+    persist(STORAGE_KEYS.STUDENTS, studentsStore);
+    return { ok: true, data: newStudent, message: 'Student added successfully' };
+  },
+
+  deleteStudent: async (studentId: string): Promise<ApiResponse<boolean>> => {
+    await delay(500);
+    const index = studentsStore.findIndex(s => s.id === studentId);
+    if (index >= 0) {
+      studentsStore.splice(index, 1);
+      persist(STORAGE_KEYS.STUDENTS, studentsStore);
+      return { ok: true, data: true, message: 'Student deleted successfully' };
+    }
+    return { ok: false, data: false, message: 'Student not found' };
   }
 };
