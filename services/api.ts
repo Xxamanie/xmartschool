@@ -54,6 +54,25 @@ const persist = (key: string, data: any) => {
     }
 };
 
+// Helper to calculate student counts for schools
+const calculateSchoolStudentCounts = () => {
+    const schoolCounts: Record<string, number> = {};
+    
+    studentsStore.forEach(student => {
+      if (student.schoolId) {
+        schoolCounts[student.schoolId] = (schoolCounts[student.schoolId] || 0) + 1;
+      }
+    });
+    
+    // Update schools with actual student counts
+    schoolsStore = schoolsStore.map(school => ({
+      ...school,
+      studentCount: schoolCounts[school.id] || 0
+    }));
+    
+    persist(STORAGE_KEYS.SCHOOLS, schoolsStore);
+  };
+
 // --- In-memory stores (initialized from LocalStorage or Mocks) ---
 let studentsStore = loadData<Student[]>(STORAGE_KEYS.STUDENTS, [...MOCK_STUDENTS]);
 let resultsStore = loadData<ResultData[]>(STORAGE_KEYS.RESULTS, [...MOCK_RESULTS]);
@@ -64,6 +83,9 @@ let examSessionsStore = loadData<ExamSession[]>(STORAGE_KEYS.SESSIONS, []);
 let subjectsStore = loadData<Subject[]>(STORAGE_KEYS.SUBJECTS, [...MOCK_SUBJECTS]);
 let attendanceStore = loadData<AttendanceRecord[]>(STORAGE_KEYS.ATTENDANCE, []);
 let classMastersStore = loadData<Record<string, string>>(STORAGE_KEYS.MASTERS, { '10th': 'u1', '11th': 't3' });
+
+// Calculate initial student counts
+calculateSchoolStudentCounts();
 
 // Exam Store
 let examsStore = loadData<ActiveExam[]>(STORAGE_KEYS.EXAMS, [
@@ -243,6 +265,10 @@ export const api = {
       if (idx !== -1) {
           studentsStore[idx] = { ...studentsStore[idx], ...updates };
           persist(STORAGE_KEYS.STUDENTS, studentsStore);
+          // Update school student counts if schoolId changed
+          if (updates.schoolId) {
+            calculateSchoolStudentCounts();
+          }
           return { ok: true, data: studentsStore[idx], message: 'Student updated successfully' };
       }
       return { ok: false, data: {} as Student, message: 'Student not found' };
@@ -505,6 +531,8 @@ export const api = {
     };
     studentsStore.push(newStudent);
     persist(STORAGE_KEYS.STUDENTS, studentsStore);
+    // Update school student counts
+    calculateSchoolStudentCounts();
     return { ok: true, data: newStudent, message: 'Student added successfully' };
   },
 
@@ -514,6 +542,8 @@ export const api = {
     if (index >= 0) {
       studentsStore.splice(index, 1);
       persist(STORAGE_KEYS.STUDENTS, studentsStore);
+      // Update school student counts
+      calculateSchoolStudentCounts();
       return { ok: true, data: true, message: 'Student deleted successfully' };
     }
     return { ok: false, data: false, message: 'Student not found' };
