@@ -2,8 +2,26 @@
 import { Student, Subject, ApiResponse, SchemeSubmission, Assessment, ResultData, School, User, UserRole, ActiveExam, ExamQuestion, ExamSession } from '../types';
 import { MOCK_STUDENTS, MOCK_SUBJECTS, MOCK_SCHEMES, MOCK_ASSESSMENTS, MOCK_RESULTS, MOCK_SCHOOLS, MOCK_USER, MOCK_SUPER_ADMIN } from './mockData';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+
 // Simulates network latency
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// HTTP client
+const http = async (endpoint: string, options?: RequestInit) => {
+  const url = `${API_BASE_URL}${endpoint}`;
+  const response = await fetch(url, {
+    headers: {
+      'Content-Type': 'application/json',
+      ...options?.headers,
+    },
+    ...options,
+  });
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+  return response.json();
+};
 
 // --- Persistence Helpers ---
 const STORAGE_KEYS = {
@@ -93,8 +111,13 @@ interface AttendanceRecord {
 
 export const api = {
   health: async (): Promise<ApiResponse<{ status: string }>> => {
-    await delay(500);
-    return { ok: true, data: { status: 'healthy' } };
+    try {
+      const data = await http('/health');
+      return { ok: true, data };
+    } catch (error) {
+      console.error('Health check failed:', error);
+      return { ok: false, data: { status: 'unhealthy' }, message: 'Backend unavailable' };
+    }
   },
 
   login: async (email: string): Promise<ApiResponse<User>> => {
