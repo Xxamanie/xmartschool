@@ -19,6 +19,8 @@ export const Students: React.FC = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Student | null>(null);
+  const [bulkDeleteMode, setBulkDeleteMode] = useState(false);
+  const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
   
   const [sortConfig, setSortConfig] = useState<{ key: keyof Student; direction: 'asc' | 'desc' }>({
     key: 'name',
@@ -143,6 +145,30 @@ export const Students: React.FC = () => {
       }
   };
 
+  const handleBulkDelete = async () => {
+      if (selectedStudents.size === 0) return;
+      try {
+          await Promise.all(Array.from(selectedStudents).map(id => api.deleteStudent(id)));
+          setStudents(prev => prev.filter(s => !selectedStudents.has(s.id)));
+          setSelectedStudents(new Set());
+          setBulkDeleteMode(false);
+      } catch (e) {
+          console.error("Failed to delete students", e);
+      }
+  };
+
+  const toggleStudentSelection = (studentId: string) => {
+      setSelectedStudents(prev => {
+          const newSet = new Set(prev);
+          if (newSet.has(studentId)) {
+              newSet.delete(studentId);
+          } else {
+              newSet.add(studentId);
+          }
+          return newSet;
+      });
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'Active':
@@ -179,6 +205,25 @@ export const Students: React.FC = () => {
                 <button className="inline-flex items-center justify-center px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm font-medium shadow-sm" onClick={() => setShowAddModal(true)}>
                     <Plus size={16} className="mr-2" /> Add Student
                 </button>
+                <button 
+                    onClick={() => setBulkDeleteMode(!bulkDeleteMode)}
+                    className={`inline-flex items-center justify-center px-4 py-2 border rounded-lg transition-colors text-sm font-medium shadow-sm ${
+                        bulkDeleteMode 
+                            ? 'bg-red-600 text-white hover:bg-red-700 border-red-600' 
+                            : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                    }`}
+                >
+                    <Trash2 size={16} className="mr-2" /> 
+                    {bulkDeleteMode ? 'Cancel' : 'Delete'}
+                </button>
+                {bulkDeleteMode && selectedStudents.size > 0 && (
+                    <button 
+                        onClick={handleBulkDelete}
+                        className="inline-flex items-center justify-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium shadow-sm"
+                    >
+                        Delete {selectedStudents.length} Selected
+                    </button>
+                )}
             </div>
         )}
       </div>
@@ -202,12 +247,65 @@ export const Students: React.FC = () => {
         </button>
       </div>
 
+      {bulkDeleteMode && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Trash2 size={20} className="text-red-500" />
+              <div>
+                <p className="text-sm font-medium text-red-800">
+                  {selectedStudents.size} student{selectedStudents.size !== 1 ? 's' : ''} selected
+                </p>
+                <p className="text-xs text-red-600">
+                  Choose students to delete or cancel to exit delete mode
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              {selectedStudents.size > 0 && (
+                <button 
+                  onClick={handleBulkDelete}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors shadow-sm"
+                >
+                  Delete {selectedStudents.length} Selected
+                </button>
+              )}
+              <button 
+                onClick={() => {
+                  setBulkDeleteMode(false);
+                  setSelectedStudents(new Set());
+                }}
+                className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors shadow-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Table */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
+                {bulkDeleteMode && (
+                  <th className="px-6 py-3 text-left">
+                    <input
+                      type="checkbox"
+                      checked={selectedStudents.size === processedStudents.length}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedStudents(new Set(processedStudents.map(s => s.id)));
+                        } else {
+                          setSelectedStudents(new Set());
+                        }
+                      }}
+                      className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                    />
+                  </th>
+                )}
                 <th 
                     className={`px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${isAdmin ? 'cursor-pointer hover:bg-gray-100 group select-none' : ''}`}
                     onClick={() => handleSort('name')}
@@ -250,7 +348,8 @@ export const Students: React.FC = () => {
               {loading ? (
                 [...Array(5)].map((_, i) => (
                   <tr key={i}>
-                    <td colSpan={8} className="px-6 py-4">
+                    {bulkDeleteMode && <td className="px-6 py-4"><div className="h-4 w-4 bg-gray-200 rounded animate-pulse"></div></td>}
+                    <td colSpan={bulkDeleteMode ? 7 : 8} className="px-6 py-4">
                       <div className="h-4 bg-gray-200 rounded w-3/4 animate-pulse"></div>
                     </td>
                   </tr>
@@ -259,8 +358,18 @@ export const Students: React.FC = () => {
                 processedStudents.map((student) => (
                   <tr
                     key={student.id}
-                    className="hover:bg-gray-50 transition-colors"
+                    className={`hover:bg-gray-50 transition-colors ${selectedStudents.has(student.id) ? 'bg-red-50' : ''}`}
                   >
+                    {bulkDeleteMode && (
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          checked={selectedStudents.has(student.id)}
+                          onChange={() => toggleStudentSelection(student.id)}
+                          className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                        />
+                      </td>
+                    )}
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <div className="h-8 w-8 rounded-full bg-primary-100 text-primary-600 flex items-center justify-center font-bold text-xs mr-3">
@@ -336,7 +445,7 @@ export const Students: React.FC = () => {
               ) : (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={bulkDeleteMode ? 9 : 8}
                     className="px-6 py-12 text-center text-gray-500"
                   >
                     No students found matching your search.
