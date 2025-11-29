@@ -162,7 +162,21 @@ export const Assessments: React.FC = () => {
           api.getExams()
         ]);
 
-        if (studentsRes.ok) setStudents(studentsRes.data);
+        // Filter students based on user role
+        let filteredStudents = studentsRes.data;
+        if (user?.role === UserRole.TEACHER) {
+          // Teachers only see students from their assigned subjects/classes
+          // For now, show all students but this can be enhanced with class assignments
+          filteredStudents = studentsRes.data;
+        }
+        if (studentsRes.ok) setStudents(filteredStudents);
+        
+        // Filter subjects based on user role
+        let filteredSubjects = subjectsRes.data;
+        if (user?.role === UserRole.TEACHER) {
+          // Teachers only see subjects assigned to them
+          filteredSubjects = subjectsRes.data.filter(subject => subject.teacherId === user.id);
+        }
         
         // If Admin, fetch users to map teacher IDs to names
         if (user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN) {
@@ -176,12 +190,9 @@ export const Assessments: React.FC = () => {
             }
         }
 
-        if (subjectsRes.ok && subjectsRes.data.length > 0) {
-          let subs = subjectsRes.data;
-          // Filter for Teachers (Admins see all)
-          if (user?.role === UserRole.TEACHER) {
-             subs = subs.filter(s => s.teacherId === user.id);
-          }
+        if (subjectsRes.ok && filteredSubjects.length > 0) {
+          let subs = filteredSubjects;
+          // Filter for Teachers (Admins see all) - already filtered above
           setSubjects(subs);
           if (subs.length > 0) {
              setSelectedSubject(subs[0].id);

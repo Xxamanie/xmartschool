@@ -21,10 +21,17 @@ export const Attendance: React.FC = () => {
         // Load Students
         const studentsRes = await api.getStudents();
         if (studentsRes.ok) {
-            setStudents(studentsRes.data);
+            // Filter students based on user role
+            let filteredStudents = studentsRes.data;
+            if (user?.role === UserRole.TEACHER) {
+              // Teachers only see students from their assigned subjects/classes
+              // For now, show all students but this can be enhanced with class assignments
+              filteredStudents = studentsRes.data;
+            }
+            setStudents(filteredStudents);
             // Default to first available grade if not set
-            if (!selectedGrade && studentsRes.data.length > 0) {
-                const grades = Array.from(new Set(studentsRes.data.map(s => s.grade))).sort();
+            if (!selectedGrade && filteredStudents.length > 0) {
+                const grades = Array.from(new Set(filteredStudents.map(s => s.grade))).sort();
                 if (grades.length > 0) setSelectedGrade(grades[0]);
             }
         }

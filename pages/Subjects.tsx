@@ -92,12 +92,13 @@ export const Subjects: React.FC = () => {
       ]);
 
       if (subjectsRes.ok) {
-        let data = subjectsRes.data;
-        // If user is a teacher, filter subjects to only show theirs
+        // Filter subjects based on user role
+        let filteredSubjects = subjectsRes.data;
         if (user?.role === UserRole.TEACHER) {
-           data = data.filter(s => s.teacherId === user.id);
+          // Teachers only see subjects assigned to them
+          filteredSubjects = subjectsRes.data.filter(subject => subject.teacherId === user.id);
         }
-        setSubjects(data);
+        setSubjects(filteredSubjects);
       }
 
       if (usersRes.ok) {

@@ -203,3 +203,5 @@ export const TeacherForm: React.FC<TeacherFormProps> = ({ teacher, onSubmit, onC
     </form>
   );
 };
+
+export default TeacherForm;

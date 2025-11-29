@@ -26,7 +26,13 @@ export const Teachers: React.FC = () => {
       try {
         const response = await api.getAllUsers();
         if (response.ok) {
-          const filteredTeachers = response.data.filter(u => u.role === UserRole.TEACHER || u.role === UserRole.ADMIN);
+          let filteredTeachers = response.data.filter(u => u.role === UserRole.TEACHER || u.role === UserRole.ADMIN);
+          
+          // If the user is a teacher, only show themselves (prevent seeing other teachers)
+          if (user?.role === UserRole.TEACHER) {
+            filteredTeachers = filteredTeachers.filter(t => t.id === user.id);
+          }
+          
           setTeachers(filteredTeachers);
         }
       } catch (error) {
@@ -36,7 +42,7 @@ export const Teachers: React.FC = () => {
       }
     };
     fetchTeachers();
-  }, []);
+  }, [user]);
 
   const handleSort = (key: keyof User) => {
     if (!isAdmin) return;
@@ -298,7 +304,7 @@ export const Teachers: React.FC = () => {
       {/* Add/Edit Teacher Modal */}
       {(showAddModal || editingTeacher) && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-md rounded-xl shadow-2xl flex flex-col max-h-[80vh]">
+          <div className="bg-white w-full max-w-md rounded-xl shadow-2xl flex flex-col">
             <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50 rounded-t-xl">
               <div>
                 <h2 className="text-lg font-bold text-gray-900">
@@ -319,14 +325,16 @@ export const Teachers: React.FC = () => {
               </button>
             </div>
             
-            <TeacherForm
-              teacher={editingTeacher}
-              onSubmit={editingTeacher ? handleEditTeacher : handleAddTeacher}
-              onCancel={() => {
-                setShowAddModal(false);
-                setEditingTeacher(null);
-              }}
-            />
+            <div className="flex-1 overflow-y-auto max-h-[60vh]">
+              <TeacherForm
+                teacher={editingTeacher}
+                onSubmit={editingTeacher ? handleEditTeacher : handleAddTeacher}
+                onCancel={() => {
+                  setShowAddModal(false);
+                  setEditingTeacher(null);
+                }}
+              />
+            </div>
           </div>
         </div>
       )}

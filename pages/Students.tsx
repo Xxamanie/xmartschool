@@ -37,7 +37,14 @@ export const Students: React.FC = () => {
         ]);
 
         if (response.ok) {
-          setStudents(response.data);
+          // Filter students based on user role
+          let filteredStudents = response.data;
+          if (user?.role === UserRole.TEACHER) {
+            // Teachers only see students from classes they are assigned to teach
+            // For now, we'll show all students but this can be enhanced with class assignments
+            filteredStudents = response.data;
+          }
+          setStudents(filteredStudents);
         }
         if (usersRes.ok) {
             setTeachers(usersRes.data.filter(u => u.role === UserRole.TEACHER || u.role === UserRole.ADMIN));
@@ -52,7 +59,7 @@ export const Students: React.FC = () => {
       }
     };
     fetchData();
-  }, []);
+  }, [user]);
 
   const handleSort = (key: keyof Student) => {
     if (!isAdmin) return;
