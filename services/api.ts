@@ -1,5 +1,6 @@
 import { Student, Subject, ApiResponse, SchemeSubmission, Assessment, ResultData, School, User, UserRole, ActiveExam, ExamQuestion, ExamSession } from '../types';
 import { MOCK_STUDENTS, MOCK_SUBJECTS, MOCK_SCHEMES, MOCK_ASSESSMENTS, MOCK_RESULTS, MOCK_SCHOOLS, MOCK_USER, MOCK_SUPER_ADMIN } from './mockData';
+import { firebaseStudentsApi, firebaseSubjectsApi, firebaseUsersApi, firebaseAssessmentsApi } from './firebase-api';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://xmartschool.onrender.com';
 
@@ -255,79 +256,28 @@ export const api = {
   },
 
   getStudents: async (schoolId?: string): Promise<ApiResponse<Student[]>> => {
-    try {
-      const url = schoolId ? `/students?schoolId=${schoolId}` : '/students';
-      const response = await http(url);
-      return { ok: true, data: response.data };
-    } catch (error) {
-      console.error('Failed to get students:', error);
-      // Fallback to mock for development
-      await delay(600);
-      const students = await loadStudents();
-      const data = schoolId ? students.filter(s => s.schoolId === schoolId) : students;
-      return { ok: true, data };
-    }
+    // Use Firebase API for cross-device sharing
+    return firebaseStudentsApi.getAllStudents();
   },
 
   createStudent: async (studentData: Omit<Student, 'id' | 'enrollmentDate'>): Promise<ApiResponse<Student>> => {
-    try {
-      const response = await http('/students', {
-        method: 'POST',
-        body: JSON.stringify(studentData)
-      });
-      return { ok: true, data: response.data, message: 'Student added successfully' };
-    } catch (error) {
-      console.error('Failed to create student:', error);
-      // Fallback to mock for development
-      await delay(800);
-      const students = await loadStudents();
-      const newStudent: Student = {
-        ...studentData,
-        id: `student_${Date.now()}`,
-        enrollmentDate: new Date().toISOString().split('T')[0],
-      };
-      students.push(newStudent);
-      return { ok: true, data: newStudent, message: 'Student added successfully' };
-    }
+    // Use Firebase API for cross-device sharing
+    // Add enrollmentDate since Firebase API expects the full Student type without id
+    const studentWithEnrollment = {
+      ...studentData,
+      enrollmentDate: new Date().toISOString().split('T')[0] // Current date as YYYY-MM-DD
+    };
+    return firebaseStudentsApi.addStudent(studentWithEnrollment);
   },
 
   updateStudent: async (studentId: string, updates: Partial<Student>): Promise<ApiResponse<Student>> => {
-    try {
-      const response = await http(`/students/${studentId}`, {
-        method: 'PUT',
-        body: JSON.stringify(updates)
-      });
-      return { ok: true, data: response.data, message: 'Student updated successfully' };
-    } catch (error) {
-      console.error('Failed to update student:', error);
-      // Fallback to mock for development
-      await delay(500);
-      const students = await loadStudents();
-      const idx = students.findIndex(s => s.id === studentId);
-      if (idx !== -1) {
-        students[idx] = { ...students[idx], ...updates };
-        return { ok: true, data: students[idx], message: 'Student updated successfully' };
-      }
-      return { ok: false, data: {} as Student, message: 'Student not found' };
-    }
+    // Use Firebase API for cross-device sharing
+    return firebaseStudentsApi.updateStudent(studentId, updates);
   },
 
   deleteStudent: async (studentId: string): Promise<ApiResponse<boolean>> => {
-    try {
-      await http(`/students/${studentId}`, { method: 'DELETE' });
-      return { ok: true, data: true, message: 'Student deleted successfully' };
-    } catch (error) {
-      console.error('Failed to delete student:', error);
-      // Fallback to mock for development
-      await delay(500);
-      const students = await loadStudents();
-      const index = students.findIndex(s => s.id === studentId);
-      if (index >= 0) {
-        students.splice(index, 1);
-        return { ok: true, data: true, message: 'Student deleted successfully' };
-      }
-      return { ok: false, data: false, message: 'Student not found' };
-    }
+    // Use Firebase API for cross-device sharing
+    return firebaseStudentsApi.deleteStudent(studentId);
   },
 
   getSchools: async (): Promise<ApiResponse<School[]>> => {
@@ -409,66 +359,25 @@ export const api = {
   },
 
   getAllUsers: async (): Promise<ApiResponse<User[]>> => {
-    try {
-      const response = await http('/users');
-      return { ok: true, data: response.data };
-    } catch (error) {
-      console.error('Failed to get users:', error);
-      // Fallback to mock for development
-      await delay(1000);
-      const users = await loadUsers();
-      const students = await loadStudents();
-      const allUsers: User[] = [
-          ...users,
-          ...students.map(s => ({
-              id: s.id,
-              name: s.name,
-              role: UserRole.STUDENT,
-              email: (s as any).email || '',
-              schoolId: s.schoolId,
-              avatar: (s as any).avatar,
-              gender: (s as any).gender
-          }))
-      ];
-      return { ok: true, data: allUsers };
-    }
+    // Use Firebase API for cross-device sharing
+    return firebaseUsersApi.getAllUsers();
   },
 
   getSubjects: async (): Promise<ApiResponse<Subject[]>> => {
-    try {
-      const response = await http('/subjects');
-      return { ok: true, data: response.data };
-    } catch (error) {
-      console.error('Failed to get subjects:', error);
-      // Fallback to mock for development
-      await delay(600);
-      const subjects = await loadSubjects();
-      return { ok: true, data: subjects };
-    }
+    // Use Firebase API for cross-device sharing
+    return firebaseSubjectsApi.getAllSubjects();
   },
 
   createSubject: async (subjectData: { name: string, teacherId?: string }): Promise<ApiResponse<Subject>> => {
-    try {
-      const response = await http('/subjects', {
-        method: 'POST',
-        body: JSON.stringify(subjectData)
-      });
-      return { ok: true, data: response.data, message: 'Subject created successfully' };
-    } catch (error) {
-      console.error('Failed to create subject:', error);
-      // Fallback to mock for development
-      await delay(600);
-      const subjects = await loadSubjects();
-      const newSubject: Subject = {
-        id: `sub_${Date.now()}_${Math.floor(Math.random()*1000)}`,
-        name: subjectData.name,
-        teacherId: subjectData.teacherId || 'u1',
-        schedule: 'TBD',
-        room: 'TBD'
-      };
-      subjects.push(newSubject);
-      return { ok: true, data: newSubject, message: 'Subject created successfully' };
-    }
+    // Use Firebase API for cross-device sharing
+    // Add required fields schedule and room since Firebase API expects full Subject type without id
+    const subjectWithDefaults = {
+      ...subjectData,
+      schedule: 'TBD',
+      room: 'TBD',
+      teacherId: subjectData.teacherId || 'unassigned'
+    };
+    return firebaseSubjectsApi.addSubject(subjectWithDefaults);
   },
 
   getSchemes: async (): Promise<ApiResponse<SchemeSubmission[]>> => {
@@ -918,63 +827,17 @@ export const api = {
   },
 
   createTeacher: async (teacherData: Omit<User, 'id'>): Promise<ApiResponse<User>> => {
-    try {
-      const response = await http('/teachers', {
-        method: 'POST',
-        body: JSON.stringify(teacherData)
-      });
-      return { ok: true, data: response.data, message: 'Teacher added successfully' };
-    } catch (error) {
-      console.error('Failed to create teacher:', error);
-      // Fallback to mock for development
-      await delay(800);
-      const users = await loadUsers();
-      const newTeacher: User = {
-        ...teacherData,
-        id: `teacher_${Date.now()}`,
-        role: UserRole.TEACHER,
-      };
-      users.push(newTeacher);
-      return { ok: true, data: newTeacher, message: 'Teacher added successfully' };
-    }
+    // Use Firebase API for cross-device sharing
+    return firebaseUsersApi.addUser(teacherData);
   },
 
   updateTeacher: async (teacherId: string, updates: Partial<User>): Promise<ApiResponse<User>> => {
-    try {
-      const response = await http(`/teachers/${teacherId}`, {
-        method: 'PUT',
-        body: JSON.stringify(updates)
-      });
-      return { ok: true, data: response.data, message: 'Teacher updated successfully' };
-    } catch (error) {
-      console.error('Failed to update teacher:', error);
-      // Fallback to mock for development
-      await delay(500);
-      const users = await loadUsers();
-      const idx = users.findIndex(u => u.id === teacherId);
-      if (idx !== -1) {
-        users[idx] = { ...users[idx], ...updates };
-        return { ok: true, data: users[idx], message: 'Teacher updated successfully' };
-      }
-      return { ok: false, data: {} as User, message: 'Teacher not found' };
-    }
+    // Use Firebase API for cross-device sharing
+    return firebaseUsersApi.updateUser(teacherId, updates);
   },
 
   deleteTeacher: async (teacherId: string): Promise<ApiResponse<boolean>> => {
-    try {
-      await http(`/teachers/${teacherId}`, { method: 'DELETE' });
-      return { ok: true, data: true, message: 'Teacher deleted successfully' };
-    } catch (error) {
-      console.error('Failed to delete teacher:', error);
-      // Fallback to mock for development
-      await delay(500);
-      const users = await loadUsers();
-      const index = users.findIndex(u => u.id === teacherId);
-      if (index >= 0) {
-        users.splice(index, 1);
-        return { ok: true, data: true, message: 'Teacher deleted successfully' };
-      }
-      return { ok: false, data: false, message: 'Teacher not found' };
-    }
+    // Use Firebase API for cross-device sharing
+    return firebaseUsersApi.deleteUser(teacherId);
   }
 };
