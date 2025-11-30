@@ -1,0 +1,40 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Users can read/write their own data
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Teachers can read their assigned subjects
+    match /subjects/{subjectId} {
+      allow read: if request.auth != null && 
+        request.auth.token.role == 'ADMIN' || 
+        request.auth.token.role == 'SUPER_ADMIN' ||
+        resource.data.teacherId == request.auth.uid;
+      allow write: if request.auth != null && 
+        request.auth.token.role == 'ADMIN' || 
+        request.auth.token.role == 'SUPER_ADMIN';
+    }
+    
+    // Students can be read by authenticated users
+    match /students/{studentId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && 
+        request.auth.token.role == 'ADMIN' || 
+        request.auth.token.role == 'SUPER_ADMIN';
+    }
+    
+    // Assessments follow teacher permissions
+    match /assessments/{assessmentId} {
+      allow read: if request.auth != null && 
+        (request.auth.token.role == 'ADMIN' || 
+         request.auth.token.role == 'SUPER_ADMIN' ||
+         resource.data.teacherId == request.auth.uid);
+      allow write: if request.auth != null && 
+        (request.auth.token.role == 'ADMIN' || 
+         request.auth.token.role == 'SUPER_ADMIN' ||
+         resource.data.teacherId == request.auth.uid);
+    }
+  }
+}

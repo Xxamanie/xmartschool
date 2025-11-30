@@ -1,6 +1,6 @@
 // Simple test to verify Firebase connection
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, getDocs } from 'firebase/firestore';
+import { getFirestore, collection, getDocs, doc, setDoc } from 'firebase/firestore';
 
 // Your Firebase config
 const firebaseConfig = {
@@ -26,7 +26,7 @@ async function testFirebaseConnection() {
     const db = getFirestore(app);
     console.log('✅ Firestore initialized successfully');
     
-    // Test reading from users collection
+    // Try to read from users collection
     const usersSnapshot = await getDocs(collection(db, 'users'));
     console.log(`✅ Successfully read users collection. Found ${usersSnapshot.size} documents`);
     
@@ -41,9 +41,24 @@ async function testFirebaseConnection() {
     console.error('❌ Firebase connection test failed:', error);
     
     if (error.code === 'permission-denied') {
-      console.log('💡 You need to set up Firestore rules in Firebase Console');
+      console.log('💡 Permission denied. This could mean:');
+      console.log('   1. Firestore database is not created yet');
+      console.log('   2. Security rules need to be deployed');
+      console.log('   3. User needs to be authenticated');
+      console.log('');
+      console.log('🔧 To fix this:');
+      console.log('   1. Go to Firebase Console → Firestore Database');
+      console.log('   2. Click "Create database"');
+      console.log('   3. Choose "Start in test mode" for now');
+      console.log('   4. Select a location (us-central recommended)');
+      console.log('   5. Click "Create database"');
+      console.log('');
+      console.log('📋 After creating database, run this test again.');
     } else if (error.code === 'unavailable') {
       console.log('💡 Firestore Database may not be enabled in Firebase Console');
+      console.log('   Go to Firebase Console → Firestore Database → Create database');
+    } else {
+      console.log('💡 Check your Firebase configuration and network connection');
     }
   }
 }
