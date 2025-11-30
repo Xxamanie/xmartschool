@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, PropsWithChildren } from 'react';
 import { User, UserRole } from '../types';
 import { api } from '../services/api';
+import { initializeCloudData, setupSyncListener } from '../services/cloud-api';
 
 interface AuthContextType {
   user: User | null;
@@ -24,6 +25,24 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
 
   // Check localStorage on mount for persisted user session
   useEffect(() => {
+    // Initialize cloud data with sample data if empty (temporary solution)
+    initializeCloudData();
+    
+    // Set up real-time sync listener for cross-device updates (temporary solution)
+    setupSyncListener((type: string, data: any) => {
+      console.log(`Real-time sync: ${type} updated`, data);
+      // You can add specific handling for different data types here
+      // For example, refresh user data if users are updated
+      if (type === 'users' && user) {
+        // Refresh current user data if it was updated
+        const updatedUser = data.find((u: User) => u.id === user.id);
+        if (updatedUser) {
+          setUser(updatedUser);
+          localStorage.setItem('user', JSON.stringify(updatedUser));
+        }
+      }
+    });
+    
     const savedUser = localStorage.getItem('user');
     const savedOriginalUser = localStorage.getItem('originalUser');
     

@@ -1,6 +1,7 @@
 import { Student, Subject, ApiResponse, SchemeSubmission, Assessment, ResultData, School, User, UserRole, ActiveExam, ExamQuestion, ExamSession } from '../types';
 import { MOCK_STUDENTS, MOCK_SUBJECTS, MOCK_SCHEMES, MOCK_ASSESSMENTS, MOCK_RESULTS, MOCK_SCHOOLS, MOCK_USER, MOCK_SUPER_ADMIN } from './mockData';
 import { firebaseStudentsApi, firebaseSubjectsApi, firebaseUsersApi, firebaseAssessmentsApi } from './firebase-api';
+import { cloudStudentsApi, cloudSubjectsApi, cloudUsersApi, cloudAssessmentsApi, cloudSchoolsApi } from './cloud-api';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://xmartschool.onrender.com';
 
@@ -256,128 +257,77 @@ export const api = {
   },
 
   getStudents: async (schoolId?: string): Promise<ApiResponse<Student[]>> => {
-    // Use Firebase API for cross-device sharing
-    return firebaseStudentsApi.getAllStudents();
+    // Use localStorage cloud API temporarily until Firebase database is created
+    return cloudStudentsApi.getAllStudents();
   },
 
   createStudent: async (studentData: Omit<Student, 'id' | 'enrollmentDate'>): Promise<ApiResponse<Student>> => {
-    // Use Firebase API for cross-device sharing
-    // Add enrollmentDate since Firebase API expects the full Student type without id
+    // Use localStorage cloud API temporarily until Firebase database is created
     const studentWithEnrollment = {
       ...studentData,
-      enrollmentDate: new Date().toISOString().split('T')[0] // Current date as YYYY-MM-DD
+      enrollmentDate: new Date().toISOString().split('T')[0]
     };
-    return firebaseStudentsApi.addStudent(studentWithEnrollment);
+    return cloudStudentsApi.createStudent(studentWithEnrollment);
   },
 
   updateStudent: async (studentId: string, updates: Partial<Student>): Promise<ApiResponse<Student>> => {
-    // Use Firebase API for cross-device sharing
-    return firebaseStudentsApi.updateStudent(studentId, updates);
+    // Use localStorage cloud API temporarily until Firebase database is created
+    return cloudStudentsApi.updateStudent(studentId, updates);
   },
 
   deleteStudent: async (studentId: string): Promise<ApiResponse<boolean>> => {
-    // Use Firebase API for cross-device sharing
-    return firebaseStudentsApi.deleteStudent(studentId);
+    // Use localStorage cloud API temporarily until Firebase database is created
+    return cloudStudentsApi.deleteStudent(studentId);
   },
 
   getSchools: async (): Promise<ApiResponse<School[]>> => {
-    try {
-      const response = await http('/schools');
-      return { ok: true, data: response.data };
-    } catch (error) {
-      console.error('Failed to get schools:', error);
-      // Fallback to mock for development
-      await delay(800);
-      const schools = await loadSchools();
-      return { ok: true, data: schools };
-    }
+    // Use localStorage cloud API temporarily until Firebase database is created
+    return cloudSchoolsApi.getAllSchools();
   },
 
   createSchool: async (schoolData: { name: string }): Promise<ApiResponse<School>> => {
-    try {
-      const response = await http('/schools', {
-        method: 'POST',
-        body: JSON.stringify(schoolData)
-      });
-      return { ok: true, data: response.data, message: 'School created successfully' };
-    } catch (error) {
-      console.error('Failed to create school:', error);
-      // Fallback to mock for development
-      await delay(1000);
-      const schools = await loadSchools();
-      const newSchool: School = {
-        id: `sch_${Date.now()}`,
-        name: schoolData.name,
-        code: `SCH-${Date.now().toString(36).toUpperCase()}`,
-        region: 'Unspecified',
-        adminName: 'Pending Assignment',
-        status: 'Active',
-        studentCount: 0
-      };
-      schools.push(newSchool);
-      return { ok: true, data: newSchool, message: 'School created successfully' };
-    }
+    // Use localStorage cloud API temporarily until Firebase database is created
+    // Create a complete school object with required fields
+    const completeSchoolData = {
+      ...schoolData,
+      code: `SCH${Date.now().toString().slice(-6)}`,
+      region: 'Default Region',
+      adminName: 'School Administrator',
+      status: 'Active' as const,
+      studentCount: 0
+    };
+    return cloudSchoolsApi.createSchool(completeSchoolData);
   },
 
   updateSchoolStatus: async (schoolId: string, status: 'Active' | 'Inactive'): Promise<ApiResponse<School>> => {
-    try {
-      const response = await http(`/schools/${schoolId}/status`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status })
-      });
-      return { ok: true, data: response.data, message: 'School status updated successfully' };
-    } catch (error) {
-      console.error('Failed to update school status:', error);
-      // Fallback to mock for development
-      await delay(500);
-      const schools = await loadSchools();
-      const school = schools.find(s => s.id === schoolId);
-      if (school) {
-        school.status = status;
-        return { ok: true, data: school, message: 'School status updated successfully' };
-      }
-      return { ok: false, data: {} as School, message: 'School not found' };
-    }
+    // Use localStorage cloud API temporarily until Firebase database is created
+    return cloudSchoolsApi.updateSchool(schoolId, { status });
   },
 
   deleteSchool: async (schoolId: string): Promise<ApiResponse<boolean>> => {
-    try {
-      await http(`/schools/${schoolId}`, { method: 'DELETE' });
-      return { ok: true, data: true, message: 'School deleted successfully' };
-    } catch (error) {
-      console.error('Failed to delete school:', error);
-      // Fallback to mock for development
-      await delay(500);
-      const schools = await loadSchools();
-      const index = schools.findIndex(s => s.id === schoolId);
-      if (index >= 0) {
-        schools.splice(index, 1);
-        return { ok: true, data: true, message: 'School deleted successfully' };
-      }
-      return { ok: false, data: false, message: 'School not found' };
-    }
+    // Use localStorage cloud API temporarily until Firebase database is created
+    return cloudSchoolsApi.deleteSchool(schoolId);
   },
 
   getAllUsers: async (): Promise<ApiResponse<User[]>> => {
-    // Use Firebase API for cross-device sharing
-    return firebaseUsersApi.getAllUsers();
+    // Use localStorage cloud API temporarily until Firebase database is created
+    return cloudUsersApi.getAllUsers();
   },
 
   getSubjects: async (): Promise<ApiResponse<Subject[]>> => {
-    // Use Firebase API for cross-device sharing
-    return firebaseSubjectsApi.getAllSubjects();
+    // Use localStorage cloud API temporarily until Firebase database is created
+    return cloudSubjectsApi.getAllSubjects();
   },
 
   createSubject: async (subjectData: { name: string, teacherId?: string }): Promise<ApiResponse<Subject>> => {
-    // Use Firebase API for cross-device sharing
-    // Add required fields schedule and room since Firebase API expects full Subject type without id
+    // Use localStorage cloud API temporarily until Firebase database is created
     const subjectWithDefaults = {
       ...subjectData,
       schedule: 'TBD',
       room: 'TBD',
       teacherId: subjectData.teacherId || 'unassigned'
     };
-    return firebaseSubjectsApi.addSubject(subjectWithDefaults);
+    return cloudSubjectsApi.createSubject(subjectWithDefaults);
   },
 
   getSchemes: async (): Promise<ApiResponse<SchemeSubmission[]>> => {
@@ -827,17 +777,17 @@ export const api = {
   },
 
   createTeacher: async (teacherData: Omit<User, 'id'>): Promise<ApiResponse<User>> => {
-    // Use Firebase API for cross-device sharing
-    return firebaseUsersApi.addUser(teacherData);
+    // Use localStorage cloud API temporarily until Firebase database is created
+    return cloudUsersApi.createTeacher(teacherData);
   },
 
   updateTeacher: async (teacherId: string, updates: Partial<User>): Promise<ApiResponse<User>> => {
-    // Use Firebase API for cross-device sharing
-    return firebaseUsersApi.updateUser(teacherId, updates);
+    // Use localStorage cloud API temporarily until Firebase database is created
+    return cloudUsersApi.updateTeacher(teacherId, updates);
   },
 
   deleteTeacher: async (teacherId: string): Promise<ApiResponse<boolean>> => {
-    // Use Firebase API for cross-device sharing
-    return firebaseUsersApi.deleteUser(teacherId);
+    // Use localStorage cloud API temporarily until Firebase database is created
+    return cloudUsersApi.deleteTeacher(teacherId);
   }
 };
