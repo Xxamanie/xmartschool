@@ -36,6 +36,9 @@ export const SuperAdmin: React.FC = () => {
   // School Actions State
   const [isCreating, setIsCreating] = useState(false);
   const [newSchoolName, setNewSchoolName] = useState('');
+  const [newSchoolCode, setNewSchoolCode] = useState('');
+  const [newSchoolRegion, setNewSchoolRegion] = useState('');
+  const [newSchoolAdminName, setNewSchoolAdminName] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Active' | 'Inactive'>('All');
   
   // User Actions State
@@ -62,16 +65,30 @@ export const SuperAdmin: React.FC = () => {
   }, []);
 
   const handleCreateSchool = async () => {
-    if (!newSchoolName) return;
+    if (!newSchoolName.trim()) {
+      alert('School name is required');
+      return;
+    }
     try {
-        const res = await api.createSchool({ name: newSchoolName });
+        const res = await api.createSchool({
+          name: newSchoolName.trim(),
+          code: newSchoolCode.trim() || undefined,
+          region: newSchoolRegion.trim() || undefined,
+          adminName: newSchoolAdminName.trim() || undefined,
+          status: 'Active'
+        });
         if (res.ok) {
             setSchools(prev => [...prev, res.data]);
             setIsCreating(false);
             setNewSchoolName('');
+            setNewSchoolCode('');
+            setNewSchoolRegion('');
+            setNewSchoolAdminName('');
+            alert('School created successfully!');
         }
     } catch (e) {
-        console.error(e);
+        console.error('Failed to create school:', e);
+        alert(`Error creating school: ${(e as any)?.message || 'Unknown error'}`);
     }
   };
 
@@ -285,10 +302,10 @@ export const SuperAdmin: React.FC = () => {
 
         {isCreating && (
            <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 shadow-inner animate-in fade-in slide-in-from-top-2 mb-6">
-              <h3 className="text-sm font-bold text-slate-900 mb-3 uppercase tracking-wide">New Institution Details</h3>
-              <div className="flex gap-4 items-end">
-                  <div className="flex-1">
-                     <label className="block text-xs font-medium text-slate-500 mb-1">School Name</label>
+              <h3 className="text-sm font-bold text-slate-900 mb-4 uppercase tracking-wide">New Institution Details</h3>
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div>
+                     <label className="block text-xs font-medium text-slate-500 mb-1">School Name *</label>
                      <input 
                        type="text" 
                        value={newSchoolName}
@@ -298,6 +315,38 @@ export const SuperAdmin: React.FC = () => {
                        autoFocus
                      />
                   </div>
+                  <div>
+                     <label className="block text-xs font-medium text-slate-500 mb-1">School Code</label>
+                     <input 
+                       type="text" 
+                       value={newSchoolCode}
+                       onChange={(e) => setNewSchoolCode(e.target.value)}
+                       className="block w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-amber-500 focus:border-transparent shadow-sm"
+                       placeholder="e.g. IHA-001"
+                     />
+                  </div>
+                  <div>
+                     <label className="block text-xs font-medium text-slate-500 mb-1">Region</label>
+                     <input 
+                       type="text" 
+                       value={newSchoolRegion}
+                       onChange={(e) => setNewSchoolRegion(e.target.value)}
+                       className="block w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-amber-500 focus:border-transparent shadow-sm"
+                       placeholder="e.g. Lagos"
+                     />
+                  </div>
+                  <div>
+                     <label className="block text-xs font-medium text-slate-500 mb-1">Administrator Name</label>
+                     <input 
+                       type="text" 
+                       value={newSchoolAdminName}
+                       onChange={(e) => setNewSchoolAdminName(e.target.value)}
+                       className="block w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-amber-500 focus:border-transparent shadow-sm"
+                       placeholder="e.g. John Doe"
+                     />
+                  </div>
+              </div>
+              <div className="flex gap-4 justify-end">
                   <button 
                     onClick={handleCreateSchool}
                     className="px-6 py-2.5 bg-amber-500 text-white rounded-lg text-sm font-bold hover:bg-amber-600 shadow-md shadow-amber-500/20 transition-colors"

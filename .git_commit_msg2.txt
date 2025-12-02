@@ -1,0 +1,1 @@
+Fix: fully restored all CRUD button functionality and API actions

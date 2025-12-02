@@ -184,17 +184,19 @@ export const api = {
     }
   },
 
-  createSchool: async (schoolData: { name: string }): Promise<ApiResponse<School>> => {
+  createSchool: async (schoolData: { name: string; code?: string; region?: string; adminName?: string; status?: string }): Promise<ApiResponse<School>> => {
     try {
       const payload = {
-        ...schoolData,
-        code: `SCH${Date.now().toString().slice(-6)}`,
-        region: 'Default Region',
-        adminName: 'School Administrator',
-        status: 'Active' as const,
+        name: schoolData.name,
+        code: schoolData.code || `SCH${Date.now().toString().slice(-6)}`,
+        region: schoolData.region || 'Default Region',
+        adminName: schoolData.adminName || 'School Administrator',
+        status: schoolData.status || 'Active',
         studentCount: 0
       };
+      console.log('[createSchool] Payload:', payload);
       const { data } = await apiClient.post('/schools', payload);
+      console.log('[createSchool] Response:', data);
       return { ok: true, data: data || data.data, message: 'School created successfully' };
     } catch (error) {
       console.error('Failed to create school:', error);
