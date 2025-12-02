@@ -266,12 +266,12 @@ export const Teachers: React.FC = () => {
   const handleAddTeacher = async (teacherData: Partial<User>) => {
     try {
       const response = await api.createTeacher(teacherData as Omit<User, 'id'>);
-      if (response.ok) {
-        setTeachers(prev => [...prev, response.data]);
-        setShowAddModal(false);
-      }
+      setTeachers(prev => [...prev, response.data]);
+      setShowAddModal(false);
+      alert('Teacher added successfully!');
     } catch (e) {
       console.error("Failed to add teacher", e);
+      alert(`Error adding teacher: ${(e as any)?.message || 'Unknown error'}`);
     }
   };
 
@@ -279,25 +279,25 @@ export const Teachers: React.FC = () => {
     if (!editingTeacher) return;
     try {
       const response = await api.updateTeacher(editingTeacher.id, teacherData);
-      if (response.ok) {
-        setTeachers(prev => prev.map(t => t.id === editingTeacher.id ? response.data : t));
-        setEditingTeacher(null);
-      }
+      setTeachers(prev => prev.map(t => t.id === editingTeacher.id ? response.data : t));
+      setEditingTeacher(null);
+      alert('Teacher updated successfully!');
     } catch (e) {
       console.error("Failed to update teacher", e);
+      alert(`Error updating teacher: ${(e as any)?.message || 'Unknown error'}`);
     }
   };
 
   const handleDeleteTeacher = async () => {
     if (!deleteConfirm) return;
     try {
-      const response = await api.deleteTeacher(deleteConfirm.id);
-      if (response.ok) {
-        setTeachers(prev => prev.filter(t => t.id !== deleteConfirm.id));
-        setDeleteConfirm(null);
-      }
+      await api.deleteTeacher(deleteConfirm.id);
+      setTeachers(prev => prev.filter(t => t.id !== deleteConfirm.id));
+      setDeleteConfirm(null);
+      alert('Teacher deleted successfully!');
     } catch (e) {
       console.error("Failed to delete teacher", e);
+      alert(`Error deleting teacher: ${(e as any)?.message || 'Unknown error'}`);
     }
   };
 

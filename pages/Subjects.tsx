@@ -132,7 +132,6 @@ export const Subjects: React.FC = () => {
   const handleEnrollSubjects = async () => {
       setEnrollLoading(true);
       try {
-          // If a specific teacher is selected, use that ID. Otherwise, default to current user (Admin/Creator)
           const teacherToAssign: string | undefined = selectedTeacherId || user?.id;
 
           const promises = Array.from(selectedForEnrollment).map((name: string) => 
@@ -140,13 +139,14 @@ export const Subjects: React.FC = () => {
           );
           await Promise.all(promises);
           
-          // Refresh and close
           await fetchData();
           setShowEnrollModal(false);
           setSelectedForEnrollment(new Set());
           setSelectedTeacherId("");
+          alert('Subjects enrolled successfully!');
       } catch (e) {
           console.error("Failed to enroll subjects", e);
+          alert(`Error enrolling subjects: ${(e as any)?.message || 'Unknown error'}`);
       } finally {
           setEnrollLoading(false);
       }

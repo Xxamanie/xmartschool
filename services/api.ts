@@ -59,12 +59,12 @@ export const api = {
 
   getStudents: async (schoolId?: string): Promise<ApiResponse<Student[]>> => {
     try {
-      const url = schoolId ? `/api/students?schoolId=${schoolId}` : '/api/students';
+      const url = schoolId ? `/students?schoolId=${schoolId}` : '/students';
       const { data } = await apiClient.get(url);
-      return { ok: true, data };
+      return { ok: true, data: data || data.data || [] };
     } catch (error) {
       console.error('Failed to load students:', error);
-      return { ok: true, data: [...MOCK_STUDENTS] };
+      throw error;
     }
   },
 
@@ -74,41 +74,46 @@ export const api = {
         ...studentData,
         enrollmentDate: new Date().toISOString().split('T')[0]
       };
-      const { data } = await apiClient.post('/api/students', payload);
-      return { ok: true, data, message: 'Student created successfully' };
+      console.log('[createStudent] Payload:', payload);
+      const { data } = await apiClient.post('/students', payload);
+      console.log('[createStudent] Response:', data);
+      return { ok: true, data: data || data.data, message: 'Student created successfully' };
     } catch (error) {
       console.error('Failed to create student:', error);
-      return { ok: false, data: {} as Student, message: 'Failed to create student' };
+      throw error;
     }
   },
 
   updateStudent: async (studentId: string, updates: Partial<Student>): Promise<ApiResponse<Student>> => {
     try {
-      const { data } = await apiClient.put(`/api/students/${studentId}`, updates);
-      return { ok: true, data, message: 'Student updated successfully' };
+      console.log('[updateStudent] ID:', studentId, 'Updates:', updates);
+      const { data } = await apiClient.put(`/students/${studentId}`, updates);
+      console.log('[updateStudent] Response:', data);
+      return { ok: true, data: data || data.data, message: 'Student updated successfully' };
     } catch (error) {
       console.error('Failed to update student:', error);
-      return { ok: false, data: {} as Student, message: 'Failed to update student' };
+      throw error;
     }
   },
 
   deleteStudent: async (studentId: string): Promise<ApiResponse<boolean>> => {
     try {
-      await apiClient.delete(`/api/students/${studentId}`);
+      console.log('[deleteStudent] ID:', studentId);
+      await apiClient.delete(`/students/${studentId}`);
       return { ok: true, data: true, message: 'Student deleted successfully' };
     } catch (error) {
       console.error('Failed to delete student:', error);
-      return { ok: false, data: false, message: 'Failed to delete student' };
+      throw error;
     }
   },
 
   getSubjects: async (): Promise<ApiResponse<Subject[]>> => {
     try {
-      const { data } = await apiClient.get('/api/subjects');
-      return { ok: true, data };
+      const { data } = await apiClient.get('/subjects');
+      return { ok: true, data: data || data.data || [] };
     } catch (error) {
       console.error('Failed to load subjects:', error);
-      return { ok: true, data: [...MOCK_SUBJECTS] };
+      throw error;
     }
   },
 
@@ -120,62 +125,62 @@ export const api = {
         room: 'TBD',
         teacherId: subjectData.teacherId || 'unassigned'
       };
-      const { data } = await apiClient.post('/api/subjects', payload);
-      return { ok: true, data, message: 'Subject created successfully' };
+      const { data } = await apiClient.post('/subjects', payload);
+      return { ok: true, data: data || data.data, message: 'Subject created successfully' };
     } catch (error) {
       console.error('Failed to create subject:', error);
-      return { ok: false, data: {} as Subject, message: 'Failed to create subject' };
+      throw error;
     }
   },
 
   updateSubject: async (subjectId: string, updates: Partial<Subject>): Promise<ApiResponse<Subject>> => {
     try {
-      const { data } = await apiClient.put(`/api/subjects/${subjectId}`, updates);
-      return { ok: true, data, message: 'Subject updated successfully' };
+      const { data } = await apiClient.put(`/subjects/${subjectId}`, updates);
+      return { ok: true, data: data || data.data, message: 'Subject updated successfully' };
     } catch (error) {
       console.error('Failed to update subject:', error);
-      return { ok: false, data: {} as Subject, message: 'Failed to update subject' };
+      throw error;
     }
   },
 
   deleteSubject: async (subjectId: string): Promise<ApiResponse<boolean>> => {
     try {
-      await apiClient.delete(`/api/subjects/${subjectId}`);
+      await apiClient.delete(`/subjects/${subjectId}`);
       return { ok: true, data: true, message: 'Subject deleted successfully' };
     } catch (error) {
       console.error('Failed to delete subject:', error);
-      return { ok: false, data: false, message: 'Failed to delete subject' };
+      throw error;
     }
   },
 
   getResults: async (studentId?: string): Promise<ApiResponse<ResultData[]>> => {
     try {
-      const url = studentId ? `/api/results?studentId=${studentId}` : '/api/results';
+      const url = studentId ? `/results?studentId=${studentId}` : '/results';
       const { data } = await apiClient.get(url);
-      return { ok: true, data };
+      return { ok: true, data: data || data.data || [] };
     } catch (error) {
       console.error('Failed to get results:', error);
-      return { ok: true, data: [...MOCK_RESULTS] };
+      throw error;
     }
   },
 
   publishResults: async (newResults: ResultData[]): Promise<ApiResponse<{ success: boolean }>> => {
     try {
-      const { data } = await apiClient.post('/api/results', { results: newResults });
+      const { data } = await apiClient.post('/results', { results: newResults });
       return { ok: true, data, message: 'Results published successfully' };
     } catch (error) {
       console.error('Failed to publish results:', error);
-      return { ok: false, data: { success: false }, message: 'Failed to publish results' };
+      throw error;
     }
   },
 
   getSchools: async (): Promise<ApiResponse<School[]>> => {
     try {
-      const { data } = await apiClient.get('/api/schools');
-      return { ok: true, data };
+      const { data } = await apiClient.get('/schools');
+      return { ok: true, data: data || data.data || [] };
     } catch (error) {
       console.error('Failed to load schools:', error);
-      return { ok: true, data: [...MOCK_SCHOOLS] };
+      throw error;
     }
   },
 
@@ -189,71 +194,71 @@ export const api = {
         status: 'Active' as const,
         studentCount: 0
       };
-      const { data } = await apiClient.post('/api/schools', payload);
-      return { ok: true, data, message: 'School created successfully' };
+      const { data } = await apiClient.post('/schools', payload);
+      return { ok: true, data: data || data.data, message: 'School created successfully' };
     } catch (error) {
       console.error('Failed to create school:', error);
-      return { ok: false, data: {} as School, message: 'Failed to create school' };
+      throw error;
     }
   },
 
   updateSchoolStatus: async (schoolId: string, status: 'Active' | 'Inactive'): Promise<ApiResponse<School>> => {
     try {
-      const { data } = await apiClient.put(`/api/schools/${schoolId}`, { status });
-      return { ok: true, data, message: 'School updated successfully' };
+      const { data } = await apiClient.put(`/schools/${schoolId}`, { status });
+      return { ok: true, data: data || data.data, message: 'School updated successfully' };
     } catch (error) {
       console.error('Failed to update school:', error);
-      return { ok: false, data: {} as School, message: 'Failed to update school' };
+      throw error;
     }
   },
 
   deleteSchool: async (schoolId: string): Promise<ApiResponse<boolean>> => {
     try {
-      await apiClient.delete(`/api/schools/${schoolId}`);
+      await apiClient.delete(`/schools/${schoolId}`);
       return { ok: true, data: true, message: 'School deleted successfully' };
     } catch (error) {
       console.error('Failed to delete school:', error);
-      return { ok: false, data: false, message: 'Failed to delete school' };
+      throw error;
     }
   },
 
   getAllUsers: async (): Promise<ApiResponse<User[]>> => {
     try {
-      const { data } = await apiClient.get('/api/teachers');
-      return { ok: true, data };
+      const { data } = await apiClient.get('/users');
+      return { ok: true, data: data || data.data || [] };
     } catch (error) {
       console.error('Failed to load users:', error);
-      return { ok: true, data: [] };
+      throw error;
     }
   },
 
   createTeacher: async (teacherData: Omit<User, 'id'>): Promise<ApiResponse<User>> => {
     try {
-      const { data } = await apiClient.post('/api/teachers', teacherData);
-      return { ok: true, data, message: 'Teacher created successfully' };
+      const { data } = await apiClient.post('/users', teacherData);
+      return { ok: true, data: data || data.data, message: 'Teacher created successfully' };
     } catch (error) {
       console.error('Failed to create teacher:', error);
-      return { ok: false, data: {} as User, message: 'Failed to create teacher' };
+      throw error;
     }
   },
 
   updateTeacher: async (teacherId: string, updates: Partial<User>): Promise<ApiResponse<User>> => {
     try {
-      const { data } = await apiClient.put(`/api/teachers/${teacherId}`, updates);
-      return { ok: true, data, message: 'Teacher updated successfully' };
+      const { data } = await apiClient.put(`/users/${teacherId}`, updates);
+      return { ok: true, data: data || data.data, message: 'Teacher updated successfully' };
     } catch (error) {
       console.error('Failed to update teacher:', error);
-      return { ok: false, data: {} as User, message: 'Failed to update teacher' };
+      throw error;
     }
   },
 
   deleteTeacher: async (teacherId: string): Promise<ApiResponse<boolean>> => {
     try {
-      await apiClient.delete(`/api/teachers/${teacherId}`);
+      await apiClient.delete(`/users/${teacherId}`);
       return { ok: true, data: true, message: 'Teacher deleted successfully' };
     } catch (error) {
       console.error('Failed to delete teacher:', error);
-      return { ok: false, data: false, message: 'Failed to delete teacher' };
+      throw error;
     }
   },
 
@@ -295,12 +300,11 @@ export const api = {
       if (subjectId) params.append('subjectId', subjectId);
       if (term) params.append('term', term);
       
-      const { data } = await apiClient.get(`/api/assessments?${params}`);
-      return { ok: true, data };
+      const { data } = await apiClient.get(`/assessments?${params}`);
+      return { ok: true, data: data || data.data || [] };
     } catch (error) {
       console.error('Failed to get assessments:', error);
-      await delay(600);
-      return { ok: true, data: MOCK_ASSESSMENTS };
+      throw error;
     }
   },
 

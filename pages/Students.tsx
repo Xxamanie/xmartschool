@@ -119,12 +119,12 @@ export const Students: React.FC = () => {
   const handleAddStudent = async (studentData: Omit<Student, 'id' | 'enrollmentDate'>) => {
       try {
           const response = await api.createStudent(studentData);
-          if (response.ok) {
-              setStudents(prev => [...prev, response.data]);
-              setShowAddModal(false);
-          }
+          setStudents(prev => [...prev, response.data]);
+          setShowAddModal(false);
+          alert('Student added successfully!');
       } catch (e) {
           console.error("Failed to add student", e);
+          alert(`Error adding student: ${(e as any)?.message || 'Unknown error'}`);
       }
   };
 
@@ -132,12 +132,12 @@ export const Students: React.FC = () => {
       if (!editingStudent) return;
       try {
           const response = await api.updateStudent(editingStudent.id, studentData);
-          if (response.ok) {
-              setStudents(prev => prev.map(s => s.id === editingStudent.id ? response.data : s));
-              setEditingStudent(null);
-          }
+          setStudents(prev => prev.map(s => s.id === editingStudent.id ? response.data : s));
+          setEditingStudent(null);
+          alert('Student updated successfully!');
       } catch (e) {
           console.error("Failed to update student", e);
+          alert(`Error updating student: ${(e as any)?.message || 'Unknown error'}`);
       }
   };
 
@@ -147,8 +147,10 @@ export const Students: React.FC = () => {
           await api.deleteStudent(deleteConfirm.id);
           setStudents(prev => prev.filter(s => s.id !== deleteConfirm.id));
           setDeleteConfirm(null);
+          alert('Student deleted successfully!');
       } catch (e) {
           console.error("Failed to delete student", e);
+          alert(`Error deleting student: ${(e as any)?.message || 'Unknown error'}`);
       }
   };
 
@@ -159,8 +161,10 @@ export const Students: React.FC = () => {
           setStudents(prev => prev.filter(s => !selectedStudents.has(s.id)));
           setSelectedStudents(new Set());
           setBulkDeleteMode(false);
+          alert('Students deleted successfully!');
       } catch (e) {
           console.error("Failed to delete students", e);
+          alert(`Error deleting students: ${(e as any)?.message || 'Unknown error'}`);
       }
   };
 
