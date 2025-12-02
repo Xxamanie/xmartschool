@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, PropsWithChildren } from 'react';
 import { User, UserRole } from '../types';
 import { api } from '../services/api';
-import { initializeCloudData, setupSyncListener } from '../services/cloud-api';
 
 interface AuthContextType {
   user: User | null;
@@ -23,49 +22,12 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
   const [originalUser, setOriginalUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Check localStorage on mount for persisted user session
   useEffect(() => {
-    // Initialize cloud data with sample data if empty (temporary solution)
-    initializeCloudData();
-    
-    // Set up real-time sync listener for cross-device updates (temporary solution)
-    setupSyncListener((type: string, data: any) => {
-      console.log(`Real-time sync: ${type} updated`, data);
-      // You can add specific handling for different data types here
-      // For example, refresh user data if users are updated
-      if (type === 'users' && user) {
-        // Refresh current user data if it was updated
-        const updatedUser = data.find((u: User) => u.id === user.id);
-        if (updatedUser) {
-          setUser(updatedUser);
-          localStorage.setItem('user', JSON.stringify(updatedUser));
-        }
-      }
-    });
-    
-    const savedUser = localStorage.getItem('user');
-    const savedOriginalUser = localStorage.getItem('originalUser');
-    
-    if (savedUser) {
-      try {
-        const userData = JSON.parse(savedUser);
-        setUser(userData);
-      } catch (error) {
-        console.error('Failed to parse saved user data:', error);
-        localStorage.removeItem('user');
-      }
+    const token = localStorage.getItem('auth_token');
+    if (token && !user) {
+      setUser({ id: 'session_user', name: 'User', email: '', role: UserRole.TEACHER });
     }
-    
-    if (savedOriginalUser) {
-      try {
-        const originalUserData = JSON.parse(savedOriginalUser);
-        setOriginalUser(originalUserData);
-      } catch (error) {
-        console.error('Failed to parse saved original user data:', error);
-        localStorage.removeItem('originalUser');
-      }
-    }
-  }, []);
+  }, [user]);
 
   const login = async (email: string, password?: string) => {
     setIsLoading(true);
@@ -73,8 +35,6 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
       const response = await api.login(email);
       if (response.ok) {
         setUser(response.data);
-        // Save to localStorage for persistence
-        localStorage.setItem('user', JSON.stringify(response.data));
       } else {
         throw new Error('Login failed');
       }
@@ -92,8 +52,6 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
         const response = await api.verifyStudent(schoolCode, studentCode);
         if (response.ok) {
             setUser(response.data);
-            // Save to localStorage for persistence
-            localStorage.setItem('user', JSON.stringify(response.data));
         } else {
             throw new Error(response.message || 'Verification failed');
         }
@@ -109,8 +67,6 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
      if (user) {
          const updatedUser = { ...user, ...userData };
          setUser(updatedUser);
-         // Update localStorage
-         localStorage.setItem('user', JSON.stringify(updatedUser));
      }
   };
 
@@ -122,10 +78,6 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
         if (!school) throw new Error("School not found");
 
         setOriginalUser(user);
-        // Save original user to localStorage
-        if (user) {
-            localStorage.setItem('originalUser', JSON.stringify(user));
-        }
 
         const impersonatedUser = {
             id: `imp_${school.id}`,
@@ -136,8 +88,6 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
             avatar: `https://ui-avatars.com/api/?name=${school.adminName}&background=random`
         };
         setUser(impersonatedUser);
-        // Save impersonated user to localStorage
-        localStorage.setItem('user', JSON.stringify(impersonatedUser));
     } catch (e) {
         console.error(e);
     } finally {
@@ -149,18 +99,13 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
     if (originalUser) {
         setUser(originalUser);
         setOriginalUser(null);
-        // Restore original user in localStorage and remove impersonation
-        localStorage.setItem('user', JSON.stringify(originalUser));
-        localStorage.removeItem('originalUser');
     }
   };
 
   const logout = () => {
     setUser(null);
     setOriginalUser(null);
-    // Clear all auth data from localStorage
-    localStorage.removeItem('user');
-    localStorage.removeItem('originalUser');
+    localStorage.removeItem('auth_token');
   };
 
   return (
