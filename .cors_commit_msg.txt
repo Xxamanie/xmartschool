@@ -1,0 +1,1 @@
+Fix: Global CORS for Render + Netlify communication

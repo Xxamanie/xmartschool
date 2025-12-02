@@ -1,1 +1,1 @@
-Fix: remove localStorage data usage; enable full cross-device cloud sync
+\"Fix: School Creation fully restored\"  

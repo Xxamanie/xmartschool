@@ -66,9 +66,9 @@ const mapUserModel = (user: PrismaUserModel): User => ({
 const mapSchoolModel = (school: PrismaSchoolModel): School => ({
   id: school.id,
   name: school.name,
-  code: school.code,
-  region: school.region,
-  adminName: school.adminName,
+  code: school.code ?? '',
+  region: school.region ?? '',
+  adminName: school.adminName ?? '',
   status: school.status as School['status'],
   studentCount: school.studentCount,
 });
