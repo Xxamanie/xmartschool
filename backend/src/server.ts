@@ -6,6 +6,8 @@ import { registerRoutes } from './routes';
 const app = express();
 
 const allowedOrigins = [
+  'https://xmartschool.firebaseapp.com',
+  'https://xmartschool.web.app',
   'https://xmartschool.netlify.app',
   'http://localhost:5173',
   'http://localhost:3000',
