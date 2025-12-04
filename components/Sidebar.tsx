@@ -20,6 +20,7 @@ import {
   CalendarCheck
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useClickSound } from '../src/utils/useClickSound';
 import { UserRole } from '../types';
 
 interface SidebarProps {
@@ -29,6 +30,7 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const { logout, user, isImpersonating } = useAuth();
+  const { playSound } = useClickSound();
   const isCreator = user?.role === UserRole.SUPER_ADMIN;
 
   // Theme Configuration based on Role
@@ -106,7 +108,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           </div>
         </div>
         <button 
-          onClick={onClose}
+          onClick={() => { playSound(); onClose?.(); }}
           className="md:hidden text-gray-400 hover:text-white p-1 rounded-md hover:bg-white/10"
         >
           <X size={20} />
@@ -119,7 +121,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
             <li key={item.to}>
               <NavLink
                 to={item.to}
-                onClick={onClose}
+                onClick={() => { playSound(); onClose?.(); }}
                 className={({ isActive }) =>
                   isActive ? activeClass : inactiveClass
                 }
@@ -138,7 +140,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
             </div>
             <ul className="space-y-1">
               <li>
-                <NavLink to="/settings" onClick={onClose} className={inactiveClass}>
+                <NavLink to="/settings" onClick={() => { playSound(); onClose?.(); }} className={inactiveClass}>
                   <Settings size={20} />
                   Settings
                 </NavLink>
@@ -150,7 +152,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
       <div className={`p-4 border-t ${theme.headerBorder}`}>
         <button
-          onClick={logout}
+          onClick={() => { playSound(); logout(); }}
           className={`flex items-center gap-3 w-full px-4 py-2 text-sm font-medium rounded-md transition-colors ${theme.logoutBtn}`}
         >
           <LogOut size={20} />

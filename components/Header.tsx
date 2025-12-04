@@ -1,6 +1,7 @@
 import React from 'react';
 import { Bell, Search, Menu, LogOut } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useClickSound } from '../src/utils/useClickSound';
 import { UserRole } from '../types';
 
 interface HeaderProps {
@@ -9,6 +10,7 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
   const { user, isImpersonating, logout } = useAuth();
+  const { playSound } = useClickSound();
   const isStudent = user?.role === UserRole.STUDENT;
 
   return (
@@ -16,7 +18,7 @@ export const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
       <div className="flex items-center gap-4">
         {!isStudent && (
           <button 
-            onClick={toggleSidebar}
+            onClick={() => { playSound(); toggleSidebar?.(); }}
             className="p-2 rounded-md text-gray-500 hover:bg-gray-100 md:hidden"
           >
             <Menu size={20} />
@@ -33,7 +35,7 @@ export const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
       </div>
 
       <div className="flex items-center gap-6">
-        <button className="relative text-gray-500 hover:text-gray-700 transition-colors">
+        <button onClick={playSound} className="relative text-gray-500 hover:text-gray-700 transition-colors">
           <Bell size={20} />
           <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
         </button>
@@ -50,7 +52,7 @@ export const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
           />
           {isStudent && (
             <button 
-              onClick={logout}
+              onClick={() => { playSound(); logout(); }}
               className="ml-2 p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
               title="Log Out"
             >

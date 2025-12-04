@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Student } from '../types';
 import { X, Save } from 'lucide-react';
+import { useClickSound } from '../src/utils/useClickSound';
 
 interface StudentFormProps {
   student?: Student | null;
@@ -9,6 +10,7 @@ interface StudentFormProps {
 }
 
 export const StudentForm: React.FC<StudentFormProps> = ({ student, onSubmit, onCancel }) => {
+  const { playSound } = useClickSound();
   const [formData, setFormData] = useState({
     name: '',
     gender: 'Male' as 'Male' | 'Female',
@@ -143,7 +145,7 @@ export const StudentForm: React.FC<StudentFormProps> = ({ student, onSubmit, onC
       <div className="p-4 border-t border-gray-200 bg-gray-50 rounded-b-xl flex justify-end gap-2">
         <button
           type="button"
-          onClick={onCancel}
+          onClick={() => { playSound(); onCancel(); }}
           disabled={loading}
           className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors shadow-sm disabled:opacity-50"
         >
@@ -152,6 +154,7 @@ export const StudentForm: React.FC<StudentFormProps> = ({ student, onSubmit, onC
         <button
           type="submit"
           disabled={loading}
+          onClick={playSound}
           className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors shadow-sm disabled:opacity-50 flex items-center gap-2"
         >
           <Save size={16} />

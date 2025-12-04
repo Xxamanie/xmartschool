@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GraduationCap, Loader2, Lock, Mail, KeyRound, Building2, UserCircle2, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useClickSound } from '../src/utils/useClickSound';
 import { UserRole } from '../types';
 
 const CAPABILITIES = [
@@ -15,6 +16,7 @@ const CAPABILITIES = [
 
 export const Login: React.FC = () => {
   const { login, loginStudent, isAuthenticated, isLoading } = useAuth();
+  const { playSound } = useClickSound();
   const navigate = useNavigate();
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<'staff' | 'student'>('staff');
@@ -51,6 +53,7 @@ export const Login: React.FC = () => {
   const handleStaffLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    playSound();
     try {
       await login(email, password);
       navigate('/');
@@ -62,6 +65,7 @@ export const Login: React.FC = () => {
   const handleStudentLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    playSound();
     try {
       await loginStudent(schoolCode, studentCode);
       navigate('/student-portal');
@@ -146,7 +150,7 @@ export const Login: React.FC = () => {
              {/* Tabs */}
             <div className="flex p-1 bg-gray-100 rounded-xl mb-8">
                 <button
-                    onClick={() => { setActiveTab('staff'); setError(''); }}
+                    onClick={() => { playSound(); setActiveTab('staff'); setError(''); }}
                     className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all shadow-sm ${
                     activeTab === 'staff' ? 'bg-white text-gray-900 shadow' : 'text-gray-500 hover:text-gray-700 shadow-none'
                     }`}
@@ -154,7 +158,7 @@ export const Login: React.FC = () => {
                     Staff / Admin
                 </button>
                 <button
-                    onClick={() => { setActiveTab('student'); setError(''); }}
+                    onClick={() => { playSound(); setActiveTab('student'); setError(''); }}
                     className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all shadow-sm ${
                     activeTab === 'student' ? 'bg-white text-gray-900 shadow' : 'text-gray-500 hover:text-gray-700 shadow-none'
                     }`}
@@ -232,9 +236,9 @@ export const Login: React.FC = () => {
                 <div className="mt-6 text-center">
                     <p className="text-xs text-gray-400 mb-3 uppercase tracking-wider font-semibold">Demo Accounts</p>
                     <div className="flex gap-2 justify-center flex-wrap">
-                        <button type="button" onClick={() => setEmail('creator@smartschool.edu')} className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-lg border border-gray-200 transition-colors">Creator</button>
-                        <button type="button" onClick={() => setEmail('admin@smartschool.edu')} className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-lg border border-gray-200 transition-colors">Admin</button>
-                        <button type="button" onClick={() => setEmail('alex.j@smartschool.edu')} className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-lg border border-gray-200 transition-colors">Teacher</button>
+                        <button type="button" onClick={() => { playSound(); setEmail('creator@smartschool.edu'); }} className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-lg border border-gray-200 transition-colors">Creator</button>
+                        <button type="button" onClick={() => { playSound(); setEmail('admin@smartschool.edu'); }} className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-lg border border-gray-200 transition-colors">Admin</button>
+                        <button type="button" onClick={() => { playSound(); setEmail('alex.j@smartschool.edu'); }} className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-lg border border-gray-200 transition-colors">Teacher</button>
                     </div>
                 </div>
                 </form>
