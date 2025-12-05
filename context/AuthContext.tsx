@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, PropsWithChildren } from 'react';
 import { User, UserRole } from '../types';
 import { api } from '../services/api';
+import { firebaseAuthService } from '../src/services/firebaseAuthService';
 
 interface AuthContextType {
   user: User | null;
@@ -23,20 +24,49 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem('auth_token');
-    if (token && !user) {
-      setUser({ id: 'session_user', name: 'User', email: '', role: UserRole.TEACHER });
-    }
-  }, [user]);
+    const unsubscribe = firebaseAuthService.onAuthStateChanged((firebaseUser) => {
+      if (firebaseUser) {
+        setUser({
+          id: firebaseUser.uid,
+          email: firebaseUser.email || '',
+          name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+          role: UserRole.TEACHER,
+          schoolId: 'default'
+        });
+      } else {
+        const token = localStorage.getItem('auth_token');
+        if (token) {
+          setUser({ id: 'session_user', name: 'User', email: '', role: UserRole.TEACHER });
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const login = async (email: string, password?: string) => {
     setIsLoading(true);
     try {
-      const response = await api.login(email);
-      if (response.ok) {
-        setUser(response.data);
+      if (password) {
+        try {
+          const firebaseUser = await firebaseAuthService.login(email, password);
+          setUser(firebaseUser);
+        } catch (firebaseError) {
+          console.warn('Firebase auth failed, trying backend API:', firebaseError);
+          const response = await api.login(email);
+          if (response.ok) {
+            setUser(response.data);
+          } else {
+            throw new Error('Login failed');
+          }
+        }
       } else {
-        throw new Error('Login failed');
+        const response = await api.login(email);
+        if (response.ok) {
+          setUser(response.data);
+        } else {
+          throw new Error('Login failed');
+        }
       }
     } catch (error) {
       console.error(error);
@@ -102,10 +132,18 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
     }
   };
 
-  const logout = () => {
-    setUser(null);
-    setOriginalUser(null);
-    localStorage.removeItem('auth_token');
+  const logout = async () => {
+    try {
+      await firebaseAuthService.logout();
+      setUser(null);
+      setOriginalUser(null);
+      localStorage.removeItem('auth_token');
+    } catch (error) {
+      console.error('Logout error:', error);
+      setUser(null);
+      setOriginalUser(null);
+      localStorage.removeItem('auth_token');
+    }
   };
 
   return (
