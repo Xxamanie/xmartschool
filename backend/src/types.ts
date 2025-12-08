@@ -25,6 +25,10 @@ export interface School {
   adminName: string;
   status: 'Active' | 'Inactive';
   studentCount: number;
+  motto: string;
+  logoUrl: string;
+  address: string;
+  contact: string;
 }
 
 export interface Student {
@@ -38,6 +42,7 @@ export interface Student {
   attendance: number;
   schoolId: string;
   accessCode: string;
+  enrolledSubjects?: string[];
 }
 
 export interface Subject {
@@ -121,6 +126,24 @@ export interface AttendanceRecord {
   studentId: string;
   status: 'Present' | 'Absent' | 'Late' | 'Excused';
   date: string;
+}
+
+export interface Announcement {
+  id: string;
+  title: string;
+  message: string;
+  targetAudience: 'all' | 'teachers' | 'students';
+  source: string;
+  createdAt: string;
+}
+
+export interface LiveClass {
+  id: string;
+  subjectId?: string;
+  teacherId?: string;
+  scheduledTime: string;
+  meetingLink: string;
+  status: string;
 }
 
 export interface ApiResponse<T> {

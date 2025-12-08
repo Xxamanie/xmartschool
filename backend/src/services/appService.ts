@@ -348,7 +348,7 @@ export const appService = {
     await wait(100);
     const [users, students] = await Promise.all([prisma.user.findMany(), prisma.student.findMany()]);
 
-    const studentAsUsers: User[] = students.map((student) => ({
+    const studentAsUsers: User[] = students.map((student: PrismaStudentModel) => ({
       id: student.id,
       name: student.name,
       role: UserRole.STUDENT,
@@ -437,7 +437,7 @@ export const appService = {
   ): Promise<ApiResponse<Assessment[]>> => {
     await wait(100);
 
-    let enrolledSubjects: string[] | undefined;
+    let enrolledSubjects: string[] = [];
 
     if (studentId) {
       const student = await prisma.student.findUnique({ where: { id: studentId } });
