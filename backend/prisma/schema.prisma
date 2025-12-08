@@ -81,6 +81,7 @@ model User {
   subjects    Subject[]     @relation("SubjectTeacher")
   exams       Exam[]        @relation("ExamTeacher")
   classMasters ClassMaster[]
+  liveClasses LiveClass[]   @relation("LiveClassTeacher")
 }
 
 model Student {
@@ -115,6 +116,7 @@ model Subject {
   results     Result[]
   exams       Exam[]
   schemes     SchemeSubmission[]
+  liveClasses LiveClass[]
 }
 
 model Assessment {
@@ -178,7 +180,7 @@ model LiveClass {
   updatedAt     DateTime                  @updatedAt
 
   subject       Subject?                  @relation(fields: [subjectId], references: [id])
-  teacher       User?                     @relation(fields: [teacherId], references: [id])
+  teacher       User?                     @relation("LiveClassTeacher", fields: [teacherId], references: [id])
   participants  LiveClassParticipant[]
   messages      LiveClassMessage[]
 }
