@@ -82,6 +82,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
         { to: '/scheme-of-work', icon: FileText, label: 'Scheme of Work' },
         { to: '/assessments', icon: ClipboardCheck, label: 'Assessments' },
         { to: '/results', icon: TrendingUp, label: 'Results' },
+        { to: '/live-classes', icon: CalendarCheck, label: 'Live Classes' },
       ];
     }
   };

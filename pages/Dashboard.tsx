@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   BarChart,
   Bar,
@@ -12,6 +12,9 @@ import {
 } from 'recharts';
 import { ArrowDown, ArrowUp, Calendar, Users, BookOpen } from 'lucide-react';
 import { DASHBOARD_STATS } from '../services/mockData';
+import { api } from '../services/api';
+import { Announcement, UserRole } from '../types';
+import { useAuth } from '../context/AuthContext';
 
 const data = [
   { name: 'Mon', attendance: 92 },
@@ -30,13 +33,58 @@ const performanceData = [
 ];
 
 export const Dashboard: React.FC = () => {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [createState, setCreateState] = useState({ title: '', message: '', audience: 'all' as Announcement['targetAudience'], saving: false });
 
   useEffect(() => {
     // Simulate data loading for the dashboard
     const timer = setTimeout(() => setLoading(false), 800);
     return () => clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    const loadAnnouncements = async () => {
+      try {
+        const res = await api.getAnnouncements(user?.role);
+        if (res.ok) setAnnouncements(res.data);
+      } catch (e) {
+        console.error('Failed to load announcements', e);
+      }
+    };
+    loadAnnouncements();
+  }, [user?.role]);
+
+  const visibleAnnouncements = useMemo(() => {
+    if (!user?.role) return announcements;
+    if (user.role === UserRole.STUDENT) return announcements.filter(a => ['all', 'students'].includes(a.targetAudience));
+    if (user.role === UserRole.TEACHER) return announcements.filter(a => ['all', 'teachers'].includes(a.targetAudience));
+    return announcements;
+  }, [announcements, user?.role]);
+
+  const canCreateAnnouncements = user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN;
+
+  const handleCreateAnnouncement = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!createState.title.trim() || !createState.message.trim()) return;
+    setCreateState((s) => ({ ...s, saving: true }));
+    try {
+      const res = await api.createAnnouncement({
+        title: createState.title,
+        message: createState.message,
+        targetAudience: createState.audience,
+        source: user?.role || 'admin',
+      });
+      if (res.ok) {
+        setAnnouncements((prev) => [res.data, ...prev]);
+        setCreateState({ title: '', message: '', audience: 'all', saving: false });
+      }
+    } catch (e) {
+      console.error('Failed to create announcement', e);
+      setCreateState((s) => ({ ...s, saving: false }));
+    }
+  };
 
   if (loading) {
     return (
@@ -68,6 +116,84 @@ export const Dashboard: React.FC = () => {
             Term 2, Week 5
           </span>
         </div>
+      </div>
+
+      {/* Announcements */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-bold text-gray-900">Announcements</h3>
+            <span className="text-xs text-gray-500">Showing {visibleAnnouncements.length}</span>
+          </div>
+          {visibleAnnouncements.length === 0 ? (
+            <p className="text-sm text-gray-500">No announcements yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {visibleAnnouncements.map((a) => (
+                <div key={a.id} className="p-4 border border-gray-200 rounded-lg flex flex-col gap-1 bg-gray-50">
+                  <div className="flex items-center justify-between gap-3">
+                    <h4 className="text-sm font-semibold text-gray-900">{a.title}</h4>
+                    <span className="text-[11px] uppercase font-bold tracking-wide px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">
+                      {a.targetAudience}
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-700 leading-relaxed">{a.message}</p>
+                  <div className="text-xs text-gray-500 flex gap-2 items-center">
+                    <span>Source: {a.source}</span>
+                    <span>•</span>
+                    <span>{new Date(a.createdAt).toLocaleString()}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {canCreateAnnouncements && (
+          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+            <h4 className="text-md font-bold text-gray-900 mb-4">Create Announcement</h4>
+            <form className="space-y-3" onSubmit={handleCreateAnnouncement}>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                <input
+                  value={createState.title}
+                  onChange={(e) => setCreateState((s) => ({ ...s, title: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-primary-500 focus:border-primary-500"
+                  placeholder="Exam timetable release"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Message</label>
+                <textarea
+                  value={createState.message}
+                  onChange={(e) => setCreateState((s) => ({ ...s, message: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-primary-500 focus:border-primary-500"
+                  rows={3}
+                  placeholder="Details about the announcement"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Target Audience</label>
+                <select
+                  value={createState.audience}
+                  onChange={(e) => setCreateState((s) => ({ ...s, audience: e.target.value as Announcement['targetAudience'] }))}
+                  className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-primary-500 focus:border-primary-500"
+                >
+                  <option value="all">All</option>
+                  <option value="teachers">Teachers</option>
+                  <option value="students">Students</option>
+                </select>
+              </div>
+              <button
+                type="submit"
+                disabled={createState.saving}
+                className="w-full bg-primary-600 text-white rounded-lg py-2 text-sm font-semibold hover:bg-primary-700 transition-colors disabled:opacity-70"
+              >
+                {createState.saving ? 'Saving...' : 'Publish Announcement'}
+              </button>
+            </form>
+          </div>
+        )}
       </div>
 
       {/* Stats Cards */}

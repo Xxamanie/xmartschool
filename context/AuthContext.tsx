@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, PropsWithChildren } from 'react';
 import { User, UserRole } from '../types';
 import { api } from '../services/api';
-import { firebaseAuthService } from '../src/services/firebaseAuthService';
+import { supabaseAuthService } from '../src/services/supabaseAuthService';
 
 interface AuthContextType {
   user: User | null;
@@ -24,23 +24,9 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = firebaseAuthService.onAuthStateChanged((firebaseUser) => {
-      if (firebaseUser) {
-        setUser({
-          id: firebaseUser.uid,
-          email: firebaseUser.email || '',
-          name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
-          role: UserRole.TEACHER,
-          schoolId: 'default'
-        });
-      } else {
-        const token = localStorage.getItem('auth_token');
-        if (token) {
-          setUser({ id: 'session_user', name: 'User', email: '', role: UserRole.TEACHER });
-        }
-      }
+    const unsubscribe = supabaseAuthService.onAuthStateChanged((supabaseUser) => {
+      setUser(supabaseUser);
     });
-
     return () => unsubscribe();
   }, []);
 
@@ -48,18 +34,8 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
     setIsLoading(true);
     try {
       if (password) {
-        try {
-          const firebaseUser = await firebaseAuthService.login(email, password);
-          setUser(firebaseUser);
-        } catch (firebaseError) {
-          console.warn('Firebase auth failed, trying backend API:', firebaseError);
-          const response = await api.login(email);
-          if (response.ok) {
-            setUser(response.data);
-          } else {
-            throw new Error('Login failed');
-          }
-        }
+        const supabaseUser = await supabaseAuthService.login(email, password);
+        setUser(supabaseUser);
       } else {
         const response = await api.login(email);
         if (response.ok) {
@@ -134,15 +110,13 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
 
   const logout = async () => {
     try {
-      await firebaseAuthService.logout();
+      await supabaseAuthService.logout();
       setUser(null);
       setOriginalUser(null);
-      localStorage.removeItem('auth_token');
     } catch (error) {
       console.error('Logout error:', error);
       setUser(null);
       setOriginalUser(null);
-      localStorage.removeItem('auth_token');
     }
   };
 

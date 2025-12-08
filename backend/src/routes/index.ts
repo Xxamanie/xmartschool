@@ -10,6 +10,9 @@ import { attendanceRouter } from './modules/attendance';
 import { resultsRouter } from './modules/results';
 import { usersRouter } from './modules/users';
 import { schemesRouter } from './modules/schemes';
+import { announcementsRouter } from './modules/announcements';
+import { proctoringRouter } from './modules/proctoring';
+import { liveClassesRouter } from './modules/liveClasses';
 
 export const registerRoutes = (app: Express) => {
   app.use('/api/health', healthRouter);
@@ -23,4 +26,7 @@ export const registerRoutes = (app: Express) => {
   app.use('/api/exams', examsRouter);
   app.use('/api/attendance', attendanceRouter);
   app.use('/api/schemes', schemesRouter);
+  app.use('/api/announcements', announcementsRouter);
+  app.use('/api/proctoring', proctoringRouter);
+  app.use('/api/live-classes', liveClassesRouter);
 };

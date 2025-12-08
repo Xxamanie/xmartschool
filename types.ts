@@ -27,6 +27,10 @@ export interface School {
   adminName: string;
   status: 'Active' | 'Inactive';
   studentCount: number;
+  motto?: string;
+  logoUrl?: string;
+  address?: string;
+  contact?: string;
 }
 
 export interface Student {
@@ -40,6 +44,7 @@ export interface Student {
   attendance: number; // percentage
   schoolId: string;
   accessCode: string; // Unique Student Access Code
+  enrolledSubjects?: string[];
 }
 
 export interface Subject {
@@ -91,6 +96,7 @@ export interface ResultData {
   grade: string;
   status: 'Published' | 'Draft' | 'withheld';
   remarks?: string;
+  term?: string;
   details?: {
     ca1?: number;
     ca2?: number;
@@ -98,6 +104,52 @@ export interface ResultData {
     exam?: number;
     [key: string]: number | undefined;
   };
+}
+
+export interface Announcement {
+  id: string;
+  title: string;
+  message: string;
+  targetAudience: 'all' | 'teachers' | 'students';
+  source: string;
+  createdAt: string;
+}
+
+export interface LiveClass {
+  id: string;
+  subjectId?: string;
+  teacherId?: string;
+  scheduledTime: string;
+  meetingLink: string;
+  status: string;
+  recording?: LiveClassRecording;
+}
+
+export interface LiveClassParticipant {
+  id: string;
+  liveClassId: string;
+  userId: string;
+  joinedAt: string;
+  leftAt?: string;
+  cameraOn: boolean;
+  microphoneOn: boolean;
+  handRaised: boolean;
+}
+
+export interface LiveClassMessage {
+  id: string;
+  liveClassId: string;
+  userId: string;
+  message: string;
+  createdAt: string;
+}
+
+export interface LiveClassRecording {
+  id: string;
+  liveClassId: string;
+  recordingUrl: string;
+  duration: number;
+  createdAt: string;
 }
 
 export interface ExamQuestion {

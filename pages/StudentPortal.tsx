@@ -23,6 +23,9 @@ export const StudentPortal: React.FC = () => {
   // Refs for Intervals and State Access in Closures
   const progressSyncRef = useRef<any>(null);
   const answersRef = useRef(answers);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const frameIntervalRef = useRef<any>(null);
 
   // Keep answers ref synced for the interval
   useEffect(() => {
@@ -153,6 +156,31 @@ export const StudentPortal: React.FC = () => {
       setScore(null);
       setExamSubmitted(false);
       setIsTakingExam(true);
+
+      // Start camera proctoring
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch(() => {});
+        }
+
+        frameIntervalRef.current = setInterval(async () => {
+          if (!videoRef.current || !streamRef.current) return;
+          const video = videoRef.current;
+          const canvas = document.createElement('canvas');
+          canvas.width = video.videoWidth || 320;
+          canvas.height = video.videoHeight || 240;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return;
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+          await api.uploadProctorFrame(exam.id, user.id, dataUrl);
+        }, 8000);
+      } catch (err) {
+        console.error('Camera access denied', err);
+      }
   };
 
   const handleAnswerChange = (questionId: string, value: string) => {
@@ -191,6 +219,14 @@ export const StudentPortal: React.FC = () => {
       setExamSubmitted(false);
       setActiveExam(null);
       // Refresh to show updated results
+      if (frameIntervalRef.current) {
+        clearInterval(frameIntervalRef.current);
+        frameIntervalRef.current = null;
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+      }
       window.location.reload();
   };
 
@@ -231,6 +267,16 @@ export const StudentPortal: React.FC = () => {
                 </div>
             ) : (
                 <div className="space-y-6">
+                    <div className="bg-gray-900 text-white rounded-lg p-4 flex items-center gap-4">
+                        <div className="w-32 h-24 bg-black rounded-md overflow-hidden border border-gray-700">
+                            <video ref={videoRef} className="w-full h-full object-cover" muted />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold">Camera Proctoring Active</p>
+                          <p className="text-xs text-gray-300">Live preview and periodic snapshots every 8s.</p>
+                        </div>
+                    </div>
+
                     {activeExam.questions.map((q, idx) => (
                         <div key={q.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                             <div className="flex gap-4">

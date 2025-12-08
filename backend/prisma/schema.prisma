@@ -44,6 +44,12 @@ enum SchemeStatus {
   Rejected
 }
 
+enum TargetAudience {
+  all
+  teachers
+  students
+}
+
 model School {
   id           String        @id @default(cuid())
   name         String
@@ -52,6 +58,10 @@ model School {
   adminName    String?
   status       SchoolStatus  @default(Active)
   studentCount Int           @default(0)
+  motto        String        @default("")
+  logoUrl      String        @default("")
+  address      String        @default("")
+  contact      String        @default("")
   users        User[]
   students     Student[]
   subjects     Subject[]
@@ -83,6 +93,7 @@ model Student {
   gpa            Float            @default(0)
   attendance     Int              @default(0)
   accessCode     String           @unique
+  enrolledSubjects String[]        @default([])
   schoolId       String
   school         School           @relation(fields: [schoolId], references: [id])
   assessments    Assessment[]
@@ -144,6 +155,64 @@ model SchemeSubmission {
   uploadDate  DateTime     @default(now())
   status      SchemeStatus @default(Pending)
   fileName    String
+}
+
+model Announcement {
+  id             String          @id @default(cuid())
+  title          String
+  message        String
+  targetAudience TargetAudience
+  source         String
+  createdAt      DateTime        @default(now())
+}
+
+model LiveClass {
+  id            String                    @id @default(cuid())
+  subjectId     String?
+  teacherId     String?
+  scheduledTime DateTime
+  meetingLink   String
+  status        String                    @default("scheduled")
+  recording     LiveClassRecording?
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @updatedAt
+
+  subject       Subject?                  @relation(fields: [subjectId], references: [id])
+  teacher       User?                     @relation(fields: [teacherId], references: [id])
+  participants  LiveClassParticipant[]
+  messages      LiveClassMessage[]
+}
+
+model LiveClassParticipant {
+  id            String       @id @default(cuid())
+  liveClassId   String
+  liveClass     LiveClass    @relation(fields: [liveClassId], references: [id], onDelete: Cascade)
+  userId        String
+  joinedAt      DateTime     @default(now())
+  leftAt        DateTime?
+  cameraOn      Boolean      @default(false)
+  microphoneOn  Boolean      @default(false)
+  handRaised    Boolean      @default(false)
+
+  @@unique([liveClassId, userId])
+}
+
+model LiveClassMessage {
+  id            String       @id @default(cuid())
+  liveClassId   String
+  liveClass     LiveClass    @relation(fields: [liveClassId], references: [id], onDelete: Cascade)
+  userId        String
+  message       String
+  createdAt     DateTime     @default(now())
+}
+
+model LiveClassRecording {
+  id            String       @id @default(cuid())
+  liveClassId   String       @unique
+  liveClass     LiveClass    @relation(fields: [liveClassId], references: [id], onDelete: Cascade)
+  recordingUrl  String
+  duration      Int          @default(0)
+  createdAt     DateTime     @default(now())
 }
 
 model Exam {

@@ -8,13 +8,14 @@ const router = Router();
 const listQuery = z.object({
   subjectId: z.string().optional(),
   term: z.string().optional(),
+  studentId: z.string().optional(),
 });
 
 router.get(
   '/',
   asyncHandler(async (req, res) => {
-    const { subjectId, term } = listQuery.parse(req.query);
-    const response = await appService.getAssessments(subjectId, term);
+    const { subjectId, term, studentId } = listQuery.parse(req.query);
+    const response = await appService.getAssessments(subjectId, term, studentId);
     res.json(response);
   }),
 );

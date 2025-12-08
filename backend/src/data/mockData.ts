@@ -9,6 +9,10 @@ export const MOCK_SCHOOLS: School[] = [
     adminName: 'Principal Skinner',
     status: 'Active',
     studentCount: 450,
+    motto: 'Excellence and Integrity',
+    logoUrl: '',
+    address: '742 Evergreen Terrace, Springfield',
+    contact: '+1 (555) 123-4567',
   },
   {
     id: 'sch_002',
@@ -18,6 +22,10 @@ export const MOCK_SCHOOLS: School[] = [
     adminName: 'Sarah Connor',
     status: 'Active',
     studentCount: 320,
+    motto: 'Future Ready Learners',
+    logoUrl: '',
+    address: '100 Main Street, Westside',
+    contact: '+1 (555) 222-8899',
   },
   {
     id: 'sch_003',
@@ -27,6 +35,10 @@ export const MOCK_SCHOOLS: School[] = [
     adminName: 'James Bond',
     status: 'Inactive',
     studentCount: 0,
+    motto: 'Global Minds, Local Hearts',
+    logoUrl: '',
+    address: '50 Embassy Row, Downtown',
+    contact: '+1 (555) 777-0007',
   },
 ];
 

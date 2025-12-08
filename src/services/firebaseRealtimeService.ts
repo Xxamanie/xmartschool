@@ -1,70 +1,28 @@
-import {
-  ref,
-  set,
-  get,
-  update,
-  remove,
-  onValue,
-  off,
-  child
-} from 'firebase/database';
-import { rtdb } from '../../firebase-config';
+import { supabase } from './supabaseClient';
 
+// Basic realtime helpers using Supabase channels to replace Firebase RTDB.
 export const firebaseRealtimeService = {
-  write: async (path: string, data: any): Promise<void> => {
-    try {
-      await set(ref(rtdb, path), data);
-    } catch (error: any) {
-      throw new Error(error.message || 'Write failed');
-    }
+  write: async (table: string, data: any): Promise<void> => {
+    const { error } = await supabase.from(table).upsert(data);
+    if (error) throw error;
   },
-
-  read: async (path: string): Promise<any> => {
-    try {
-      const snapshot = await get(ref(rtdb, path));
-      return snapshot.val();
-    } catch (error: any) {
-      throw new Error(error.message || 'Read failed');
+  read: async (table: string, filters?: Record<string, any>) => {
+    let query = supabase.from(table).select('*');
+    if (filters) {
+      Object.entries(filters).forEach(([key, value]) => {
+        query = query.eq(key, value as any);
+      });
     }
+    const { data, error } = await query;
+    if (error) throw error;
+    return data;
   },
-
-  update: async (path: string, data: any): Promise<void> => {
-    try {
-      await update(ref(rtdb, path), data);
-    } catch (error: any) {
-      throw new Error(error.message || 'Update failed');
-    }
+  subscribe: (table: string, callback: (payload: any) => void) => {
+    const channel = supabase.channel(`${table}-changes`)
+      .on('postgres_changes', { event: '*', schema: 'public', table }, (payload) => callback(payload))
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
   },
-
-  delete: async (path: string): Promise<void> => {
-    try {
-      await remove(ref(rtdb, path));
-    } catch (error: any) {
-      throw new Error(error.message || 'Delete failed');
-    }
-  },
-
-  subscribe: (path: string, callback: (data: any) => void): (() => void) => {
-    const reference = ref(rtdb, path);
-    const listener = onValue(reference, (snapshot) => {
-      callback(snapshot.val());
-    });
-    
-    return () => off(reference);
-  },
-
-  syncData: async (path: string, localData: any): Promise<any> => {
-    try {
-      const remoteData = await firebaseRealtimeService.read(path);
-      if (!remoteData) {
-        await firebaseRealtimeService.write(path, localData);
-        return localData;
-      }
-      const mergedData = { ...remoteData, ...localData };
-      await firebaseRealtimeService.update(path, mergedData);
-      return mergedData;
-    } catch (error: any) {
-      throw new Error(error.message || 'Sync failed');
-    }
-  }
 };

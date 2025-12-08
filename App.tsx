@@ -18,6 +18,9 @@ import { StudentPortal } from './pages/StudentPortal';
 import { Settings } from './pages/Settings';
 import { SchoolDetail } from './pages/SchoolDetail';
 import { UserRole } from './types';
+import { useClickSound } from './src/utils/useClickSound';
+import { LiveClasses } from './pages/LiveClasses';
+import { LiveClassRoom } from './pages/LiveClassRoom';
 
 const ProtectedRoute = ({ children, allowedRoles }: React.PropsWithChildren<{ allowedRoles?: UserRole[] }>) => {
   const { user, isAuthenticated } = useAuth();
@@ -36,9 +39,24 @@ const ProtectedRoute = ({ children, allowedRoles }: React.PropsWithChildren<{ al
   return <>{children}</>;
 };
 
+const GlobalClickSound = () => {
+  const { playSound } = useClickSound();
+
+  React.useEffect(() => {
+    const handler = () => playSound();
+    document.body.addEventListener('click', handler, { capture: true });
+    return () => {
+      document.body.removeEventListener('click', handler, true);
+    };
+  }, [playSound]);
+
+  return null;
+};
+
 const App: React.FC = () => {
   return (
     <AuthProvider>
+      <GlobalClickSound />
       <Router>
         <Routes>
           <Route path="/login" element={<Login />} />
@@ -78,6 +96,8 @@ const App: React.FC = () => {
             <Route path="scheme-of-work" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><SchemeOfWork /></ProtectedRoute>} />
             <Route path="assessments" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Assessments /></ProtectedRoute>} />
             <Route path="results" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Results /></ProtectedRoute>} />
+            <Route path="live-classes" element={<ProtectedRoute><LiveClasses /></ProtectedRoute>} />
+            <Route path="live-classes/:classId" element={<ProtectedRoute><LiveClassRoom /></ProtectedRoute>} />
             
             <Route path="settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
           </Route>

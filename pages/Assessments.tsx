@@ -307,7 +307,12 @@ export const Assessments: React.FC = () => {
         const res = await api.getAssessments(selectedSubject, selectedTerm);
         if (res.ok) {
           // Merge with students to ensure every student has a row
-          const mergedData: Assessment[] = students.map(student => {
+          const eligibleStudents = students.filter(s => {
+            if (!s.enrolledSubjects || s.enrolledSubjects.length === 0) return true;
+            return s.enrolledSubjects.includes(selectedSubject);
+          });
+
+          const mergedData: Assessment[] = eligibleStudents.map(student => {
             const existing = res.data.find(a => a.studentId === student.id);
             if (existing) return existing;
             

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { supabase } from '../services/supabaseClient';
 
 let API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://xmartschool.onrender.com/api';
 if (!API_BASE_URL.startsWith('http://') && !API_BASE_URL.startsWith('https://')) {
@@ -14,8 +15,9 @@ export const apiClient = axios.create({
   },
 });
 
-apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem('auth_token');
+apiClient.interceptors.request.use(async (config) => {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -30,10 +32,6 @@ apiClient.interceptors.response.use(
   },
   (error) => {
     console.error(`[API] Error: ${error.message}`, error);
-    if (error.response?.status === 401) {
-      localStorage.removeItem('auth_token');
-      window.location.href = '/login';
-    }
     return Promise.reject(error);
   }
 );

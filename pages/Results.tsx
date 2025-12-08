@@ -224,6 +224,8 @@ export const Results: React.FC = () => {
   };
 
   const reportSchool = getSchoolForReport();
+  const studentRecord = selectedResult ? allStudents.find(s => s.id === selectedResult.studentId) : null;
+  const classStudentCount = studentRecord ? allStudents.filter(s => s.grade === studentRecord.grade).length : 0;
 
   return (
     <div className="space-y-8">
@@ -256,7 +258,7 @@ export const Results: React.FC = () => {
         }
       `}</style>
 
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Academic Results</h1>
           <p className="text-gray-500">Analyze performance and publish termly reports.</p>
@@ -613,41 +615,56 @@ export const Results: React.FC = () => {
                    {/* Header / Letterhead */}
                    <div className="text-center border-b-4 border-double border-gray-900 pb-6 mb-8">
                        <div className="flex justify-center mb-4">
-                           <div className="w-24 h-24 bg-gray-900 text-white rounded-full flex items-center justify-center">
-                               <GraduationCap size={48} />
-                           </div>
+                           {reportSchool?.logoUrl ? (
+                              <img src={reportSchool.logoUrl} alt="School Logo" className="w-24 h-24 object-contain" />
+                           ) : (
+                              <div className="w-24 h-24 bg-gray-900 text-white rounded-full flex items-center justify-center">
+                                <GraduationCap size={48} />
+                              </div>
+                           )}
                        </div>
                        <h1 className="text-4xl font-bold text-gray-900 serif uppercase tracking-wide mb-2">
                            {reportSchool ? reportSchool.name : 'Smart School Academy'}
                        </h1>
                        <p className="text-gray-600 font-medium text-sm uppercase tracking-widest mb-1">
-                           {reportSchool ? reportSchool.region : 'Excellence in Education'}
+                           {reportSchool?.motto || reportSchool?.region || 'Excellence in Education'}
                        </p>
                        <p className="text-gray-500 text-xs">
-                           Official Semester Result Sheet
+                           {reportSchool?.address || 'Official Semester Result Sheet'}
                        </p>
+                       {reportSchool?.contact && (
+                         <p className="text-gray-500 text-xs">Contact: {reportSchool.contact}</p>
+                       )}
                    </div>
 
                    {/* Student Info Grid */}
                    <div className="bg-white border-2 border-gray-900 p-6 mb-8">
-                       <div className="grid grid-cols-2 gap-y-4 gap-x-8">
-                           <div>
-                               <p className="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1">Student Name</p>
-                               <p className="text-lg font-bold text-gray-900 border-b border-gray-300 pb-1">{selectedResult.studentName}</p>
+                           <div className="grid grid-cols-2 gap-y-4 gap-x-8">
+                               <div>
+                                   <p className="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1">Student Name</p>
+                                   <p className="text-lg font-bold text-gray-900 border-b border-gray-300 pb-1">{selectedResult.studentName}</p>
+                               </div>
+                               <div>
+                                   <p className="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1">Student ID</p>
+                                   <p className="text-lg font-mono text-gray-900 border-b border-gray-300 pb-1">{selectedResult.studentId}</p>
+                               </div>
+                               <div>
+                                   <p className="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1">Class</p>
+                                   <p className="text-lg text-gray-900 border-b border-gray-300 pb-1">{studentRecord?.grade || 'N/A'}</p>
+                               </div>
+                               <div>
+                                   <p className="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1">Sex</p>
+                                   <p className="text-lg text-gray-900 border-b border-gray-300 pb-1 capitalize">{studentRecord?.gender || 'N/A'}</p>
+                               </div>
+                               <div>
+                                   <p className="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1">Academic Session</p>
+                                   <p className="text-lg text-gray-900 border-b border-gray-300 pb-1">2023 / 2024</p>
+                               </div>
+                               <div>
+                                   <p className="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1">Term</p>
+                                   <p className="text-lg text-gray-900 border-b border-gray-300 pb-1">{selectedResult.term || 'Term 1'}</p>
+                               </div>
                            </div>
-                           <div>
-                               <p className="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1">Student ID</p>
-                               <p className="text-lg font-mono text-gray-900 border-b border-gray-300 pb-1">{selectedResult.studentId}</p>
-                           </div>
-                           <div>
-                               <p className="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1">Academic Session</p>
-                               <p className="text-lg text-gray-900 border-b border-gray-300 pb-1">2023 / 2024</p>
-                           </div>
-                           <div>
-                               <p className="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1">Term</p>
-                               <p className="text-lg text-gray-900 border-b border-gray-300 pb-1">Second Term</p>
-                           </div>
-                       </div>
                    </div>
 
                    {/* Scores Table */}
@@ -715,10 +732,19 @@ export const Results: React.FC = () => {
 
                    {/* Remarks & Footer */}
                    <div className="grid grid-cols-2 gap-12 mt-auto">
-                       <div>
-                           <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Principal's Remarks</h3>
-                           <div className="border-2 border-gray-900 p-4 h-24 italic text-gray-700 bg-gray-50">
-                               {selectedResult.remarks || "Outstanding performance. Keep up the good work."}
+                       <div className="space-y-4">
+                           <div>
+                             <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-2">Teacher's Remarks</h3>
+                             <div className="border-2 border-gray-900 p-4 h-20 italic text-gray-700 bg-gray-50">
+                               {selectedResult.remarks || 'Pending teacher remarks.'}
+                             </div>
+                           </div>
+                           <div>
+                             <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-2">Class Statistics</h3>
+                             <div className="border-2 border-gray-900 p-4 bg-gray-50 text-sm text-gray-800 flex justify-between">
+                               <span>Total Students: {classStudentCount || 'N/A'}</span>
+                               <span>Position: -</span>
+                             </div>
                            </div>
                        </div>
                        <div className="flex flex-col justify-end">

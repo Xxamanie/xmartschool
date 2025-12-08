@@ -30,6 +30,8 @@ import {
   Subject,
   User,
   UserRole,
+  Announcement,
+  LiveClass,
 } from '../types';
 
 const wait = async (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -71,6 +73,10 @@ const mapSchoolModel = (school: PrismaSchoolModel): School => ({
   adminName: school.adminName ?? '',
   status: school.status as School['status'],
   studentCount: school.studentCount,
+  motto: school.motto ?? '',
+  logoUrl: school.logoUrl ?? '',
+  address: school.address ?? '',
+  contact: school.contact ?? '',
 });
 
 const mapStudentModel = (student: PrismaStudentModel): Student => ({
@@ -84,6 +90,7 @@ const mapStudentModel = (student: PrismaStudentModel): Student => ({
   attendance: student.attendance,
   schoolId: student.schoolId,
   accessCode: student.accessCode,
+  enrolledSubjects: (student as any).enrolledSubjects ?? [],
 });
 
 const mapSubjectModel = (subject: PrismaSubjectModel): Subject => ({
@@ -166,6 +173,24 @@ const mapAttendanceModel = (
   studentId: record.studentId,
   status: record.status as AppAttendanceRecord['status'],
   date: toISODate(record.date),
+});
+
+const mapAnnouncementModel = (announcement: any): Announcement => ({
+  id: announcement.id,
+  title: announcement.title,
+  message: announcement.message,
+  targetAudience: announcement.targetAudience as Announcement['targetAudience'],
+  source: announcement.source,
+  createdAt: announcement.createdAt?.toISOString?.() || announcement.createdAt,
+});
+
+const mapLiveClassModel = (liveClass: any): LiveClass => ({
+  id: liveClass.id,
+  subjectId: liveClass.subjectId ?? undefined,
+  teacherId: liveClass.teacherId ?? undefined,
+  scheduledTime: liveClass.scheduledTime?.toISOString?.() || liveClass.scheduledTime,
+  meetingLink: liveClass.meetingLink,
+  status: liveClass.status,
 });
 
 const getDateBounds = (value: string) => {
@@ -291,6 +316,10 @@ export const appService = {
         adminName: school.adminName || 'Admin',
         status: 'Active',
         studentCount: school.studentCount ?? 0,
+        motto: school.motto || 'Knowledge is Power',
+        logoUrl: school.logoUrl || '',
+        address: school.address || '',
+        contact: school.contact || '',
       },
     });
     return success(mapSchoolModel(newSchool), 'School created successfully');
@@ -401,13 +430,40 @@ export const appService = {
     return success({ id: scheme.id }, 'Scheme uploaded successfully');
   },
 
-  getAssessments: async (subjectId?: string, term?: string): Promise<ApiResponse<Assessment[]>> => {
+  getAssessments: async (
+    subjectId?: string,
+    term?: string,
+    studentId?: string,
+  ): Promise<ApiResponse<Assessment[]>> => {
     await wait(100);
+
+    let enrolledSubjects: string[] | undefined;
+
+    if (studentId) {
+      const student = await prisma.student.findUnique({ where: { id: studentId } });
+      if (!student) {
+        return failure('Student not found', [] as unknown as Assessment[]);
+      }
+      enrolledSubjects = (student as any).enrolledSubjects ?? [];
+
+      if (subjectId && enrolledSubjects.length && !enrolledSubjects.includes(subjectId)) {
+        return success([], 'Student not enrolled in subject');
+      }
+    }
+
+    const where: Prisma.AssessmentWhereInput = {
+      ...(term ? { term } : {}),
+      ...(studentId ? { studentId } : {}),
+    };
+
+    if (subjectId) {
+      where.subjectId = subjectId;
+    } else if (enrolledSubjects && enrolledSubjects.length) {
+      where.subjectId = { in: enrolledSubjects };
+    }
+
     const assessments = await prisma.assessment.findMany({
-      where: {
-        ...(subjectId ? { subjectId } : {}),
-        ...(term ? { term } : {}),
-      },
+      where,
       include: { student: true },
     });
     return success(assessments.map(mapAssessmentModel));
@@ -694,6 +750,71 @@ export const appService = {
     return success(true, 'Attendance marked successfully');
   },
 
+  getAnnouncements: async (role?: UserRole): Promise<ApiResponse<Announcement[]>> => {
+    await wait(50);
+    const where: Prisma.AnnouncementWhereInput = {};
+
+    if (role === UserRole.TEACHER) {
+      where.targetAudience = { in: ['all', 'teachers'] as any };
+    } else if (role === UserRole.STUDENT) {
+      where.targetAudience = { in: ['all', 'students'] as any };
+    }
+
+    const announcements = await prisma.announcement.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+    });
+    return success(announcements.map(mapAnnouncementModel));
+  },
+
+  createAnnouncement: async (
+    title: string,
+    message: string,
+    targetAudience: Announcement['targetAudience'],
+    source: string,
+  ): Promise<ApiResponse<Announcement>> => {
+    await wait(50);
+    const created = await prisma.announcement.create({
+      data: { title, message, targetAudience, source },
+    });
+    return success(mapAnnouncementModel(created), 'Announcement created');
+  },
+
+  recordProctorFrame: async (
+    examId: string,
+    studentId: string,
+    frameData: string,
+  ): Promise<ApiResponse<{ stored: boolean }>> => {
+    await wait(20);
+    // For now we acknowledge receipt; storage/analysis can be added later
+    console.log('[proctor-frame]', examId, studentId, frameData.slice(0, 64));
+    return success({ stored: true });
+  },
+
+  getLiveClasses: async (): Promise<ApiResponse<LiveClass[]>> => {
+    await wait(50);
+    const classes = await prisma.liveClass.findMany({ orderBy: { scheduledTime: 'asc' } });
+    return success(classes.map(mapLiveClassModel));
+  },
+
+  createLiveClass: async (
+    subjectId: string | undefined,
+    teacherId: string | undefined,
+    scheduledTime: string,
+    meetingLink: string,
+  ): Promise<ApiResponse<LiveClass>> => {
+    await wait(50);
+    const created = await prisma.liveClass.create({
+      data: {
+        subjectId: subjectId || undefined,
+        teacherId: teacherId || undefined,
+        scheduledTime: toDateOnly(scheduledTime),
+        meetingLink,
+      },
+    });
+    return success(mapLiveClassModel(created), 'Live class scheduled');
+  },
+
   getClassMasters: async (): Promise<ApiResponse<Record<string, string>>> => {
     await wait(100);
     const masters: PrismaClassMasterModel[] = await prisma.classMaster.findMany();
@@ -723,6 +844,138 @@ export const appService = {
       return success(true);
     } catch (error) {
       return failure('Session not found', false as unknown as boolean);
+    }
+  },
+
+  joinLiveClass: async (liveClassId: string, userId: string): Promise<ApiResponse<any>> => {
+    await wait(50);
+    try {
+      const participant = await prisma.liveClassParticipant.upsert({
+        where: { liveClassId_userId: { liveClassId, userId } },
+        update: { leftAt: null },
+        create: { liveClassId, userId },
+      });
+      return success(participant, 'Joined live class');
+    } catch (error) {
+      return failure('Failed to join live class', null);
+    }
+  },
+
+  leaveLiveClass: async (liveClassId: string, userId: string): Promise<ApiResponse<boolean>> => {
+    await wait(50);
+    try {
+      await prisma.liveClassParticipant.update({
+        where: { liveClassId_userId: { liveClassId, userId } },
+        data: { leftAt: new Date() },
+      });
+      return success(true, 'Left live class');
+    } catch (error) {
+      return failure('Failed to leave live class', false as unknown as boolean);
+    }
+  },
+
+  updateParticipantStatus: async (
+    liveClassId: string,
+    userId: string,
+    cameraOn: boolean,
+    microphoneOn: boolean,
+  ): Promise<ApiResponse<any>> => {
+    await wait(30);
+    try {
+      const updated = await prisma.liveClassParticipant.update({
+        where: { liveClassId_userId: { liveClassId, userId } },
+        data: { cameraOn, microphoneOn },
+      });
+      return success(updated);
+    } catch (error) {
+      return failure('Failed to update participant status', null);
+    }
+  },
+
+  raiseHand: async (liveClassId: string, userId: string, raised: boolean): Promise<ApiResponse<any>> => {
+    await wait(30);
+    try {
+      const updated = await prisma.liveClassParticipant.update({
+        where: { liveClassId_userId: { liveClassId, userId } },
+        data: { handRaised: raised },
+      });
+      return success(updated);
+    } catch (error) {
+      return failure('Failed to update hand status', null);
+    }
+  },
+
+  sendLiveClassMessage: async (liveClassId: string, userId: string, message: string): Promise<ApiResponse<any>> => {
+    await wait(30);
+    if (!message.trim()) {
+      return failure('Message cannot be empty', null);
+    }
+    try {
+      const created = await prisma.liveClassMessage.create({
+        data: { liveClassId, userId, message: message.trim() },
+      });
+      return success(created, 'Message sent');
+    } catch (error) {
+      return failure('Failed to send message', null);
+    }
+  },
+
+  getLiveClassMessages: async (liveClassId: string): Promise<ApiResponse<any[]>> => {
+    await wait(50);
+    try {
+      const messages = await prisma.liveClassMessage.findMany({
+        where: { liveClassId },
+        orderBy: { createdAt: 'asc' },
+        take: 100,
+      });
+      return success(messages);
+    } catch (error) {
+      return failure('Failed to fetch messages', []);
+    }
+  },
+
+  getLiveClassParticipants: async (liveClassId: string): Promise<ApiResponse<any[]>> => {
+    await wait(50);
+    try {
+      const participants = await prisma.liveClassParticipant.findMany({
+        where: { liveClassId, leftAt: null },
+      });
+      return success(participants);
+    } catch (error) {
+      return failure('Failed to fetch participants', []);
+    }
+  },
+
+  startLiveClassRecording: async (liveClassId: string, recordingUrl: string): Promise<ApiResponse<any>> => {
+    await wait(50);
+    try {
+      const recording = await prisma.liveClassRecording.create({
+        data: { liveClassId, recordingUrl },
+      });
+      await prisma.liveClass.update({
+        where: { id: liveClassId },
+        data: { status: 'recording' },
+      });
+      return success(recording, 'Recording started');
+    } catch (error) {
+      return failure('Failed to start recording', null);
+    }
+  },
+
+  stopLiveClassRecording: async (liveClassId: string, duration: number): Promise<ApiResponse<any>> => {
+    await wait(50);
+    try {
+      const updated = await prisma.liveClassRecording.update({
+        where: { liveClassId },
+        data: { duration },
+      });
+      await prisma.liveClass.update({
+        where: { id: liveClassId },
+        data: { status: 'completed' },
+      });
+      return success(updated, 'Recording stopped');
+    } catch (error) {
+      return failure('Failed to stop recording', null);
     }
   },
 };

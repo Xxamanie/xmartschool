@@ -1,4 +1,4 @@
-import { Student, Subject, ApiResponse, SchemeSubmission, Assessment, ResultData, School, User, UserRole, ActiveExam, ExamQuestion, ExamSession } from '../types';
+import { Student, Subject, ApiResponse, SchemeSubmission, Assessment, ResultData, School, User, UserRole, ActiveExam, ExamQuestion, ExamSession, Announcement, LiveClass } from '../types';
 import { MOCK_STUDENTS, MOCK_SUBJECTS, MOCK_SCHEMES, MOCK_ASSESSMENTS, MOCK_RESULTS, MOCK_SCHOOLS, MOCK_USER, MOCK_SUPER_ADMIN } from './mockData';
 import apiClient from '../src/utils/api';
 
@@ -23,12 +23,151 @@ export const api = {
     }
   },
 
+  getAnnouncements: async (role?: UserRole): Promise<ApiResponse<Announcement[]>> => {
+    try {
+      const params = new URLSearchParams();
+      if (role) params.append('role', role);
+      const { data } = await apiClient.get(`/announcements?${params}`);
+      return { ok: true, data: data || data.data || [] };
+    } catch (error) {
+      console.error('Failed to get announcements:', error);
+      throw error;
+    }
+  },
+
+  createAnnouncement: async (payload: { title: string; message: string; targetAudience: Announcement['targetAudience']; source: string }): Promise<ApiResponse<Announcement>> => {
+    try {
+      const { data } = await apiClient.post('/announcements', payload);
+      return { ok: true, data: data || data.data };
+    } catch (error) {
+      console.error('Failed to create announcement:', error);
+      throw error;
+    }
+  },
+
+  uploadProctorFrame: async (examId: string, studentId: string, frameData: string): Promise<ApiResponse<{ stored: boolean }>> => {
+    try {
+      const { data } = await apiClient.post('/proctoring/frame', { examId, studentId, frameData });
+      return { ok: true, data: data || data.data };
+    } catch (error) {
+      console.error('Failed to upload proctoring frame:', error);
+      return { ok: false, data: { stored: false } as any, message: 'Upload failed' };
+    }
+  },
+
+  getLiveClasses: async (): Promise<ApiResponse<LiveClass[]>> => {
+    try {
+      const { data } = await apiClient.get('/live-classes');
+      return { ok: true, data: data || data.data || [] };
+    } catch (error) {
+      console.error('Failed to get live classes:', error);
+      throw error;
+    }
+  },
+
+  createLiveClass: async (payload: { subjectId?: string; scheduledTime: string; meetingLink: string; teacherId?: string }): Promise<ApiResponse<LiveClass>> => {
+    try {
+      const { data } = await apiClient.post('/live-classes', payload);
+      return { ok: true, data: data || data.data };
+    } catch (error) {
+      console.error('Failed to create live class:', error);
+      throw error;
+    }
+  },
+
+  joinLiveClass: async (liveClassId: string, userId: string): Promise<ApiResponse<any>> => {
+    try {
+      const { data } = await apiClient.post(`/live-classes/${liveClassId}/join`, { userId });
+      return { ok: true, data: data || data.data };
+    } catch (error) {
+      console.error('Failed to join live class:', error);
+      return { ok: false, data: null, message: 'Failed to join' };
+    }
+  },
+
+  leaveLiveClass: async (liveClassId: string, userId: string): Promise<ApiResponse<boolean>> => {
+    try {
+      const { data } = await apiClient.post(`/live-classes/${liveClassId}/leave`, { userId });
+      return { ok: true, data: data?.ok || true };
+    } catch (error) {
+      console.error('Failed to leave live class:', error);
+      return { ok: false, data: false, message: 'Failed to leave' };
+    }
+  },
+
+  updateParticipantStatus: async (liveClassId: string, userId: string, cameraOn: boolean, microphoneOn: boolean): Promise<ApiResponse<any>> => {
+    try {
+      const { data } = await apiClient.post(`/live-classes/${liveClassId}/participant-status`, { userId, cameraOn, microphoneOn });
+      return { ok: true, data: data || data.data };
+    } catch (error) {
+      console.error('Failed to update participant status:', error);
+      return { ok: false, data: null };
+    }
+  },
+
+  raiseHand: async (liveClassId: string, userId: string, raised: boolean): Promise<ApiResponse<any>> => {
+    try {
+      const { data } = await apiClient.post(`/live-classes/${liveClassId}/raise-hand`, { userId, raised });
+      return { ok: true, data: data || data.data };
+    } catch (error) {
+      console.error('Failed to update hand status:', error);
+      return { ok: false, data: null };
+    }
+  },
+
+  sendLiveClassMessage: async (liveClassId: string, userId: string, message: string): Promise<ApiResponse<any>> => {
+    try {
+      const { data } = await apiClient.post(`/live-classes/${liveClassId}/messages`, { userId, message });
+      return { ok: true, data: data || data.data };
+    } catch (error) {
+      console.error('Failed to send message:', error);
+      return { ok: false, data: null };
+    }
+  },
+
+  getLiveClassMessages: async (liveClassId: string): Promise<ApiResponse<any[]>> => {
+    try {
+      const { data } = await apiClient.get(`/live-classes/${liveClassId}/messages`);
+      return { ok: true, data: data || data.data || [] };
+    } catch (error) {
+      console.error('Failed to get messages:', error);
+      return { ok: false, data: [] };
+    }
+  },
+
+  getLiveClassParticipants: async (liveClassId: string): Promise<ApiResponse<any[]>> => {
+    try {
+      const { data } = await apiClient.get(`/live-classes/${liveClassId}/participants`);
+      return { ok: true, data: data || data.data || [] };
+    } catch (error) {
+      console.error('Failed to get participants:', error);
+      return { ok: false, data: [] };
+    }
+  },
+
+  startLiveClassRecording: async (liveClassId: string, recordingUrl: string): Promise<ApiResponse<any>> => {
+    try {
+      const { data } = await apiClient.post(`/live-classes/${liveClassId}/recording/start`, { recordingUrl });
+      return { ok: true, data: data || data.data };
+    } catch (error) {
+      console.error('Failed to start recording:', error);
+      return { ok: false, data: null };
+    }
+  },
+
+  stopLiveClassRecording: async (liveClassId: string, duration: number): Promise<ApiResponse<any>> => {
+    try {
+      const { data } = await apiClient.post(`/live-classes/${liveClassId}/recording/stop`, { duration });
+      return { ok: true, data: data || data.data };
+    } catch (error) {
+      console.error('Failed to stop recording:', error);
+      return { ok: false, data: null };
+    }
+  },
+
   login: async (email: string): Promise<ApiResponse<User>> => {
     try {
       const { data } = await apiClient.post('/auth/login', { email });
-      if (data.token) {
-        localStorage.setItem('auth_token', data.token);
-      }
       return { ok: true, data: data.user };
     } catch (error) {
       console.error('Login failed:', error);
@@ -47,9 +186,6 @@ export const api = {
   verifyStudent: async (schoolCode: string, studentCode: string): Promise<ApiResponse<User>> => {
     try {
       const { data } = await apiClient.post('/auth/verify-student', { schoolCode, studentCode });
-      if (data.token) {
-        localStorage.setItem('auth_token', data.token);
-      }
       return { ok: true, data: data.user };
     } catch (error) {
       console.error('Student verification failed:', error);
@@ -72,7 +208,7 @@ export const api = {
     try {
       const payload = {
         ...studentData,
-        enrollmentDate: new Date().toISOString().split('T')[0]
+        enrollmentDate: new Date().toISOString()
       };
       console.log('[createStudent] Payload:', payload);
       const { data } = await apiClient.post('/students', payload);
@@ -296,11 +432,12 @@ export const api = {
     }
   },
 
-  getAssessments: async (subjectId?: string, term?: string): Promise<ApiResponse<Assessment[]>> => {
+  getAssessments: async (subjectId?: string, term?: string, studentId?: string): Promise<ApiResponse<Assessment[]>> => {
     try {
       const params = new URLSearchParams();
       if (subjectId) params.append('subjectId', subjectId);
       if (term) params.append('term', term);
+      if (studentId) params.append('studentId', studentId);
       
       const { data } = await apiClient.get(`/assessments?${params}`);
       return { ok: true, data: data || data.data || [] };
