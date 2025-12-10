@@ -25,5 +25,3 @@ const initializeSupabase = () => {
 };
 
 export const getSupabaseClient = () => initializeSupabase();
-
-export const supabase = initializeSupabase();
