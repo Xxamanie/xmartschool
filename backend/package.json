@@ -6,7 +6,7 @@
   "scripts": {
   "dev": "ts-node-dev src/server.ts",
   "build": "tsc --project tsconfig.json",
-  "db:seed": "tsx prisma/seed.ts"
+  "db:seed": "tsx prisma/seed.ts",
     "prebuild": "prisma generate",
     "build": "prisma migrate deploy && tsc --project tsconfig.json",
     "start": "node dist/src/server.js",
