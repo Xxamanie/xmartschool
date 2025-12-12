@@ -280,11 +280,12 @@ export const appService = {
           name: updates.name || 'Smart School User',
           role: updates.role || UserRole.TEACHER,
           email: updates.email,
+          password: 'password', // Default password for new users
           avatar: updates.avatar,
           gender: updates.gender,
           bio: updates.bio,
           phone: updates.phone,
-          schoolId: updates.schoolId,
+          schoolId: updates.schoolId || undefined,
         },
       });
       return success(mapUserModel(created), 'Profile updated successfully');
