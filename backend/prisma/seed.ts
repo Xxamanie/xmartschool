@@ -1,14 +1,16 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, UserRole, SchoolStatus, StudentStatus } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
 async function main() {
   console.log('Seeding database...');
 
-  // Use plain text password for demo accounts (fallback in appService handles this)
+  // Plain text password for demo accounts
   const plainPassword = 'password';
+  const hashedPassword = await bcrypt.hash(plainPassword, 10);
 
-  // Create demo schools
+  // Create demo school
   const school1 = await prisma.school.upsert({
     where: { code: 'SPR-001' },
     update: {},
@@ -18,7 +20,7 @@ async function main() {
       code: 'SPR-001',
       region: 'North District',
       adminName: 'Principal Skinner',
-      status: 'Active',
+      status: SchoolStatus.Active,
       studentCount: 450,
       motto: 'Excellence and Integrity',
       address: '742 Evergreen Terrace, Springfield',
@@ -34,11 +36,11 @@ async function main() {
       id: 'sa1',
       name: 'System Creator',
       email: 'creator@smartschool.edu',
-      password: plainPassword,
-      role: 'SUPER_ADMIN',
+      password: hashedPassword,
+      role: UserRole.SUPER_ADMIN,
       avatar: 'https://ui-avatars.com/api/?name=System+Creator&background=0D8ABC&color=fff',
       gender: 'Male',
-    },
+    } as any,
   });
 
   const admin = await prisma.user.upsert({
@@ -48,12 +50,12 @@ async function main() {
       id: 'admin1',
       name: 'School Principal',
       email: 'admin@smartschool.edu',
-      password: plainPassword,
-      role: 'ADMIN',
+      password: hashedPassword,
+      role: UserRole.ADMIN,
       schoolId: school1.id,
       avatar: 'https://ui-avatars.com/api/?name=School+Principal&background=random',
       gender: 'Male',
-    },
+    } as any,
   });
 
   const teacher = await prisma.user.upsert({
@@ -63,12 +65,12 @@ async function main() {
       id: 'u1',
       name: 'Alex Johnson',
       email: 'alex.j@smartschool.edu',
-      password: plainPassword,
-      role: 'TEACHER',
+      password: hashedPassword,
+      role: UserRole.TEACHER,
       schoolId: school1.id,
       avatar: 'https://picsum.photos/200/200',
       gender: 'Male',
-    },
+    } as any,
   });
 
   // Create demo students
@@ -81,7 +83,7 @@ async function main() {
       gender: 'Female',
       grade: '10th',
       enrollmentDate: new Date('2023-09-01'),
-      status: 'Active',
+      status: StudentStatus.Active,
       gpa: 3.8,
       attendance: 98,
       schoolId: school1.id,
