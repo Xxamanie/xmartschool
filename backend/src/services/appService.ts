@@ -1,6 +1,5 @@
 import {
   Prisma,
-  PrismaClient,
   User as PrismaUserModel,
   School as PrismaSchoolModel,
   Student as PrismaStudentModel,
@@ -206,47 +205,39 @@ export const appService = {
     return success({ status: 'healthy' });
   },
 
-  login: async (email: string): Promise<ApiResponse<User>> => {
+  // Email + password login using bcrypt hash stored in User.password
+  login: async (email: string, password: string): Promise<ApiResponse<User>> => {
     await wait(100);
     const normalized = email.toLowerCase();
 
-    if (normalized === 'creator@smartschool.edu') {
-      const creator = await prisma.user.findUnique({ where: { email: normalized } });
-      if (creator) {
-        return success(mapUserModel(creator));
+    const user = await prisma.user.findFirst({ where: { email: normalized } });
+    if (!user) {
+      return failure('Invalid credentials', {} as User);
+    }
+
+    try {
+      const bcrypt = await import('bcryptjs');
+      const hash = (user as any).password as string | undefined;
+      if (!hash) {
+        return failure('Invalid credentials', {} as User);
       }
-    }
 
-    if (email.includes('admin')) {
-      const admin = await prisma.user.upsert({
-        where: { id: 'admin1' },
-        update: { email },
-        create: {
-          id: 'admin1',
-          name: 'School Principal',
-          email,
-          role: 'ADMIN',
-          schoolId: 'sch_001',
-        },
-      });
-      return success(mapUserModel(admin));
-    }
+      let valid = false;
+      if (hash.startsWith('$2a$') || hash.startsWith('$2b$') || hash.startsWith('$2y$')) {
+        valid = await bcrypt.compare(password, hash);
+      } else {
+        // Plain text fallback for seed/demo rows if any (not recommended)
+        valid = password === hash;
+      }
 
-    const existing = await prisma.user.findFirst({ where: { email: normalized } });
-    if (existing) {
-      return success(mapUserModel(existing));
-    }
+      if (!valid) {
+        return failure('Invalid credentials', {} as User);
+      }
 
-    const fallback = await prisma.user.findUnique({ where: { id: 'u1' } });
-    if (fallback) {
-      return success(mapUserModel(fallback));
+      return success(mapUserModel(user));
+    } catch {
+      return failure('Password verification failed', {} as User);
     }
-
-    return success({
-      id: 'temp-user',
-      name: 'Smart School User',
-      role: UserRole.TEACHER,
-    });
   },
 
   verifyStudent: async (schoolCode: string, studentCode: string): Promise<ApiResponse<User>> => {
@@ -755,9 +746,9 @@ export const appService = {
     const where: Prisma.AnnouncementWhereInput = {};
 
     if (role === UserRole.TEACHER) {
-      where.targetAudience = { in: ['all', 'teachers'] as any };
+      (where as any).targetAudience = { in: ['all', 'teachers'] };
     } else if (role === UserRole.STUDENT) {
-      where.targetAudience = { in: ['all', 'students'] as any };
+      (where as any).targetAudience = { in: ['all', 'students'] };
     }
 
     const announcements = await prisma.announcement.findMany({
