@@ -4,15 +4,13 @@
   "type": "commonjs",
   "private": true,
   "scripts": {
-  "dev": "ts-node-dev src/server.ts",
-  "build": "tsc --project tsconfig.json",
-  "db:seed": "tsx prisma/seed.ts",
-    "prebuild": "prisma generate",
+    "dev": "ts-node-dev src/server.ts",
     "build": "prisma migrate deploy && tsc --project tsconfig.json",
+    "db:seed": "tsx prisma/seed.ts",
+    "prebuild": "prisma generate",
     "start": "node dist/src/server.js",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
-    "db:seed": "tsx prisma/seed.ts"
+    "prisma:migrate": "prisma migrate dev"
   },
   "dependencies": {
     "@google/genai": "^1.30.0",
@@ -27,6 +25,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/multer": "^1.4.11",
