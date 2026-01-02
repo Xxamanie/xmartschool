@@ -15,26 +15,44 @@ export const apiClient = axios.create({
   },
 });
 
+// Request interceptor
 apiClient.interceptors.request.use(async (config) => {
-  const supabase = getSupabaseClient();
-  if (supabase) {
-    const { data } = await supabase.auth.getSession();
-    const token = data.session?.access_token;
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+  try {
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
     }
+  } catch (error) {
+    console.warn('Failed to get auth token:', error);
   }
+  
   console.log(`[API] ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
   return config;
+}, (error) => {
+  console.error('[API] Request error:', error);
+  return Promise.reject(error);
 });
 
+// Response interceptor
 apiClient.interceptors.response.use(
   (response) => {
     console.log(`[API] Response OK: ${response.status}`);
     return response;
   },
   (error) => {
-    console.error(`[API] Error: ${error.message}`, error);
+    if (error.code === 'ECONNABORTED') {
+      console.error('[API] Request timeout');
+    } else if (error.response) {
+      console.error(`[API] Error ${error.response.status}:`, error.response.data);
+    } else if (error.request) {
+      console.error('[API] Network error - no response received');
+    } else {
+      console.error('[API] Request setup error:', error.message);
+    }
     return Promise.reject(error);
   }
 );

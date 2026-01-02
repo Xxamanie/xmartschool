@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { GraduationCap, Loader2, Lock, Mail, KeyRound, Building2, UserCircle2, CheckCircle2 } from 'lucide-react';
+import { GraduationCap, Loader2, Lock, Mail, KeyRound, Building2, UserCircle2, CheckCircle2, AlertCircle, Wifi, WifiOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useClickSound } from '../src/utils/useClickSound';
 import { UserRole } from '../types';
@@ -15,7 +15,7 @@ const CAPABILITIES = [
 ];
 
 export const Login: React.FC = () => {
-  const { login, loginStudent, isAuthenticated, isLoading } = useAuth();
+  const { login, loginStudent, isAuthenticated, isLoading, authMode, error: authError } = useAuth();
   const { playSound } = useClickSound();
   const navigate = useNavigate();
   const [error, setError] = useState('');
@@ -39,6 +39,13 @@ export const Login: React.FC = () => {
     }
   }, [isAuthenticated, navigate]);
 
+  // Update local error when auth error changes
+  useEffect(() => {
+    if (authError) {
+      setError(authError);
+    }
+  }, [authError]);
+
   useEffect(() => {
     const interval = setInterval(() => {
       setIsVisible(false);
@@ -57,8 +64,8 @@ export const Login: React.FC = () => {
     try {
       await login(email, password);
       navigate('/');
-    } catch (err) {
-      setError('Invalid credentials. Please try again.');
+    } catch (err: any) {
+      setError(err.message || 'Invalid credentials. Please try again.');
     }
   };
 
@@ -73,6 +80,31 @@ export const Login: React.FC = () => {
       setError(err.message || 'Invalid School Code or Access Code.');
     }
   };
+
+  const getAuthModeDisplay = () => {
+    switch (authMode) {
+      case 'supabase':
+        return {
+          icon: <Wifi size={14} className="text-green-500" />,
+          text: 'Connected to Supabase',
+          color: 'text-green-600 bg-green-50 border-green-200'
+        };
+      case 'demo':
+        return {
+          icon: <WifiOff size={14} className="text-amber-500" />,
+          text: 'Demo Mode - Supabase not configured',
+          color: 'text-amber-600 bg-amber-50 border-amber-200'
+        };
+      default:
+        return {
+          icon: <AlertCircle size={14} className="text-gray-500" />,
+          text: 'Initializing...',
+          color: 'text-gray-600 bg-gray-50 border-gray-200'
+        };
+    }
+  };
+
+  const authModeInfo = getAuthModeDisplay();
 
   return (
     <div className="min-h-screen bg-black flex relative overflow-hidden">
@@ -142,6 +174,14 @@ export const Login: React.FC = () => {
          </div>
 
          <div className="max-w-sm mx-auto w-full">
+             {/* Auth Mode Indicator */}
+             {authMode !== 'unknown' && (
+               <div className={`mb-6 p-3 rounded-lg border text-xs font-medium flex items-center gap-2 ${authModeInfo.color}`}>
+                 {authModeInfo.icon}
+                 {authModeInfo.text}
+               </div>
+             )}
+
              <div className="mb-10">
                 <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back</h2>
                 <p className="text-gray-500">Please enter your details to sign in.</p>
@@ -219,8 +259,8 @@ export const Login: React.FC = () => {
 
                 {error && (
                     <div className="p-3 rounded-lg bg-red-50 border border-red-100 text-red-600 text-sm flex items-center gap-2">
-                         <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>
-                         {error}
+                         <AlertCircle size={16} className="text-red-500 flex-shrink-0" />
+                         <span>{error}</span>
                     </div>
                 )}
 
@@ -283,8 +323,8 @@ export const Login: React.FC = () => {
 
                 {error && (
                     <div className="p-3 rounded-lg bg-red-50 border border-red-100 text-red-600 text-sm flex items-center gap-2">
-                         <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>
-                         {error}
+                         <AlertCircle size={16} className="text-red-500 flex-shrink-0" />
+                         <span>{error}</span>
                     </div>
                 )}
 

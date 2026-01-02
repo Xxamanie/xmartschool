@@ -1,4 +1,4 @@
-import { getSupabaseClient } from './supabaseClient';
+import { getSupabaseClient, isSupabaseConfigured } from './supabaseClient';
 import { User, UserRole } from '../../types';
 
 const mapUser = (sessionUser: any): User => ({
@@ -10,26 +10,55 @@ const mapUser = (sessionUser: any): User => ({
 });
 
 export const supabaseAuthService = {
+  isConfigured: (): boolean => {
+    return isSupabaseConfigured();
+  },
+
   login: async (email: string, password: string): Promise<User> => {
     const supabase = getSupabaseClient();
-    if (!supabase) throw new Error('Supabase is not configured');
+    if (!supabase) {
+      throw new Error('Supabase is not configured. Please check your environment variables.');
+    }
+    
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error || !data.user) throw error ?? new Error('Login failed');
+    if (error) {
+      throw new Error(error.message || 'Login failed');
+    }
+    
+    if (!data.user) {
+      throw new Error('Login failed - no user data received');
+    }
+    
     return mapUser(data.user);
   },
 
   logout: async (): Promise<void> => {
     const supabase = getSupabaseClient();
-    if (!supabase) throw new Error('Supabase is not configured');
+    if (!supabase) {
+      throw new Error('Supabase is not configured');
+    }
+    
     const { error } = await supabase.auth.signOut();
-    if (error) throw error;
+    if (error) {
+      throw new Error(error.message || 'Logout failed');
+    }
   },
 
   getCurrentUser: async (): Promise<User | null> => {
     const supabase = getSupabaseClient();
     if (!supabase) return null;
-    const { data } = await supabase.auth.getUser();
-    return data.user ? mapUser(data.user) : null;
+    
+    try {
+      const { data, error } = await supabase.auth.getUser();
+      if (error) {
+        console.warn('Failed to get current user:', error);
+        return null;
+      }
+      return data.user ? mapUser(data.user) : null;
+    } catch (error) {
+      console.warn('Error getting current user:', error);
+      return null;
+    }
   },
 
   onAuthStateChanged: (callback: (user: User | null) => void) => {
@@ -38,22 +67,43 @@ export const supabaseAuthService = {
       callback(null);
       return () => {};
     }
+    
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session?.user) {
-        callback(mapUser(session.user));
-      } else {
+      try {
+        if (session?.user) {
+          callback(mapUser(session.user));
+        } else {
+          callback(null);
+        }
+      } catch (error) {
+        console.error('Error in auth state change handler:', error);
         callback(null);
       }
     });
+    
     return () => {
-      listener.subscription.unsubscribe();
+      try {
+        listener.subscription.unsubscribe();
+      } catch (error) {
+        console.warn('Error unsubscribing from auth state changes:', error);
+      }
     };
   },
 
   getAccessToken: async (): Promise<string | null> => {
     const supabase = getSupabaseClient();
     if (!supabase) return null;
-    const { data } = await supabase.auth.getSession();
-    return data.session?.access_token ?? null;
+    
+    try {
+      const { data, error } = await supabase.auth.getSession();
+      if (error) {
+        console.warn('Failed to get session:', error);
+        return null;
+      }
+      return data.session?.access_token ?? null;
+    } catch (error) {
+      console.warn('Error getting access token:', error);
+      return null;
+    }
   }
 };

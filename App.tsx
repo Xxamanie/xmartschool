@@ -3,6 +3,7 @@ import React from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Layout } from './components/Layout';
+import { LoadingScreen } from './components/LoadingScreen';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { Students } from './pages/Students';
@@ -23,7 +24,11 @@ import { LiveClasses } from './pages/LiveClasses';
 import { LiveClassRoom } from './pages/LiveClassRoom';
 
 const ProtectedRoute = ({ children, allowedRoles }: React.PropsWithChildren<{ allowedRoles?: UserRole[] }>) => {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, isLoading } = useAuth();
+  
+  if (isLoading) {
+    return <LoadingScreen message="Authenticating..." />;
+  }
   
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
@@ -53,58 +58,70 @@ const GlobalClickSound = () => {
   return null;
 };
 
+const AppContent: React.FC = () => {
+  const { isLoading } = useAuth();
+
+  if (isLoading) {
+    return <LoadingScreen message="Initializing SmartSchool..." />;
+  }
+
+  return (
+    <Router>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        
+        <Route path="/" element={<Layout />}>
+          {/* Super Admin Routes */}
+          <Route index element={
+             <ProtectedRoute>
+                <DashboardWrapper />
+             </ProtectedRoute>
+          } />
+          
+          <Route path="schools" element={
+             <ProtectedRoute allowedRoles={[UserRole.SUPER_ADMIN]}>
+                <SuperAdmin />
+             </ProtectedRoute>
+          } />
+          <Route path="schools/:schoolId" element={
+             <ProtectedRoute allowedRoles={[UserRole.SUPER_ADMIN]}>
+                <SchoolDetail />
+             </ProtectedRoute>
+          } />
+
+          {/* Student Portal Route */}
+          <Route path="student-portal" element={
+             <ProtectedRoute allowedRoles={[UserRole.STUDENT]}>
+                <StudentPortal />
+             </ProtectedRoute>
+          } />
+
+          {/* Regular Admin/Teacher Routes */}
+          <Route path="teachers" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Teachers /></ProtectedRoute>} />
+          <Route path="classes" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Classes /></ProtectedRoute>} />
+          <Route path="attendance" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Attendance /></ProtectedRoute>} />
+          <Route path="students" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Students /></ProtectedRoute>} />
+          <Route path="subjects" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Subjects /></ProtectedRoute>} />
+          <Route path="scheme-of-work" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><SchemeOfWork /></ProtectedRoute>} />
+          <Route path="assessments" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Assessments /></ProtectedRoute>} />
+          <Route path="results" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Results /></ProtectedRoute>} />
+          <Route path="live-classes" element={<ProtectedRoute><LiveClasses /></ProtectedRoute>} />
+          <Route path="live-classes/:classId" element={<ProtectedRoute><LiveClassRoom /></ProtectedRoute>} />
+          
+          <Route path="settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+        </Route>
+
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Router>
+  );
+};
+
 const App: React.FC = () => {
   return (
     <AuthProvider>
       <GlobalClickSound />
-      <Router>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          
-          <Route path="/" element={<Layout />}>
-            {/* Super Admin Routes */}
-            <Route index element={
-               <ProtectedRoute>
-                  <DashboardWrapper />
-               </ProtectedRoute>
-            } />
-            
-            <Route path="schools" element={
-               <ProtectedRoute allowedRoles={[UserRole.SUPER_ADMIN]}>
-                  <SuperAdmin />
-               </ProtectedRoute>
-            } />
-            <Route path="schools/:schoolId" element={
-               <ProtectedRoute allowedRoles={[UserRole.SUPER_ADMIN]}>
-                  <SchoolDetail />
-               </ProtectedRoute>
-            } />
-
-            {/* Student Portal Route */}
-            <Route path="student-portal" element={
-               <ProtectedRoute allowedRoles={[UserRole.STUDENT]}>
-                  <StudentPortal />
-               </ProtectedRoute>
-            } />
-
-            {/* Regular Admin/Teacher Routes */}
-            <Route path="teachers" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Teachers /></ProtectedRoute>} />
-            <Route path="classes" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Classes /></ProtectedRoute>} />
-            <Route path="attendance" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Attendance /></ProtectedRoute>} />
-            <Route path="students" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Students /></ProtectedRoute>} />
-            <Route path="subjects" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Subjects /></ProtectedRoute>} />
-            <Route path="scheme-of-work" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><SchemeOfWork /></ProtectedRoute>} />
-            <Route path="assessments" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Assessments /></ProtectedRoute>} />
-            <Route path="results" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Results /></ProtectedRoute>} />
-            <Route path="live-classes" element={<ProtectedRoute><LiveClasses /></ProtectedRoute>} />
-            <Route path="live-classes/:classId" element={<ProtectedRoute><LiveClassRoom /></ProtectedRoute>} />
-            
-            <Route path="settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-          </Route>
-
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Router>
+      <AppContent />
     </AuthProvider>
   );
 };
