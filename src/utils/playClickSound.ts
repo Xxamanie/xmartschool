@@ -27,14 +27,34 @@ const generateClickSound = async (): Promise<AudioBuffer | null> => {
   if (!context) return null;
 
   const sampleRate = context.sampleRate;
-  const audioBuffer = context.createBuffer(1, sampleRate * 0.1, sampleRate);
+  // Lower-frequency, less thumpy haptic tap (≈18ms), no bright HF tone
+  const duration = 0.018; // seconds
+  const length = Math.max(1, Math.floor(sampleRate * duration));
+  const audioBuffer = context.createBuffer(1, length, sampleRate);
   const data = audioBuffer.getChannelData(0);
+
+  // Envelope parameters (very quick for tactile feel)
+  const attackTime = 0.0006; // very quick attack (~0.6ms)
+  const decayRate = 260; // faster decay for less thump
 
   for (let i = 0; i < audioBuffer.length; i++) {
     const t = i / sampleRate;
-    const frequency = 800;
-    const decay = Math.exp(-3 * t);
-    data[i] = Math.sin(2 * Math.PI * frequency * t) * decay * 0.3;
+    // Very fast attack then rapid decay
+    const attack = 1 - Math.exp(-t / attackTime);
+    const decay = Math.exp(-decayRate * t);
+
+    // Gentle low-frequency body (so it's not too thumpy)
+    const low = Math.sin(2 * Math.PI * 200 * t) * 0.06; // lower freq, lower amp
+
+    // Soft mid transient (non-bright) to give click clarity without sparkle
+    const mid = Math.sin(2 * Math.PI * 520 * t) * 0.12 * Math.exp(-300 * t);
+
+    // Very subtle, low-pass-ish noise transient for mechanical feel, reduced amplitude
+    const noise = (Math.random() * 2 - 1) * Math.exp(-500 * t) * 0.05;
+
+    // Mix components, apply envelope and final scaling
+    const sample = (low + mid + noise) * attack * decay * 0.65;
+    data[i] = sample;
   }
 
   return audioBuffer;
