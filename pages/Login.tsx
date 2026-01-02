@@ -236,9 +236,9 @@ export const Login: React.FC = () => {
                 <div className="mt-6 text-center">
                     <p className="text-xs text-gray-400 mb-3 uppercase tracking-wider font-semibold">Demo Accounts</p>
                     <div className="flex gap-2 justify-center flex-wrap">
-                        <button type="button" onClick={() => { playSound(); setEmail('creator@smartschool.edu'); }} className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-lg border border-gray-200 transition-colors">Creator</button>
-                        <button type="button" onClick={() => { playSound(); setEmail('admin@smartschool.edu'); }} className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-lg border border-gray-200 transition-colors">Admin</button>
-                        <button type="button" onClick={() => { playSound(); setEmail('alex.j@smartschool.edu'); }} className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-lg border border-gray-200 transition-colors">Teacher</button>
+                        <button type="button" onClick={() => { playSound(); setEmail('creator@smartschool.edu'); setPassword(''); }} className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-lg border border-gray-200 transition-colors">Creator</button>
+                        <button type="button" onClick={() => { playSound(); setEmail('admin@smartschool.edu'); setPassword(''); }} className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-lg border border-gray-200 transition-colors">Admin</button>
+                        <button type="button" onClick={() => { playSound(); setEmail('alex.j@smartschool.edu'); setPassword(''); }} className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-lg border border-gray-200 transition-colors">Teacher</button>
                     </div>
                 </div>
                 </form>
