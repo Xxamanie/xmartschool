@@ -50,6 +50,13 @@ enum TargetAudience {
   students
 }
 
+enum QuestionType {
+  multiple_choice
+  true_false
+  short_answer
+  essay
+}
+
 model School {
   id           String        @id @default(cuid())
   name         String
@@ -86,22 +93,24 @@ liveClasses LiveClass[] @relation("LiveClassTeacher")
 }
 
 model Student {
-  id             String           @id @default(uuid())
-  name           String
-  gender         String
-  grade          String
-  enrollmentDate DateTime
-  status         StudentStatus    @default(Active)
-  gpa            Float            @default(0)
-  attendance     Int              @default(0)
-  accessCode     String           @unique
-  enrolledSubjects String[]        @default([])
-  schoolId       String
-  school         School           @relation(fields: [schoolId], references: [id])
-  assessments    Assessment[]
-  results        Result[]
-  examSessions   ExamSession[]
-  attendanceLogs AttendanceRecord[]
+  id                String           @id @default(uuid())
+  name              String
+  gender            String
+  grade             String
+  enrollmentDate    DateTime
+  status            StudentStatus    @default(Active)
+  gpa               Float            @default(0)
+  attendance        Int              @default(0)
+  accessCode        String           @unique
+  resultAccessCode  String?          @unique
+  isPaid            Boolean          @default(false)
+  enrolledSubjects  String[]         @default([])
+  schoolId          String
+  school            School           @relation(fields: [schoolId], references: [id])
+  assessments       Assessment[]
+  results           Result[]
+  examSessions      ExamSession[]
+  attendanceLogs    AttendanceRecord[]
 }
 
 model Subject {
@@ -227,19 +236,22 @@ model Exam {
   teacher   User?      @relation("ExamTeacher", fields: [teacherId], references: [id])
   subjectId String?
   subject   Subject?   @relation(fields: [subjectId], references: [id])
+  term      String     @default("Term 1")
   questions ExamQuestion[]
   sessions  ExamSession[]
 }
 
 model ExamQuestion {
-  id            String   @id @default(cuid())
+  id            String       @id @default(cuid())
   examId        String
-  exam          Exam     @relation(fields: [examId], references: [id])
-  type          String
+  exam          Exam         @relation(fields: [examId], references: [id])
+  type          QuestionType
   text          String
   options       Json?
-  correctAnswer String
-  points        Int      @default(1)
+  correctAnswer String?
+  points        Int          @default(1)
+  isAutoGrade   Boolean      @default(false)
+  rubric       String?
 }
 
 model ExamSession {
@@ -273,4 +285,12 @@ model ClassMaster {
   grade     String @unique
   teacherId String
   teacher   User   @relation(fields: [teacherId], references: [id])
+}
+
+model ProctoringAlert {
+  id          String   @id @default(cuid())
+  examId      String
+  studentId   String
+  description String
+  timestamp   DateTime @default(now())
 }

@@ -23,11 +23,13 @@ router.get(
 
 const questionSchema = z.object({
   id: z.string().optional(),
-  type: z.enum(['multiple-choice', 'true-false', 'short-answer', 'essay']),
+  type: z.enum(['multiple_choice', 'true_false', 'short_answer', 'essay']),
   text: z.string().min(1),
   options: z.array(z.string()).optional(),
-  correctAnswer: z.string().min(1),
+  correctAnswer: z.string().optional(),
   points: z.number().int().positive().default(1),
+  isAutoGrade: z.boolean().default(false),
+  rubric: z.string().optional(),
 });
 
 const examBuilderSchema = z.object({

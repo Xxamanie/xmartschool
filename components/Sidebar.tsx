@@ -74,15 +74,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       // Standard School Admin / Teacher items
       return [
         { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+        { to: '/students', icon: Users, label: 'Students' },
         { to: '/teachers', icon: UserPlus, label: 'Teachers' },
         { to: '/classes', icon: Layers, label: 'Classes' },
-        { to: '/students', icon: Users, label: 'Students' },
-        { to: '/attendance', icon: CalendarCheck, label: 'Attendance' },
         { to: '/subjects', icon: BookOpen, label: 'Subjects' },
-        { to: '/scheme-of-work', icon: FileText, label: 'Scheme of Work' },
+        { to: '/attendance', icon: CalendarCheck, label: 'Attendance' },
         { to: '/assessments', icon: ClipboardCheck, label: 'Assessments' },
         { to: '/results', icon: TrendingUp, label: 'Results' },
-        { to: '/live-classes', icon: CalendarCheck, label: 'Live Classes' },
+        { to: '/scheme-of-work', icon: FileText, label: 'Scheme of Work' },
+        { to: '/live-classes', icon: Globe, label: 'Live Classes' },
       ];
     }
   };

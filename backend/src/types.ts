@@ -90,11 +90,13 @@ export interface ResultData {
 
 export interface ExamQuestionInput {
   id?: string;
-  type: 'multiple-choice' | 'true-false' | 'short-answer' | 'essay';
+  type: 'multiple_choice' | 'true_false' | 'short_answer' | 'essay';
   text: string;
   options?: string[];
-  correctAnswer: string;
+  correctAnswer?: string;
   points: number;
+  isAutoGrade?: boolean;
+  rubric?: string;
 }
 
 export interface ExamQuestion extends ExamQuestionInput {

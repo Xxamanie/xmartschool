@@ -14,6 +14,8 @@ import {
   ClassMaster as PrismaClassMasterModel,
 } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { gradeEssay } from './aiGradingService';
+import { analyzeProctorFrame } from './aiProctoringService';
 import {
   ActiveExam,
   ApiResponse,
@@ -141,8 +143,10 @@ const mapExamQuestionModel = (question: PrismaExamQuestionModel): ExamQuestion =
   type: question.type as ExamQuestion['type'],
   text: question.text,
   options: (question.options as string[] | null) ?? undefined,
-  correctAnswer: question.correctAnswer,
+  correctAnswer: question.correctAnswer ?? '',
   points: question.points,
+  isAutoGrade: question.isAutoGrade,
+  rubric: question.rubric ?? undefined,
 });
 
 const mapExamModel = (exam: PrismaExamModel & { questions: PrismaExamQuestionModel[] }): ActiveExam => ({
@@ -558,8 +562,10 @@ export const appService = {
       type: question.type,
       text: question.text,
       options: question.options ?? undefined,
-      correctAnswer: question.correctAnswer,
+      correctAnswer: question.correctAnswer ?? undefined,
       points: question.points,
+      isAutoGrade: question.isAutoGrade ?? false,
+      rubric: question.rubric ?? undefined,
     }));
 
     if (examId) {
@@ -675,19 +681,40 @@ export const appService = {
   ): Promise<ApiResponse<boolean>> => {
     await wait(100);
     const exam = examId
-      ? await prisma.exam.findUnique({ where: { id: examId } })
-      : await prisma.exam.findFirst({ where: { status: 'active' } });
+      ? await prisma.exam.findUnique({ where: { id: examId }, include: { questions: true } })
+      : await prisma.exam.findFirst({ where: { status: 'active' }, include: { questions: true } });
 
     if (!exam) {
       return failure('No active exam found', false as unknown as boolean);
     }
+
+    let calculatedScore = 0;
+
+    for (const question of exam.questions) {
+      const answer = answers[question.id];
+      if (!answer) continue;
+
+      if (question.type !== 'essay') {
+        if (answer === question.correctAnswer) {
+          calculatedScore += question.points;
+        }
+      } else if (question.isAutoGrade) {
+        // Grade essay
+        const { score: aiScore } = await gradeEssay(question.text, answer, question.rubric || '', question.points);
+        calculatedScore += aiScore;
+      }
+      // For manual essays, score remains 0 or as sent, but since we're calculating, perhaps add manual later
+    }
+
+    // Use calculated score instead of passed score
+    const finalScore = calculatedScore;
 
     await prisma.examSession.upsert({
       where: { examId_studentId: { examId: exam.id, studentId } },
       update: {
         status: 'submitted',
         progress: 100,
-        score,
+        score: finalScore,
         endTime: new Date(),
         answers: toInputJson(answers),
       },
@@ -696,7 +723,7 @@ export const appService = {
         studentId,
         status: 'submitted',
         progress: 100,
-        score,
+        score: finalScore,
         startTime: new Date(),
         endTime: new Date(),
         answers: toInputJson(answers),
@@ -778,8 +805,22 @@ export const appService = {
     frameData: string,
   ): Promise<ApiResponse<{ stored: boolean }>> => {
     await wait(20);
-    // For now we acknowledge receipt; storage/analysis can be added later
     console.log('[proctor-frame]', examId, studentId, frameData.slice(0, 64));
+
+    // Analyze frame for anomalies
+    const analysis = await analyzeProctorFrame(frameData);
+    if (analysis.anomaly) {
+      // Create alert
+      await prisma.proctoringAlert.create({
+        data: {
+          examId,
+          studentId,
+          description: analysis.description,
+        },
+      });
+      console.log('[proctor-alert]', examId, studentId, analysis.description);
+    }
+
     return success({ stored: true });
   },
 
