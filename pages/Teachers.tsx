@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../services/api';
 import { User, UserRole } from '../types';
 import { useAuth } from '../context/AuthContext';
@@ -187,6 +188,7 @@ const InlineTeacherForm: React.FC<InlineTeacherFormProps> = ({ teacher, onSubmit
 export const Teachers: React.FC = () => {
   const { user } = useAuth();
   const isAdmin = user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN;
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [teachers, setTeachers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -222,6 +224,17 @@ export const Teachers: React.FC = () => {
     };
     fetchTeachers();
   }, [user]);
+
+  useEffect(() => {
+    const quick = searchParams.get('quick');
+    if (!quick) return;
+    if (quick === 'create-teacher' && isAdmin) {
+      setShowAddModal(true);
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete('quick');
+    setSearchParams(next, { replace: true });
+  }, [isAdmin, searchParams, setSearchParams]);
 
   const handleSort = (key: keyof User) => {
     if (!isAdmin) return;

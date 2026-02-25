@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Request, Response, Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { appService } from '../../services/appService';
@@ -24,13 +24,21 @@ const studentSchema = z.object({
   studentCode: z.string().min(1),
 });
 
+const verifyStudent = async (req: Request, res: Response) => {
+  const { schoolCode, studentCode } = studentSchema.parse(req.body);
+  const response = await appService.verifyStudent(schoolCode, studentCode);
+  res.json(response);
+};
+
 router.post(
   '/student',
-  asyncHandler(async (req, res) => {
-    const { schoolCode, studentCode } = studentSchema.parse(req.body);
-    const response = await appService.verifyStudent(schoolCode, studentCode);
-    res.json(response);
-  }),
+  asyncHandler(verifyStudent),
+);
+
+// Backward-compatible alias used by older frontend clients.
+router.post(
+  '/verify-student',
+  asyncHandler(verifyStudent),
 );
 
 const updateSchema = z.object({

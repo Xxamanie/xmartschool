@@ -21,7 +21,7 @@ const createSchema = z.object({
 router.post(
   '/',
   asyncHandler(async (req, res) => {
-    const payload = createSchema.parse(req.body);
+    const payload = createSchema.parse(req.body) as { name: string; teacherId?: string };
     const response = await appService.createSubject(payload);
     res.json(response);
   }),

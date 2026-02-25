@@ -49,7 +49,30 @@ export const Results: React.FC = () => {
   const [allSubjects, setAllSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingRemarkId, setLoadingRemarkId] = useState<string | null>(null);
+  const [bulkGeneratingRemarks, setBulkGeneratingRemarks] = useState(false);
+  const [publishingAll, setPublishingAll] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const geminiApiKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
+  const aiEnabled = !!geminiApiKey;
+  const logAIActivity = async (payload: {
+    action: string;
+    status: 'success' | 'failed' | 'fallback';
+    metadata?: Record<string, unknown>;
+  }) => {
+    try {
+      await api.logAIActivity({
+        action: payload.action,
+        scope: 'results',
+        status: payload.status,
+        actorId: user?.id,
+        actorRole: user?.role,
+        schoolId: user?.schoolId,
+        metadata: payload.metadata,
+      });
+    } catch (error) {
+      console.error('Failed to log AI activity', error);
+    }
+  };
   
   // Report Card State
   const [selectedResult, setSelectedResult] = useState<ResultData | null>(null);
@@ -90,27 +113,124 @@ export const Results: React.FC = () => {
     fetchData();
   }, []);
 
+  const buildFallbackRemark = (result: ResultData): string => {
+    if (result.average >= 85) return 'Outstanding consistency and mastery. Keep stretching for excellence.';
+    if (result.average >= 70) return 'Strong performance with good discipline. Push for deeper mastery.';
+    if (result.average >= 50) return 'Fair progress. Focus revision and consistency will lift results.';
+    return 'Needs urgent support and structured practice. Improvement is achievable with daily effort.';
+  };
+
+  const generateRemarkText = async (result: ResultData): Promise<string> => {
+    if (!aiEnabled) return buildFallbackRemark(result);
+
+    const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+    const prompt = `Generate a concise (max 15 words), professional, and encouraging report card remark for a high school student named ${result.studentName} who scored an average of ${result.average}%. The grade is ${result.grade}.`;
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+    });
+    return response.text || buildFallbackRemark(result);
+  };
+
   const handleGenerateRemark = async (result: ResultData) => {
     setLoadingRemarkId(result.id);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      
-      const prompt = `Generate a concise (max 15 words), professional, and encouraging report card remark for a high school student named ${result.studentName} who scored an average of ${result.average}%. The grade is ${result.grade}.`;
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: prompt,
-      });
-
-      const remark = response.text;
-      
-      // Update local state
+      const remark = await generateRemarkText(result);
       setResults(prev => prev.map(r => r.id === result.id ? { ...r, remarks: remark } : r));
+      await logAIActivity({
+        action: 'generate_single_remark',
+        status: aiEnabled ? 'success' : 'fallback',
+        metadata: {
+          resultId: result.id,
+          studentId: result.studentId,
+          subjectName: result.subjectName || '',
+          grade: result.grade,
+        },
+      });
     } catch (error) {
       console.error("Failed to generate remark", error);
+      await logAIActivity({
+        action: 'generate_single_remark',
+        status: 'failed',
+        metadata: {
+          resultId: result.id,
+          studentId: result.studentId,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        },
+      });
       alert("Failed to generate remark. Please try again.");
     } finally {
       setLoadingRemarkId(null);
+    }
+  };
+
+  const handleGenerateMissingRemarks = async () => {
+    const targets = filteredAndSortedResults.filter(r => !r.remarks || !r.remarks.trim());
+    if (targets.length === 0) {
+      alert('All visible results already have remarks.');
+      return;
+    }
+    setBulkGeneratingRemarks(true);
+    try {
+      const updates: Record<string, string> = {};
+      for (const item of targets.slice(0, 100)) {
+        updates[item.id] = await generateRemarkText(item);
+      }
+      setResults(prev => prev.map(r => updates[r.id] ? { ...r, remarks: updates[r.id] } : r));
+      await logAIActivity({
+        action: 'generate_bulk_remarks',
+        status: aiEnabled ? 'success' : 'fallback',
+        metadata: {
+          generatedCount: Object.keys(updates).length,
+          visibleCount: filteredAndSortedResults.length,
+        },
+      });
+    } catch (error) {
+      console.error('Bulk AI remark generation failed', error);
+      await logAIActivity({
+        action: 'generate_bulk_remarks',
+        status: 'failed',
+        metadata: {
+          visibleCount: filteredAndSortedResults.length,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        },
+      });
+      alert('Bulk remark generation failed. Please retry.');
+    } finally {
+      setBulkGeneratingRemarks(false);
+    }
+  };
+
+  const handlePublishAll = async () => {
+    if (!window.confirm('Publish all currently visible results?')) return;
+    setPublishingAll(true);
+    try {
+      const res = await api.publishResults(filteredAndSortedResults);
+      if (!res.ok) throw new Error(res.message || 'Publish failed');
+      setResults(prev => prev.map(r =>
+        filteredAndSortedResults.some(v => v.id === r.id) ? { ...r, status: 'Published' } : r
+      ));
+      await logAIActivity({
+        action: 'publish_visible_results',
+        status: 'success',
+        metadata: {
+          publishedCount: filteredAndSortedResults.length,
+        },
+      });
+      alert('Results published successfully.');
+    } catch (error) {
+      console.error('Publish all failed', error);
+      await logAIActivity({
+        action: 'publish_visible_results',
+        status: 'failed',
+        metadata: {
+          attemptedCount: filteredAndSortedResults.length,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        },
+      });
+      alert('Failed to publish results.');
+    } finally {
+      setPublishingAll(false);
     }
   };
 
@@ -264,15 +384,41 @@ export const Results: React.FC = () => {
           <p className="text-gray-500">Analyze performance and publish termly reports.</p>
         </div>
         <div className="flex gap-3">
+          <button
+            onClick={handleGenerateMissingRemarks}
+            disabled={bulkGeneratingRemarks}
+            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors disabled:opacity-70"
+            title="Generate remarks for rows with missing remarks"
+          >
+            {bulkGeneratingRemarks ? <Loader2 size={16} className="animate-spin" /> : <Wand2 size={16} />}
+            {bulkGeneratingRemarks ? 'Generating...' : 'Auto-Generate Remarks'}
+          </button>
           <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
             <Download size={16} />
             Export CSV
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors">
-            <FileText size={16} />
-            Publish All
+          <button
+            onClick={handlePublishAll}
+            disabled={publishingAll}
+            className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors disabled:opacity-70"
+          >
+            {publishingAll ? <Loader2 size={16} className="animate-spin" /> : <FileText size={16} />}
+            {publishingAll ? 'Publishing...' : 'Publish Visible'}
           </button>
         </div>
+      </div>
+
+      <div className={`rounded-xl border p-4 text-sm flex items-center justify-between ${aiEnabled ? 'bg-green-50 border-green-200 text-green-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
+        <div className="flex items-center gap-2">
+          <Wand2 size={16} />
+          <span className="font-medium">{aiEnabled ? 'AI automation online' : 'AI fallback mode'}</span>
+          <span className="opacity-80">
+            {aiEnabled ? 'Gemini-powered remarks and automation are active.' : 'Set VITE_GEMINI_API_KEY to enable advanced AI generation.'}
+          </span>
+        </div>
+        {!aiEnabled && (
+          <span className="text-xs font-semibold px-2 py-1 bg-white/70 rounded border border-amber-300">Template Remarks Enabled</span>
+        )}
       </div>
 
       {loading ? (

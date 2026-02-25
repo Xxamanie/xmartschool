@@ -1,14 +1,15 @@
 import React from 'react';
-import { Bell, Search, Menu, LogOut } from 'lucide-react';
+import { Bell, Search, Menu, LogOut, Command } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useClickSound } from '../src/utils/useClickSound';
 import { UserRole } from '../types';
 
 interface HeaderProps {
   toggleSidebar?: () => void;
+  openCommandPalette?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
+export const Header: React.FC<HeaderProps> = ({ toggleSidebar, openCommandPalette }) => {
   const { user, isImpersonating, logout } = useAuth();
   const { playSound } = useClickSound();
   const isStudent = user?.role === UserRole.STUDENT;
@@ -24,14 +25,20 @@ export const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
             <Menu size={20} />
           </button>
         )}
-        <div className="hidden md:flex items-center gap-2 text-gray-400 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-200 w-64">
+        <button
+          onClick={() => {
+            playSound();
+            openCommandPalette?.();
+          }}
+          className="hidden md:flex items-center gap-2 text-gray-400 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-200 w-80 hover:border-gray-300 transition-colors"
+        >
           <Search size={16} />
-          <input 
-            type="text" 
-            placeholder="Search..." 
-            className="bg-transparent border-none outline-none text-sm text-gray-600 w-full placeholder-gray-400"
-          />
-        </div>
+          <span className="text-sm text-gray-500 flex-1 text-left">Find pages, actions, and tools...</span>
+          <span className="inline-flex items-center gap-1 text-[11px] text-gray-500 border border-gray-300 rounded px-2 py-0.5">
+            <Command size={12} />
+            K
+          </span>
+        </button>
       </div>
 
       <div className="flex items-center gap-6">

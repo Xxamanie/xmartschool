@@ -42,7 +42,21 @@ const examBuilderSchema = z.object({
 router.post(
   '/builder',
   asyncHandler(async (req, res) => {
-    const payload = examBuilderSchema.parse(req.body);
+    const payload = examBuilderSchema.parse(req.body) as {
+      examId?: string;
+      teacherId?: string;
+      title: string;
+      questions: {
+        id?: string;
+        type: 'multiple_choice' | 'true_false' | 'short_answer' | 'essay';
+        text: string;
+        options?: string[];
+        correctAnswer?: string;
+        points: number;
+        isAutoGrade: boolean;
+        rubric?: string;
+      }[];
+    };
     const response = await appService.updateExamQuestions(
       payload.questions,
       payload.title,

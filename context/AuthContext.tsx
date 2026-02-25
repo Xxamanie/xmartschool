@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, PropsWithChildre
 import { User, UserRole } from '../types';
 import { api } from '../services/api';
 import { supabaseAuthService } from '../src/services/supabaseAuthService';
+import { getSupabaseClient } from '../src/services/supabaseClient';
 
 interface AuthContextType {
   user: User | null;
@@ -33,16 +34,23 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
   const login = async (email: string, password?: string) => {
     setIsLoading(true);
     try {
-      if (password) {
-        const supabaseUser = await supabaseAuthService.login(email, password);
-        setUser(supabaseUser);
-      } else {
-        const response = await api.login(email);
-        if (response.ok) {
-          setUser(response.data);
-        } else {
-          throw new Error('Login failed');
+      const hasSupabase = !!getSupabaseClient();
+
+      if (password && hasSupabase) {
+        try {
+          const supabaseUser = await supabaseAuthService.login(email, password);
+          setUser(supabaseUser);
+          return;
+        } catch (supabaseError) {
+          console.warn('Supabase login failed, falling back to backend auth:', supabaseError);
         }
+      }
+
+      const response = await api.login(email, password);
+      if (response.ok) {
+        setUser(response.data);
+      } else {
+        throw new Error(response.message || 'Login failed');
       }
     } catch (error) {
       console.error(error);

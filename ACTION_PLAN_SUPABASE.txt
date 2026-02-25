@@ -1,101 +1,36 @@
-IMMEDIATE ACTION PLAN - Supabase Migration Fix
-================================================
+SUPABASE ACTION PLAN (CURRENT)
+==============================
 
-STATUS: ✅ COMPLETED LOCALLY
-- Updated .env files with URL-encoded DATABASE_URL
-- Verified Prisma schema syncs with Supabase (✅ successful)
-- All local configuration is ready
+STATUS
+------
+Supabase is treated as infrastructure for PostgreSQL (and optional frontend auth session support).
+Primary application data access is through backend API + Prisma.
 
-NEXT STEPS (You must do these):
-================================
+CHECKLIST
+---------
+1) Verify backend env:
+   - DATABASE_URL is set correctly in deployment platform
+   - NODE_ENV=production
+   - FRONTEND_URL matches deployed frontend origin
 
-STEP 1: UPDATE RENDER ENVIRONMENT (5 minutes)
-─────────────────────────────────────────────
-1. Go to https://render.com
-2. Select service: xmartschool-backend
-3. Click "Environment" in left menu
-4. Find/Update these variables:
+2) Verify backend health:
+   - GET /api/health returns ok=true
 
-   DATABASE_URL
-   ────────────
-   OLD: postgresql://postgres:Hard2die@427333@...
-   NEW: postgresql://postgres:Hard2die%40427333@...
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-        Note the %40 instead of @ in password
+3) Verify database schema:
+   - Run prisma generate during build
+   - Run prisma migrate deploy for production rollout
 
-   PORT = 4000
-   NODE_ENV = production
+4) Verify frontend config:
+   - VITE_API_BASE_URL points to backend /api
+   - Supabase vars are set only if auth session integration is required
 
-5. Click "Save Changes"
-6. Service will auto-restart (watch the logs)
+5) Run smoke tests:
+   - Staff login
+   - Student verification
+   - Student/subject CRUD
+   - Attendance read/write
 
-STEP 2: VERIFY BACKEND WORKS (2 minutes)
-──────────────────────────────────────────
-After Render finishes restarting, test:
-
-1. Browser or terminal:
-   https://xmartschool.onrender.com/api/health
-
-2. Expected response:
-   {"ok":true,"data":{"status":"healthy"}}
-
-3. If fails, check Render logs for errors
-
-STEP 3: TEST DATA PERSISTENCE (5 minutes)
-──────────────────────────────────────────
-1. Open frontend: https://xmartschool.firebaseapp.com
-2. Create a new school or student
-3. Refresh the page
-4. Data should still be there ✅
-
-CROSS-DEVICE TEST:
-1. Data created on phone
-2. Open app on different browser/device
-3. Should see same data (Supabase is now the DB)
-
-STEP 4: PUSH CODE CHANGES (1 minute)
-─────────────────────────────────────
-If everything works:
-1. Commit updated .env files
-2. Push to master branch
-3. GitHub Actions will auto-deploy frontend to Firebase
-
-CURRENT SETUP:
-==============
-✅ Frontend: Firebase Hosting
-✅ Backend: Render (Node.js/Express)
-✅ Database: Supabase PostgreSQL
-✅ API: https://xmartschool.onrender.com/api
-✅ Prisma: Synced with Supabase schema
-
-IMPORTANT NOTES:
-================
-- @ symbol in password MUST be URL-encoded as %40
-- Prisma migrations run automatically when Render builds
-- Data is persistent (no longer stored in memory)
-- All devices access same database
-
-TROUBLESHOOTING:
-================
-If backend won't start:
-→ Check Render logs at dashboard
-→ Verify DATABASE_URL has %40 not @
-→ Try "Manual Deploy" button in Render
-
-If frontend can't connect:
-→ Check browser console for errors
-→ Verify /api/health endpoint works
-→ Check CORS in backend/src/server.ts
-
-If data not persisting:
-→ Verify Supabase database is accessible
-→ Check Prisma schema is correct (npx prisma validate)
-→ Check Render logs show "Prisma Client generated"
-
-TIME ESTIMATE: 15 minutes total
-DIFFICULTY: Easy (just environment variable update)
-
-SEE ALSO:
-- RENDER_SUPABASE_SETUP.md (detailed guide)
-- DEPLOYMENT_SETUP.md (complete setup)
-- Check backend/.env for current configuration
+NOTES
+-----
+- Do not use this file for storing credentials.
+- Keep all secrets in deployment environment variable managers.

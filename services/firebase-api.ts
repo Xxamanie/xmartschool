@@ -1,115 +1,80 @@
-import { supabase } from '../src/services/supabaseClient';
-import { Student, Subject, User, Assessment, School } from '../types';
+import { api } from './api';
+import { Assessment, ApiResponse, School, Student, Subject, User } from '../types';
 
-interface ApiResponse<T> {
-  ok: boolean;
-  data: T;
-  message?: string;
-}
+const unsupported = <T>(message: string, fallback: T): ApiResponse<T> => ({
+  ok: false,
+  data: fallback,
+  message,
+});
 
-const isoNow = () => new Date().toISOString();
-
-const handle = async <T>(promise: Promise<{ data: T | null; error: any }>): Promise<ApiResponse<T>> => {
-  const { data, error } = await promise;
-  if (error || !data) return { ok: false, data: ([] as unknown) as T, message: error?.message || 'Request failed' };
-  return { ok: true, data };
-};
-
+// Legacy compatibility layer. Firebase-specific implementations were removed.
 export const firebaseStudentsApi = {
-  getAllStudents: () => handle<Student[]>(supabase.from('students').select('*')),
-  addStudent: async (student: Omit<Student, 'id'>): Promise<ApiResponse<Student>> => {
-    const payload = { ...student, createdAt: isoNow(), updatedAt: isoNow() };
-    const { data, error } = await supabase.from('students').insert(payload).select().single();
-    if (error || !data) return { ok: false, data: {} as Student, message: error?.message };
-    return { ok: true, data };
-  },
-  updateStudent: async (id: string, updates: Partial<Student>): Promise<ApiResponse<Student>> => {
-    const { data, error } = await supabase.from('students').update({ ...updates, updatedAt: isoNow() }).eq('id', id).select().single();
-    if (error || !data) return { ok: false, data: {} as Student, message: error?.message };
-    return { ok: true, data };
-  },
-  deleteStudent: async (id: string): Promise<ApiResponse<boolean>> => {
-    const { error } = await supabase.from('students').delete().eq('id', id);
-    if (error) return { ok: false, data: false, message: error.message };
-    return { ok: true, data: true, message: 'Student deleted successfully' };
-  },
+  getAllStudents: () => api.getStudents(),
+  addStudent: (student: Omit<Student, 'id'>): Promise<ApiResponse<Student>> =>
+    api.createStudent(student as Omit<Student, 'id' | 'enrollmentDate'>),
+  updateStudent: (id: string, updates: Partial<Student>) => api.updateStudent(id, updates),
+  deleteStudent: (id: string) => api.deleteStudent(id),
   subscribeToStudents: (callback: (students: Student[]) => void) => {
-    const channel = supabase.channel('students-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'students' }, async () => {
-        const { data } = await supabase.from('students').select('*');
-        callback(data || []);
+    let active = true;
+    api.getStudents()
+      .then((response) => {
+        if (active && response.ok) callback(response.data);
       })
-      .subscribe();
-    return () => supabase.removeChannel(channel);
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
   },
 };
 
 export const firebaseSubjectsApi = {
-  getAllSubjects: () => handle<Subject[]>(supabase.from('subjects').select('*')),
-  addSubject: async (subject: Omit<Subject, 'id'>): Promise<ApiResponse<Subject>> => {
-    const payload = { ...subject, createdAt: isoNow(), updatedAt: isoNow() };
-    const { data, error } = await supabase.from('subjects').insert(payload).select().single();
-    if (error || !data) return { ok: false, data: {} as Subject, message: error?.message };
-    return { ok: true, data };
-  },
+  getAllSubjects: () => api.getSubjects(),
+  addSubject: (subject: Omit<Subject, 'id'>): Promise<ApiResponse<Subject>> =>
+    api.createSubject({ name: subject.name, teacherId: subject.teacherId || undefined }),
   getSubjectsByTeacher: async (teacherId: string): Promise<ApiResponse<Subject[]>> => {
-    const { data, error } = await supabase.from('subjects').select('*').eq('teacherId', teacherId);
-    if (error || !data) return { ok: false, data: [], message: error?.message };
-    return { ok: true, data };
+    const result = await api.getSubjects();
+    if (!result.ok) return result;
+    return { ok: true, data: result.data.filter((subject) => subject.teacherId === teacherId) };
   },
 };
 
 export const firebaseUsersApi = {
-  getAllUsers: () => handle<User[]>(supabase.from('users').select('*')),
-  addUser: async (user: Omit<User, 'id'>): Promise<ApiResponse<User>> => {
-    const payload = { ...user, createdAt: isoNow(), updatedAt: isoNow() };
-    const { data, error } = await supabase.from('users').insert(payload).select().single();
-    if (error || !data) return { ok: false, data: {} as User, message: error?.message };
-    return { ok: true, data };
-  },
-  updateUser: async (id: string, updates: Partial<User>): Promise<ApiResponse<User>> => {
-    const { data, error } = await supabase.from('users').update({ ...updates, updatedAt: isoNow() }).eq('id', id).select().single();
-    if (error || !data) return { ok: false, data: {} as User, message: error?.message };
-    return { ok: true, data };
-  },
-  deleteUser: async (id: string): Promise<ApiResponse<boolean>> => {
-    const { error } = await supabase.from('users').delete().eq('id', id);
-    if (error) return { ok: false, data: false, message: error.message };
-    return { ok: true, data: true, message: 'User deleted successfully' };
-  },
+  getAllUsers: () => api.getAllUsers(),
+  addUser: (user: Omit<User, 'id'>) => api.createTeacher(user),
+  updateUser: (id: string, updates: Partial<User>) => api.updateTeacher(id, updates),
+  deleteUser: (id: string) => api.deleteTeacher(id),
 };
 
 export const firebaseAssessmentsApi = {
-  getAllAssessments: () => handle<Assessment[]>(supabase.from('assessments').select('*')),
+  getAllAssessments: () => api.getAssessments(),
   addAssessment: async (assessment: Omit<Assessment, 'id'>): Promise<ApiResponse<Assessment>> => {
-    const payload = { ...assessment, createdAt: isoNow(), updatedAt: isoNow() };
-    const { data, error } = await supabase.from('assessments').insert(payload).select().single();
-    if (error || !data) return { ok: false, data: {} as Assessment, message: error?.message };
-    return { ok: true, data };
+    const result = await api.saveAssessments([assessment as Assessment]);
+    if (!result.ok) {
+      return { ok: false, data: {} as Assessment, message: result.message || 'Failed to save assessment' };
+    }
+    return { ok: true, data: assessment as Assessment, message: result.message };
   },
-  getAssessmentsByTeacher: async (teacherId: string): Promise<ApiResponse<Assessment[]>> => {
-    const { data, error } = await supabase.from('assessments').select('*').eq('teacherId', teacherId);
-    if (error || !data) return { ok: false, data: [], message: error?.message };
-    return { ok: true, data };
+  getAssessmentsByTeacher: async (_teacherId: string): Promise<ApiResponse<Assessment[]>> => {
+    // Assessment objects do not currently include teacherId in the shared frontend type.
+    return api.getAssessments();
   },
 };
 
 export const firebaseSchoolsApi = {
-  getAllSchools: () => handle<School[]>(supabase.from('schools').select('*')),
-  addSchool: async (school: Omit<School, 'id'>): Promise<ApiResponse<School>> => {
-    const payload = { ...school, createdAt: isoNow(), updatedAt: isoNow() };
-    const { data, error } = await supabase.from('schools').insert(payload).select().single();
-    if (error || !data) return { ok: false, data: {} as School, message: error?.message };
-    return { ok: true, data };
-  },
+  getAllSchools: () => api.getSchools(),
+  addSchool: (school: Omit<School, 'id'>) =>
+    api.createSchool({
+      name: school.name,
+      code: school.code,
+      region: school.region,
+      adminName: school.adminName,
+      status: school.status,
+    }),
   updateSchool: async (id: string, updates: Partial<School>): Promise<ApiResponse<School>> => {
-    const { data, error } = await supabase.from('schools').update({ ...updates, updatedAt: isoNow() }).eq('id', id).select().single();
-    if (error || !data) return { ok: false, data: {} as School, message: error?.message };
-    return { ok: true, data };
+    if (updates.status) {
+      return api.updateSchoolStatus(id, updates.status);
+    }
+    return unsupported('Only status updates are supported by the current backend API.', {} as School);
   },
-  deleteSchool: async (id: string): Promise<ApiResponse<boolean>> => {
-    const { error } = await supabase.from('schools').delete().eq('id', id);
-    if (error) return { ok: false, data: false, message: error.message };
-    return { ok: true, data: true, message: 'School deleted successfully' };
-  },
+  deleteSchool: (id: string) => api.deleteSchool(id),
 };

@@ -1,5 +1,6 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../services/api';
 import { Student, UserRole, User } from '../types';
 import { useAuth } from '../context/AuthContext';
@@ -9,6 +10,7 @@ import { Search, Filter, MoreHorizontal, Plus, ArrowUp, ArrowDown, ArrowUpDown, 
 export const Students: React.FC = () => {
   const { user } = useAuth();
   const isAdmin = user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN;
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [students, setStudents] = useState<Student[]>([]);
   const [teachers, setTeachers] = useState<User[]>([]);
@@ -60,6 +62,17 @@ export const Students: React.FC = () => {
     };
     fetchData();
   }, [user]);
+
+  useEffect(() => {
+    const quick = searchParams.get('quick');
+    if (!quick) return;
+    if (quick === 'create-student' && isAdmin) {
+      setShowAddModal(true);
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete('quick');
+    setSearchParams(next, { replace: true });
+  }, [isAdmin, searchParams, setSearchParams]);
 
   const handleSort = (key: keyof Student) => {
     if (!isAdmin) return;
@@ -157,9 +170,9 @@ export const Students: React.FC = () => {
   const handleBulkDelete = async () => {
       if (selectedStudents.size === 0) return;
       try {
-          await Promise.all(Array.from(selectedStudents).map(id => api.deleteStudent(id)));
+          await Promise.all((Array.from(selectedStudents) as string[]).map(id => api.deleteStudent(id)));
           setStudents(prev => prev.filter(s => !selectedStudents.has(s.id)));
-          setSelectedStudents(new Set());
+          setSelectedStudents(new Set<string>());
           setBulkDeleteMode(false);
           alert('Students deleted successfully!');
       } catch (e) {
@@ -232,7 +245,7 @@ export const Students: React.FC = () => {
                         onClick={handleBulkDelete}
                         className="inline-flex items-center justify-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium shadow-sm"
                     >
-                        Delete {selectedStudents.length} Selected
+                        Delete {selectedStudents.size} Selected
                     </button>
                 )}
             </div>

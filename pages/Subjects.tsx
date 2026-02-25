@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { BookOpen, Clock, MapPin, Users, MoreVertical, Plus, X, Check, Search, LayoutGrid, CheckCircle2, Tag, UserCheck } from 'lucide-react';
 import { api } from '../services/api';
 import { Subject, UserRole, User } from '../types';
@@ -70,6 +71,7 @@ const NIGERIAN_SUBJECTS: Record<string, string[]> = {
 
 export const Subjects: React.FC = () => {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [teachers, setTeachers] = useState<User[]>([]);
   const [teacherMap, setTeacherMap] = useState<Record<string, string>>({});
@@ -118,6 +120,17 @@ export const Subjects: React.FC = () => {
   useEffect(() => {
     fetchData();
   }, [user]);
+
+  useEffect(() => {
+    const quick = searchParams.get('quick');
+    if (!quick) return;
+    if (quick === 'enroll-subjects' && isAdmin) {
+      setShowEnrollModal(true);
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete('quick');
+    setSearchParams(next, { replace: true });
+  }, [isAdmin, searchParams, setSearchParams]);
 
   const handleToggleSelect = (subjectName: string) => {
       const newSet = new Set(selectedForEnrollment);

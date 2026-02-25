@@ -1,4 +1,4 @@
-import { Student, Subject, ApiResponse, SchemeSubmission, Assessment, ResultData, School, User, UserRole, ActiveExam, ExamQuestion, ExamSession, Announcement, LiveClass } from '../types';
+import { Student, Subject, ApiResponse, SchemeSubmission, Assessment, ResultData, School, User, UserRole, ActiveExam, ExamQuestion, ExamSession, Announcement, LiveClass, AIActivity } from '../types';
 import { MOCK_STUDENTS, MOCK_SUBJECTS, MOCK_SCHEMES, MOCK_ASSESSMENTS, MOCK_RESULTS, MOCK_SCHOOLS, MOCK_USER, MOCK_SUPER_ADMIN } from './mockData';
 import apiClient from '../src/utils/api';
 
@@ -52,6 +52,49 @@ export const api = {
     } catch (error) {
       console.error('Failed to upload proctoring frame:', error);
       return { ok: false, data: { stored: false } as any, message: 'Upload failed' };
+    }
+  },
+
+  getAIActivities: async (params?: {
+    limit?: number;
+    actorId?: string;
+    schoolId?: string;
+    role?: UserRole;
+    status?: AIActivity['status'];
+    scope?: AIActivity['scope'];
+  }): Promise<ApiResponse<AIActivity[]>> => {
+    try {
+      const searchParams = new URLSearchParams();
+      if (params?.limit) searchParams.append('limit', String(params.limit));
+      if (params?.actorId) searchParams.append('actorId', params.actorId);
+      if (params?.schoolId) searchParams.append('schoolId', params.schoolId);
+      if (params?.role) searchParams.append('role', params.role);
+      if (params?.status) searchParams.append('status', params.status);
+      if (params?.scope) searchParams.append('scope', params.scope);
+      const query = searchParams.toString();
+      const { data } = await apiClient.get(`/ai-activity${query ? `?${query}` : ''}`);
+      return { ok: true, data: data || data.data || [] };
+    } catch (error) {
+      console.error('Failed to load AI activity logs:', error);
+      return { ok: false, data: [] };
+    }
+  },
+
+  logAIActivity: async (payload: {
+    action: string;
+    scope?: AIActivity['scope'];
+    status?: AIActivity['status'];
+    actorId?: string;
+    actorRole?: UserRole;
+    schoolId?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<ApiResponse<AIActivity>> => {
+    try {
+      const { data } = await apiClient.post('/ai-activity', payload);
+      return { ok: true, data: data || data.data };
+    } catch (error) {
+      console.error('Failed to log AI activity:', error);
+      return { ok: false, data: {} as AIActivity, message: 'Failed to log AI activity' };
     }
   },
 
@@ -165,10 +208,23 @@ export const api = {
     }
   },
 
-  login: async (email: string): Promise<ApiResponse<User>> => {
+  login: async (email: string, password?: string): Promise<ApiResponse<User>> => {
     try {
-      const { data } = await apiClient.post('/auth/login', { email });
-      return { ok: true, data: data.user };
+      if (password) {
+        const { data } = await apiClient.post('/auth/login', { email, password });
+        return { ok: true, data: data?.data ?? data?.user ?? data };
+      }
+
+      // Legacy/demo fallback path when password auth is not used.
+      await delay(300);
+      if (email === 'creator@smartschool.edu') {
+        return { ok: true, data: MOCK_SUPER_ADMIN };
+      }
+      if (email.includes('admin')) {
+        const adminUser = { ...MOCK_USER, role: UserRole.ADMIN, name: 'School Principal', email, id: 'admin1' };
+        return { ok: true, data: adminUser };
+      }
+      return { ok: true, data: { ...MOCK_USER, email } };
     } catch (error) {
       console.error('Login failed:', error);
       await delay(1000);
@@ -185,11 +241,21 @@ export const api = {
 
   verifyStudent: async (schoolCode: string, studentCode: string): Promise<ApiResponse<User>> => {
     try {
-      const { data } = await apiClient.post('/auth/verify-student', { schoolCode, studentCode });
-      return { ok: true, data: data.user };
+      const { data } = await apiClient.post('/auth/student', { schoolCode, studentCode });
+      return { ok: true, data: data?.data ?? data?.user ?? data };
     } catch (error) {
       console.error('Student verification failed:', error);
       return { ok: false, data: {} as User, message: 'Verification failed' };
+    }
+  },
+
+  updateUserProfile: async (userId: string, updates: Partial<User>): Promise<ApiResponse<User>> => {
+    try {
+      const { data } = await apiClient.put('/auth/profile', { userId, updates });
+      return { ok: true, data: data?.data ?? data?.user ?? data };
+    } catch (error) {
+      console.error('Failed to update user profile:', error);
+      return { ok: false, data: {} as User, message: 'Failed to update profile' };
     }
   },
 
@@ -562,7 +628,7 @@ export const api = {
 
   markAttendance: async (updates: AttendanceRecord[]): Promise<ApiResponse<boolean>> => {
     try {
-      const { data } = await apiClient.post('/attendance/batch', { updates });
+      const { data } = await apiClient.post('/attendance', updates);
       return { ok: true, data, message: 'Attendance marked successfully' };
     } catch (error) {
       console.error('Failed to mark attendance:', error);
@@ -573,8 +639,8 @@ export const api = {
   
   getClassMasters: async (): Promise<ApiResponse<Record<string, string>>> => {
     try {
-      const { data } = await apiClient.get('/class-masters');
-      return { ok: true, data };
+      const { data } = await apiClient.get('/students/form-masters');
+      return { ok: true, data: data?.data ?? data ?? {} };
     } catch (error) {
       console.error('Failed to get class masters:', error);
       await delay(500);
@@ -584,7 +650,7 @@ export const api = {
 
   assignClassMaster: async (grade: string, teacherId: string): Promise<ApiResponse<boolean>> => {
     try {
-      await apiClient.put(`/class-masters/${grade}`, { teacherId });
+      await apiClient.post('/students/form-masters', { grade, teacherId });
       return { ok: true, data: true, message: 'Class master assigned successfully' };
     } catch (error) {
       console.error('Failed to assign class master:', error);
@@ -595,7 +661,7 @@ export const api = {
 
   resetStudentExam: async (examId: string, studentId: string): Promise<ApiResponse<boolean>> => {
     try {
-      await apiClient.delete(`/exam-sessions/${examId}/${studentId}`);
+      await apiClient.post(`/exams/${examId}/sessions/reset`, { studentId });
       return { ok: true, data: true, message: 'Exam reset successfully' };
     } catch (error) {
       console.error('Failed to reset student exam:', error);

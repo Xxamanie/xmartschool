@@ -1,61 +1,25 @@
-# Quick Fix Summary
+# Stabilization Summary
 
-All configuration files have been fixed. Here's what was done:
+## Completed
 
-## ✅ Fixed Files
+- Unified API usage around `services/api.ts`.
+- Kept `services/cloud-api.ts` and `services/firebase-api.ts` as compatibility wrappers only.
+- Fixed auth contract drift (`/api/auth/student`, login fallback behavior).
+- Hardened backend profile updates:
+  - No implicit user creation
+  - No default password creation path
+  - Allowed update fields restricted to safe profile properties
+- Updated setup docs (`README.md`, backend/deployment notes).
+- TypeScript checks pass for frontend and backend.
 
-### Frontend Configuration
-- **`.env.production`** - Added `/api` suffix to backend URL
-- **`.env.development`** - Created for local development with localhost URLs
-- **`.src/utils/api.ts`** - Improved URL handling
+## Current Baseline
 
-### Backend Configuration
-- **`.backend/.env`** - Fixed format with proper `DATABASE_URL=` prefix, added PORT and NODE_ENV
-- **`.backend/.env.development`** - Created for local development
-- **`.backend/src/server.ts`** - Added Firebase Hosting domains to CORS allowlist
+- Frontend and backend compile cleanly.
+- Canonical data flow is backend API -> Prisma -> PostgreSQL.
+- Supabase remains optional for frontend auth session integration.
 
-### Firebase Configuration
-- **`firebase.json`** - Fixed public directory from "y" to "dist"
+## Next Recommended Improvements
 
-### GitHub Actions Workflows
-- **`.github/workflows/firebase-hosting-merge.yml`** - Added Node setup, environment variables
-- **`.github/workflows/firebase-hosting-pull-request.yml`** - Added Node setup, environment variables
-
-## 🔧 What Was Wrong
-
-1. Backend .env was malformed (missing `DATABASE_URL=` prefix)
-2. Frontend API URL was missing `/api` suffix (routing to wrong path)
-3. Backend CORS was blocking Firebase Hosting domains
-4. Firebase.json was pointing to wrong build directory
-5. GitHub Actions workflows weren't setting environment variables for builds
-6. No .env.development files for local testing
-
-## ⚡ Next Steps
-
-1. **Set GitHub Secrets** (see DEPLOYMENT_SETUP.md)
-   - FIREBASE_SERVICE_ACCOUNT_XMART_SCHOOL
-   - VITE_API_BASE_URL
-   - VITE_GEMINI_API_KEY (optional)
-
-2. **Configure Render**
-   - Set DATABASE_URL environment variable
-   - Set NODE_ENV to production
-   - Ensure build command runs successfully
-
-3. **Test Locally**
-   ```bash
-   # Terminal 1: Backend
-   cd backend && npm run dev
-   
-   # Terminal 2: Frontend  
-   npm run dev
-   ```
-
-4. **Push to master** to trigger GitHub Actions deployment
-
-5. **Monitor**
-   - Firebase Hosting console for frontend
-   - Render dashboard for backend
-   - GitHub Actions for build logs
-
-See **DEPLOYMENT_SETUP.md** for detailed instructions.
+1. Add integration tests for auth, students, and attendance routes.
+2. Add request-level auth/authorization middleware for protected endpoints.
+3. Add CI checks for `tsc`, lint, and backend smoke tests.

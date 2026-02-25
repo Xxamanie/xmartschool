@@ -57,6 +57,20 @@ enum QuestionType {
   essay
 }
 
+enum AIActivityScope {
+  assessments
+  results
+  proctoring
+  live_classes
+  general
+}
+
+enum AIActivityStatus {
+  success
+  failed
+  fallback
+}
+
 model School {
   id           String        @id @default(cuid())
   name         String
@@ -72,6 +86,7 @@ model School {
   users        User[]
   students     Student[]
   subjects     Subject[]
+  aiActivities AIActivity[]
 }
 
 model User {
@@ -90,6 +105,7 @@ subjects    Subject[] @relation("SubjectTeacher")
 exams       Exam[]    @relation("ExamTeacher")
 classMasters ClassMaster[]
 liveClasses LiveClass[] @relation("LiveClassTeacher")
+aiActivities AIActivity[]
 }
 
 model Student {
@@ -293,4 +309,23 @@ model ProctoringAlert {
   studentId   String
   description String
   timestamp   DateTime @default(now())
+}
+
+model AIActivity {
+  id        String           @id @default(cuid())
+  action    String
+  scope     AIActivityScope  @default(general)
+  status    AIActivityStatus @default(success)
+  actorId   String?
+  actorRole UserRole?
+  schoolId  String?
+  metadata  Json?
+  createdAt DateTime         @default(now())
+  user      User?            @relation(fields: [actorId], references: [id])
+  school    School?          @relation(fields: [schoolId], references: [id])
+
+  @@index([createdAt])
+  @@index([scope, status])
+  @@index([actorId, createdAt])
+  @@index([schoolId, createdAt])
 }

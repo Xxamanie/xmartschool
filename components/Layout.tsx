@@ -3,18 +3,35 @@ import { Outlet, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
+import { CommandPalette } from './CommandPalette';
 import { Crown, ChevronLeft } from 'lucide-react';
 import { UserRole } from '../types';
 
 export const Layout: React.FC = () => {
   const { isAuthenticated, isImpersonating, stopImpersonating, user } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isCommandOpen, setIsCommandOpen] = useState(false);
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
   const isStudent = user?.role === UserRole.STUDENT;
+
+  React.useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const withMeta = event.metaKey || event.ctrlKey;
+      if (withMeta && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setIsCommandOpen((prev) => !prev);
+      }
+      if (event.key === 'Escape') {
+        setIsCommandOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50 relative">
@@ -50,7 +67,10 @@ export const Layout: React.FC = () => {
           
           {/* Adjust header position if impersonating */}
           <div className={isImpersonating ? 'relative top-12' : ''}>
-             <Header toggleSidebar={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
+             <Header
+               toggleSidebar={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+               openCommandPalette={() => setIsCommandOpen(true)}
+             />
           </div>
           
           <main className={`pt-20 ${!isStudent ? 'md:pl-64' : ''} p-6 min-h-screen transition-all duration-300 ${isImpersonating ? 'mt-12' : ''}`}>
@@ -59,6 +79,7 @@ export const Layout: React.FC = () => {
             </div>
           </main>
       </div>
+      <CommandPalette open={isCommandOpen} onClose={() => setIsCommandOpen(false)} user={user} />
     </div>
   );
 };

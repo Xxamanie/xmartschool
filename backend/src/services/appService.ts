@@ -33,6 +33,7 @@ import {
   UserRole,
   Announcement,
   LiveClass,
+  AIActivity,
 } from '../types';
 
 const wait = async (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -196,6 +197,21 @@ const mapLiveClassModel = (liveClass: any): LiveClass => ({
   status: liveClass.status,
 });
 
+const mapAIActivityModel = (
+  activity: any,
+): AIActivity => ({
+  id: activity.id,
+  action: activity.action,
+  scope: activity.scope as AIActivity['scope'],
+  status: activity.status as AIActivity['status'],
+  actorId: activity.actorId ?? undefined,
+  actorRole: (activity.actorRole as UserRole | null) ?? undefined,
+  actorName: activity.user?.name ?? undefined,
+  schoolId: activity.schoolId ?? undefined,
+  metadata: (activity.metadata as Record<string, unknown> | null) ?? undefined,
+  createdAt: activity.createdAt.toISOString(),
+});
+
 const getDateBounds = (value: string) => {
   const start = toDateOnly(value);
   const end = new Date(start);
@@ -272,27 +288,29 @@ export const appService = {
   updateUserProfile: async (userId: string, updates: Partial<User>): Promise<ApiResponse<User>> => {
     await wait(100);
     try {
+      const existing = await prisma.user.findUnique({ where: { id: userId } });
+      if (!existing) {
+        return failure('User not found', {} as User);
+      }
+
+      const allowedUpdates: Prisma.UserUpdateInput = {};
+      if (typeof updates.name === 'string') allowedUpdates.name = updates.name;
+      if (typeof updates.avatar === 'string') allowedUpdates.avatar = updates.avatar;
+      if (typeof updates.phone === 'string') allowedUpdates.phone = updates.phone;
+      if (typeof updates.bio === 'string') allowedUpdates.bio = updates.bio;
+      if (typeof updates.gender === 'string') allowedUpdates.gender = updates.gender;
+
+      if (Object.keys(allowedUpdates).length === 0) {
+        return success(mapUserModel(existing), 'No profile changes applied');
+      }
+
       const updated = await prisma.user.update({
         where: { id: userId },
-        data: updates,
+        data: allowedUpdates,
       });
       return success(mapUserModel(updated), 'Profile updated successfully');
     } catch (error) {
-      const created = await prisma.user.create({
-        data: {
-          id: userId,
-          name: updates.name || 'Smart School User',
-          role: updates.role || UserRole.TEACHER,
-          email: updates.email,
-          password: 'password', // Default password for new users
-          avatar: updates.avatar,
-          gender: updates.gender,
-          bio: updates.bio,
-          phone: updates.phone,
-          schoolId: updates.schoolId || undefined,
-        },
-      });
-      return success(mapUserModel(created), 'Profile updated successfully');
+      return failure('Failed to update profile', {} as User);
     }
   },
 
@@ -797,6 +815,61 @@ export const appService = {
       data: { title, message, targetAudience, source },
     });
     return success(mapAnnouncementModel(created), 'Announcement created');
+  },
+
+  logAIActivity: async (input: {
+    action: string;
+    scope?: AIActivity['scope'];
+    status?: AIActivity['status'];
+    actorId?: string;
+    actorRole?: UserRole;
+    schoolId?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<ApiResponse<AIActivity>> => {
+    await wait(30);
+    const prismaAny = prisma as any;
+    const created = await prismaAny.aiActivity.create({
+      data: {
+        action: input.action,
+        scope: input.scope ?? 'general',
+        status: input.status ?? 'success',
+        actorId: input.actorId,
+        actorRole: input.actorRole,
+        schoolId: input.schoolId,
+        metadata: input.metadata ? toInputJson(input.metadata) : undefined,
+      },
+      include: { user: true },
+    });
+    return success(mapAIActivityModel(created));
+  },
+
+  getAIActivities: async (filters: {
+    limit?: number;
+    actorId?: string;
+    schoolId?: string;
+    role?: UserRole;
+    status?: AIActivity['status'];
+    scope?: AIActivity['scope'];
+  }): Promise<ApiResponse<AIActivity[]>> => {
+    await wait(30);
+    const prismaAny = prisma as any;
+    const take = Math.min(Math.max(filters.limit ?? 25, 1), 200);
+    const where: any = {};
+
+    if (filters.actorId) where.actorId = filters.actorId;
+    if (filters.schoolId) where.schoolId = filters.schoolId;
+    if (filters.role) where.actorRole = filters.role;
+    if (filters.status) where.status = filters.status;
+    if (filters.scope) where.scope = filters.scope;
+
+    const activities = await prismaAny.aiActivity.findMany({
+      where,
+      include: { user: true },
+      orderBy: { createdAt: 'desc' },
+      take,
+    });
+
+    return success(activities.map(mapAIActivityModel));
   },
 
   recordProctorFrame: async (

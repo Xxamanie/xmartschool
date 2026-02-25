@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { BookOpen, Clock, MapPin, Users, MoreVertical, Plus, X, Check, Search, LayoutGrid, CheckCircle2, Tag, UserCheck } from 'lucide-react';
-import { api } from '../services/api';
-import { Subject, UserRole, User } from '../types';
-import { useAuth } from '../context/AuthContext';
+import { api } from '../../services/api';
+import { Subject, UserRole, User } from '../../types';
+import { useAuth } from '../../context/AuthContext';
 
 // Nigerian Secondary School Curriculum
 const NIGERIAN_SUBJECTS: Record<string, string[]> = {
@@ -134,7 +134,7 @@ export const Subjects: React.FC = () => {
           // If a specific teacher is selected, use that ID. Otherwise, default to current user (Admin/Creator)
           const teacherToAssign: string | undefined = selectedTeacherId || user?.id;
 
-          const promises = Array.from(selectedForEnrollment).map(name => 
+          const promises = (Array.from(selectedForEnrollment) as string[]).map((name) => 
               api.createSubject({ name, teacherId: teacherToAssign })
           );
           await Promise.all(promises);
@@ -142,7 +142,7 @@ export const Subjects: React.FC = () => {
           // Refresh and close
           await fetchData();
           setShowEnrollModal(false);
-          setSelectedForEnrollment(new Set());
+          setSelectedForEnrollment(new Set<string>());
           setSelectedTeacherId("");
       } catch (e) {
           console.error("Failed to enroll subjects", e);

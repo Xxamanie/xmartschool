@@ -182,6 +182,19 @@ export interface ExamSession {
   answers?: Record<string, string>; // Persist draft answers
 }
 
+export interface AIActivity {
+  id: string;
+  action: string;
+  scope: 'assessments' | 'results' | 'proctoring' | 'live_classes' | 'general';
+  status: 'success' | 'failed' | 'fallback';
+  actorId?: string;
+  actorRole?: UserRole;
+  actorName?: string;
+  schoolId?: string;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+}
+
 export interface ApiResponse<T> {
   data: T;
   message?: string;

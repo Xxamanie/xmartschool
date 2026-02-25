@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   BarChart,
   Bar,
@@ -10,10 +11,10 @@ import {
   LineChart,
   Line,
 } from 'recharts';
-import { ArrowDown, ArrowUp, Calendar, Users, BookOpen } from 'lucide-react';
+import { ArrowDown, ArrowUp, Calendar, Users, BookOpen, Sparkles, Rocket, CheckSquare2, Bot, AlertTriangle } from 'lucide-react';
 import { DASHBOARD_STATS } from '../services/mockData';
 import { api } from '../services/api';
-import { Announcement, UserRole } from '../types';
+import { Announcement, AIActivity, UserRole } from '../types';
 import { useAuth } from '../context/AuthContext';
 
 const data = [
@@ -33,9 +34,11 @@ const performanceData = [
 ];
 
 export const Dashboard: React.FC = () => {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [aiActivities, setAiActivities] = useState<AIActivity[]>([]);
   const [createState, setCreateState] = useState({ title: '', message: '', audience: 'all' as Announcement['targetAudience'], saving: false });
 
   useEffect(() => {
@@ -56,6 +59,28 @@ export const Dashboard: React.FC = () => {
     loadAnnouncements();
   }, [user?.role]);
 
+  useEffect(() => {
+    const loadAIActivities = async () => {
+      if (!user) return;
+      const params: {
+        limit: number;
+        actorId?: string;
+        schoolId?: string;
+      } = { limit: 6 };
+
+      if (user.role === UserRole.TEACHER || user.role === UserRole.STUDENT) {
+        params.actorId = user.id;
+      } else if (user.schoolId) {
+        params.schoolId = user.schoolId;
+      }
+
+      const res = await api.getAIActivities(params);
+      if (res.ok) setAiActivities(res.data);
+    };
+
+    loadAIActivities();
+  }, [user]);
+
   const visibleAnnouncements = useMemo(() => {
     if (!user?.role) return announcements;
     if (user.role === UserRole.STUDENT) return announcements.filter(a => ['all', 'students'].includes(a.targetAudience));
@@ -64,6 +89,23 @@ export const Dashboard: React.FC = () => {
   }, [announcements, user?.role]);
 
   const canCreateAnnouncements = user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN;
+  const greetingName = user?.name?.split(' ')[0] || 'there';
+  const quickActions = useMemo(() => {
+    if (user?.role === UserRole.SUPER_ADMIN) {
+      return [
+        { label: 'Open Schools Registry', hint: 'Manage all schools', path: '/schools' },
+        { label: 'Review Platform Settings', hint: 'System configuration', path: '/settings' },
+      ];
+    }
+    if (user?.role === UserRole.STUDENT) {
+      return [{ label: 'Open My Result Slip', hint: 'Check current performance', path: '/student-portal' }];
+    }
+    return [
+      { label: 'Take Attendance', hint: 'Mark today in under 2 minutes', path: '/attendance' },
+      { label: 'Grade Assessments', hint: 'Update continuous assessment', path: '/assessments' },
+      { label: 'Publish Results', hint: 'Release term performance', path: '/results' },
+    ];
+  }, [user?.role]);
 
   const handleCreateAnnouncement = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -102,18 +144,48 @@ export const Dashboard: React.FC = () => {
 
   return (
     <div className="space-y-8">
+      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-900 rounded-2xl p-6 md:p-8 shadow-xl text-white">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+          <div>
+            <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-indigo-200 mb-2">
+              <Sparkles size={14} />
+              Mission Control
+            </p>
+            <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">Welcome back, {greetingName}.</h1>
+            <p className="text-slate-200 mt-2 text-sm md:text-base">Move fast today: command search (`Ctrl/Cmd + K`), quick actions, and live school metrics are ready.</p>
+          </div>
+          <div className="bg-white/10 border border-white/20 rounded-xl p-4 min-w-[220px]">
+            <p className="text-xs uppercase tracking-wider text-indigo-200">Current Cycle</p>
+            <p className="text-lg font-bold mt-1">Term 2, Week 5</p>
+            <p className="text-xs text-slate-200 mt-1">Keep momentum on attendance, grading, and publishing.</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-6">
+          {quickActions.map((action) => (
+            <button
+              key={action.label}
+              onClick={() => navigate(action.path)}
+              className="text-left bg-white/10 hover:bg-white/20 border border-white/20 rounded-xl p-4 transition-colors"
+            >
+              <p className="text-sm font-bold text-white flex items-center gap-2">
+                <Rocket size={14} />
+                {action.label}
+              </p>
+              <p className="text-xs text-slate-200 mt-1">{action.hint}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            Dashboard Overview
-          </h1>
-          <p className="text-gray-500">
-            Welcome back, Alex! Here's what's happening today.
-          </p>
+          <h2 className="text-xl font-bold text-gray-900">Execution Overview</h2>
+          <p className="text-gray-500">Stay on top of performance, communication, and schedule health.</p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-500 bg-white px-3 py-1 rounded-md border shadow-sm">
-            Term 2, Week 5
+          <span className="text-sm text-gray-600 bg-white px-3 py-1 rounded-md border shadow-sm inline-flex items-center gap-2">
+            <CheckSquare2 size={14} />
+            Daily Focus Active
           </span>
         </div>
       </div>
@@ -140,7 +212,7 @@ export const Dashboard: React.FC = () => {
                   <p className="text-sm text-gray-700 leading-relaxed">{a.message}</p>
                   <div className="text-xs text-gray-500 flex gap-2 items-center">
                     <span>Source: {a.source}</span>
-                    <span>•</span>
+                    <span>|</span>
                     <span>{new Date(a.createdAt).toLocaleString()}</span>
                   </div>
                 </div>
@@ -192,6 +264,42 @@ export const Dashboard: React.FC = () => {
                 {createState.saving ? 'Saving...' : 'Publish Announcement'}
               </button>
             </form>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+            <Bot size={18} />
+            AI Activity
+          </h3>
+          <span className="text-xs text-gray-500">Last {aiActivities.length}</span>
+        </div>
+        {aiActivities.length === 0 ? (
+          <p className="text-sm text-gray-500">No AI actions logged yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {aiActivities.map((item) => (
+              <div key={item.id} className="flex items-start justify-between gap-3 p-3 rounded-lg border border-gray-200 bg-gray-50">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">{item.action.replace(/_/g, ' ')}</p>
+                  <p className="text-xs text-gray-500">
+                    {item.scope} • {item.actorName || item.actorRole || 'system'} • {new Date(item.createdAt).toLocaleString()}
+                  </p>
+                </div>
+                <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-full border ${
+                  item.status === 'failed'
+                    ? 'bg-red-50 text-red-700 border-red-200'
+                    : item.status === 'fallback'
+                      ? 'bg-amber-50 text-amber-700 border-amber-200'
+                      : 'bg-green-50 text-green-700 border-green-200'
+                }`}>
+                  {item.status === 'failed' && <AlertTriangle size={12} />}
+                  {item.status}
+                </span>
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -387,7 +495,7 @@ export const Dashboard: React.FC = () => {
                     <span className="flex items-center gap-1">
                       <Calendar size={14} /> {item.time}
                     </span>
-                    <span>•</span>
+                    <span>|</span>
                     <span>{item.room}</span>
                   </div>
                 </div>

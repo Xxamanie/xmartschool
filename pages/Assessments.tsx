@@ -131,6 +131,7 @@ export const Assessments: React.FC = () => {
     difficulty: 'medium'
   });
   const [isGenerating, setIsGenerating] = useState(false);
+  const [autopilotRunning, setAutopilotRunning] = useState(false);
 
   // Import Modal State
   const [showImportModal, setShowImportModal] = useState(false);
@@ -143,6 +144,27 @@ export const Assessments: React.FC = () => {
 
   // Computed Max Total
   const maxTotal = caColumns.reduce((sum, col) => sum + col.maxScore, 0) + config.examMax;
+  const geminiApiKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
+  const aiEnabled = !!geminiApiKey;
+  const logAIActivity = async (payload: {
+    action: string;
+    status: 'success' | 'failed' | 'fallback';
+    metadata?: Record<string, unknown>;
+  }) => {
+    try {
+      await api.logAIActivity({
+        action: payload.action,
+        scope: 'assessments',
+        status: payload.status,
+        actorId: user?.id,
+        actorRole: user?.role,
+        schoolId: user?.schoolId,
+        metadata: payload.metadata,
+      });
+    } catch (error) {
+      console.error('Failed to log AI activity', error);
+    }
+  };
 
   // Helper to lookup student details efficiently
   const studentMap = useMemo(() => {
@@ -549,6 +571,79 @@ export const Assessments: React.FC = () => {
 
   // --- Exam Builder Logic ---
 
+  const generateFallbackQuestions = (): ExamQuestion[] => {
+    return Array.from({ length: builderConfig.count }).map((_, index) => ({
+      id: `fallback-${Date.now()}-${index}`,
+      type: builderConfig.type,
+      text: `${builderConfig.topic} - Question ${index + 1}`,
+      options: builderConfig.type === 'multiple-choice' ? ['Option A', 'Option B', 'Option C', 'Option D'] : [],
+      correctAnswer: builderConfig.type === 'true-false' ? 'True' : builderConfig.type === 'multiple-choice' ? 'Option A' : 'Sample answer',
+      points: builderConfig.type === 'essay' ? 10 : 2
+    }));
+  };
+
+  const generateQuestionsWithAI = async (): Promise<ExamQuestion[]> => {
+    if (!builderConfig.topic) {
+      throw new Error('Please enter a topic to generate questions.');
+    }
+    if (!aiEnabled) {
+      return generateFallbackQuestions();
+    }
+
+    const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+    let formatInstructions = "";
+    if (builderConfig.type === 'multiple-choice') {
+      formatInstructions = "Format: Multiple Choice. Provide exactly 4 distinct options for each question. The 'correctAnswer' must be one of the options.";
+    } else if (builderConfig.type === 'true-false') {
+      formatInstructions = "Format: True/False. The 'correctAnswer' must be exactly 'True' or 'False'. The 'options' array must be empty [].";
+    } else if (builderConfig.type === 'short-answer') {
+      formatInstructions = "Format: Short Answer. Provide a concise correct answer. The 'options' array must be empty [].";
+    } else if (builderConfig.type === 'essay') {
+      formatInstructions = "Format: Essay. Provide key grading points as the 'correctAnswer'. The 'options' array must be empty [].";
+    }
+
+    const prompt = `Create ${builderConfig.count} ${builderConfig.difficulty} level questions about "${builderConfig.topic}". ${formatInstructions}`;
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+      config: {
+        systemInstruction: "You are an expert educational assessment specialist. Generate high-quality exam questions suitable for high school students. Ensure strict adherence to the requested JSON schema and question type constraints.",
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              text: { type: Type.STRING, description: "The question stem" },
+              options: { type: Type.ARRAY, items: { type: Type.STRING }, description: "List of options for MCQs (empty for others)" },
+              correctAnswer: { type: Type.STRING, description: "The correct answer or grading key" },
+              points: { type: Type.NUMBER, description: "Suggested score value" }
+            },
+            required: ["text", "options", "correctAnswer", "points"]
+          }
+        }
+      }
+    });
+
+    let generatedText = response.text;
+    if (!generatedText) throw new Error("No content generated");
+    const jsonMatch = generatedText.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      generatedText = jsonMatch[0];
+    } else {
+      generatedText = generatedText.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/, "");
+    }
+    const generated = JSON.parse(generatedText);
+    return generated.map((q: any) => ({
+      id: `gen-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      type: builderConfig.type,
+      text: q.text,
+      options: q.options || [],
+      correctAnswer: q.correctAnswer,
+      points: q.points || (builderConfig.type === 'essay' ? 10 : 2)
+    }));
+  };
+
   const handleGenerateQuestions = async () => {
     if (!builderConfig.topic) {
       alert('Please enter a topic to generate questions.');
@@ -557,74 +652,90 @@ export const Assessments: React.FC = () => {
     setIsGenerating(true);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      
-      let formatInstructions = "";
-      if (builderConfig.type === 'multiple-choice') {
-        formatInstructions = "Format: Multiple Choice. Provide exactly 4 distinct options for each question. The 'correctAnswer' must be one of the options.";
-      } else if (builderConfig.type === 'true-false') {
-        formatInstructions = "Format: True/False. The 'correctAnswer' must be exactly 'True' or 'False'. The 'options' array must be empty [].";
-      } else if (builderConfig.type === 'short-answer') {
-        formatInstructions = "Format: Short Answer. Provide a concise correct answer. The 'options' array must be empty [].";
-      } else if (builderConfig.type === 'essay') {
-         formatInstructions = "Format: Essay. Provide key grading points as the 'correctAnswer'. The 'options' array must be empty [].";
-      }
-
-      const prompt = `Create ${builderConfig.count} ${builderConfig.difficulty} level questions about "${builderConfig.topic}". ${formatInstructions}`;
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: prompt,
-        config: {
-          systemInstruction: "You are an expert educational assessment specialist. Generate high-quality exam questions suitable for high school students. Ensure strict adherence to the requested JSON schema and question type constraints.",
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                text: { type: Type.STRING, description: "The question stem" },
-                options: { type: Type.ARRAY, items: { type: Type.STRING }, description: "List of options for MCQs (empty for others)" },
-                correctAnswer: { type: Type.STRING, description: "The correct answer or grading key" },
-                points: { type: Type.NUMBER, description: "Suggested score value" }
-              },
-              required: ["text", "options", "correctAnswer", "points"]
-            }
-          }
-        }
-      });
-
-      let generatedText = response.text;
-      if (!generatedText) throw new Error("No content generated");
-      
-      // Robust JSON extraction
-      const jsonMatch = generatedText.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-          generatedText = jsonMatch[0];
-      } else {
-          generatedText = generatedText.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/, "");
-      }
-      
-      const generated = JSON.parse(generatedText);
-      
-      const newQuestions: ExamQuestion[] = generated.map((q: any) => ({
-        id: `gen-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        type: builderConfig.type,
-        text: q.text,
-        options: q.options || [],
-        correctAnswer: q.correctAnswer,
-        points: q.points || (builderConfig.type === 'essay' ? 10 : 2)
-      }));
+      const newQuestions = await generateQuestionsWithAI();
 
       setBuilderQuestions(prev => [...prev, ...newQuestions]);
+      await logAIActivity({
+        action: 'generate_exam_questions',
+        status: aiEnabled ? 'success' : 'fallback',
+        metadata: {
+          topic: builderConfig.topic,
+          count: newQuestions.length,
+          difficulty: builderConfig.difficulty,
+          type: builderConfig.type,
+          examId: selectedExamId || undefined,
+        },
+      });
       setSaveMessage({ type: 'success', text: `Generated ${newQuestions.length} questions successfully!` });
       setTimeout(() => setSaveMessage(null), 3000);
 
     } catch (error) {
       console.error('AI Generation Error:', error);
+      await logAIActivity({
+        action: 'generate_exam_questions',
+        status: 'failed',
+        metadata: {
+          topic: builderConfig.topic,
+          type: builderConfig.type,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        },
+      });
       alert('Failed to generate questions. Please try again.');
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleRunAutopilot = async () => {
+    if (!builderConfig.topic) {
+      alert('Set a topic before running autopilot.');
+      return;
+    }
+    setAutopilotRunning(true);
+    try {
+      const generatedQuestions = await generateQuestionsWithAI();
+      setBuilderQuestions(generatedQuestions);
+      const saveRes = await api.updateExamQuestions(
+        generatedQuestions,
+        builderConfig.topic || 'Untitled Exam',
+        selectedExamId === 'new' ? undefined : selectedExamId,
+        user?.id,
+      );
+      if (!saveRes.ok) throw new Error('Failed to save exam');
+      await api.setExamStatus(saveRes.data.id, 'active');
+      const updatedExam = { ...saveRes.data, status: 'active' as const };
+      if (selectedExamId === 'new') {
+        setAllExams(prev => [...prev, updatedExam]);
+      } else {
+        setAllExams(prev => prev.map(e => e.id === updatedExam.id ? updatedExam : e));
+      }
+      setSelectedExamId(updatedExam.id);
+      await logAIActivity({
+        action: 'run_exam_autopilot',
+        status: aiEnabled ? 'success' : 'fallback',
+        metadata: {
+          topic: builderConfig.topic,
+          generatedCount: generatedQuestions.length,
+          examId: updatedExam.id,
+          activated: true,
+        },
+      });
+      setSaveMessage({ type: 'success', text: `Autopilot complete: generated, saved, and activated "${updatedExam.title}".` });
+      setTimeout(() => setSaveMessage(null), 3500);
+    } catch (error) {
+      console.error('Autopilot failed', error);
+      await logAIActivity({
+        action: 'run_exam_autopilot',
+        status: 'failed',
+        metadata: {
+          topic: builderConfig.topic,
+          examId: selectedExamId || undefined,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        },
+      });
+      setSaveMessage({ type: 'error', text: 'AI autopilot failed. Review config and try again.' });
+    } finally {
+      setAutopilotRunning(false);
     }
   };
 
@@ -1391,6 +1502,34 @@ export const Assessments: React.FC = () => {
                     <>
                       <Wand2 size={18} />
                       Generate with AI
+                    </>
+                  )}
+                </button>
+
+                <div className="flex items-center justify-between text-xs">
+                  <span className={`px-2 py-1 rounded-full font-semibold ${aiEnabled ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                    {aiEnabled ? 'AI Ready' : 'Fallback Mode'}
+                  </span>
+                  <span className="text-gray-500">
+                    {aiEnabled ? 'Gemini automation enabled' : 'Using template generation until API key is set'}
+                  </span>
+                </div>
+
+                <button
+                  onClick={handleRunAutopilot}
+                  disabled={autopilotRunning || isGenerating}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 border border-indigo-300 text-indigo-700 rounded-lg font-semibold hover:bg-indigo-50 transition-colors disabled:opacity-70"
+                  title="Generate questions, save exam, and activate in one action"
+                >
+                  {autopilotRunning ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      Running Autopilot...
+                    </>
+                  ) : (
+                    <>
+                      <BrainCircuit size={16} />
+                      Run AI Autopilot
                     </>
                   )}
                 </button>

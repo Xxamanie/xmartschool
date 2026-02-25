@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../services/api';
 import { Student, UserRole, School } from '../types';
 import { useAuth } from '../context/AuthContext';
@@ -17,6 +17,7 @@ export const Classes: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const isAdmin = user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN;
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [activeTab, setActiveTab] = useState<'primary' | 'junior' | 'senior'>('junior');
   const [students, setStudents] = useState<Student[]>([]);
@@ -106,6 +107,17 @@ export const Classes: React.FC = () => {
     fetchData();
   }, []);
 
+  useEffect(() => {
+    const quick = searchParams.get('quick');
+    if (!quick) return;
+    if (quick === 'create-class' && isAdmin) {
+      setShowCreateClassModal(true);
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete('quick');
+    setSearchParams(next, { replace: true });
+  }, [isAdmin, searchParams, setSearchParams]);
+
   const getStudentCount = (className: string) => {
       return students.filter(s => s.grade === className).length;
   };
@@ -125,7 +137,7 @@ export const Classes: React.FC = () => {
   const handleCreateClass = async (className: string) => {
       if (!user?.schoolId || !className.trim()) return;
       try {
-          const res = await api.createSchoolClass(user.schoolId, className.trim());
+          const res = await api.addClassToSchool(user.schoolId, className.trim());
           if (res.ok) {
               setCustomClasses(prev => ({
                   ...prev,

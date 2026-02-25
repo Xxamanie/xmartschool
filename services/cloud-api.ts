@@ -1,132 +1,76 @@
-import { supabase } from '../src/services/supabaseClient';
-import { Student, Subject, User, UserRole, Assessment, ApiResponse, School } from '../types';
+import { api } from './api';
+import { Assessment, ApiResponse, School, Student, Subject, User } from '../types';
 
-const isoNow = () => new Date().toISOString();
+const unsupported = <T>(message: string, fallback: T): ApiResponse<T> => ({
+  ok: false,
+  data: fallback,
+  message,
+});
 
-const ok = <T>(data: T, message?: string): ApiResponse<T> => ({ ok: true, data, message });
-const fail = <T>(message: string): ApiResponse<T> => ({ ok: false, data: ([] as unknown) as T, message });
-
-// Students
+// Legacy compatibility layer. Cloud/Supabase direct CRUD paths were consolidated into services/api.ts.
 export const cloudStudentsApi = {
-  getAllStudents: async (): Promise<ApiResponse<Student[]>> => {
-    const { data, error } = await supabase.from('students').select('*');
-    if (error || !data) return fail('Failed to fetch students');
-    return ok(data);
-  },
-  createStudent: async (student: Omit<Student, 'id'>): Promise<ApiResponse<Student>> => {
-    const payload = { ...student, createdAt: isoNow(), updatedAt: isoNow() };
-    const { data, error } = await supabase.from('students').insert(payload).select().single();
-    if (error || !data) return fail('Failed to create student');
-    return ok(data, 'Student created successfully');
-  },
-  updateStudent: async (id: string, updates: Partial<Student>): Promise<ApiResponse<Student>> => {
-    const { data, error } = await supabase.from('students').update({ ...updates, updatedAt: isoNow() }).eq('id', id).select().single();
-    if (error || !data) return fail('Student not found');
-    return ok(data, 'Student updated successfully');
-  },
-  deleteStudent: async (id: string): Promise<ApiResponse<boolean>> => {
-    const { error } = await supabase.from('students').delete().eq('id', id);
-    if (error) return fail('Student deletion failed');
-    return ok(true, 'Student deleted successfully');
-  }
+  getAllStudents: () => api.getStudents(),
+  createStudent: (student: Omit<Student, 'id'>): Promise<ApiResponse<Student>> =>
+    api.createStudent(student as Omit<Student, 'id' | 'enrollmentDate'>),
+  updateStudent: (id: string, updates: Partial<Student>) => api.updateStudent(id, updates),
+  deleteStudent: (id: string) => api.deleteStudent(id),
 };
 
-// Subjects
 export const cloudSubjectsApi = {
-  getAllSubjects: async (): Promise<ApiResponse<Subject[]>> => {
-    const { data, error } = await supabase.from('subjects').select('*');
-    if (error || !data) return fail('Failed to fetch subjects');
-    return ok(data);
-  },
-  createSubject: async (subject: Omit<Subject, 'id'>): Promise<ApiResponse<Subject>> => {
-    const payload = { ...subject, createdAt: isoNow(), updatedAt: isoNow() };
-    const { data, error } = await supabase.from('subjects').insert(payload).select().single();
-    if (error || !data) return fail('Failed to create subject');
-    return ok(data, 'Subject created successfully');
-  },
-  updateSubject: async (id: string, updates: Partial<Subject>): Promise<ApiResponse<Subject>> => {
-    const { data, error } = await supabase.from('subjects').update({ ...updates, updatedAt: isoNow() }).eq('id', id).select().single();
-    if (error || !data) return fail('Subject not found');
-    return ok(data, 'Subject updated successfully');
-  }
+  getAllSubjects: () => api.getSubjects(),
+  createSubject: (subject: Omit<Subject, 'id'>): Promise<ApiResponse<Subject>> =>
+    api.createSubject({ name: subject.name, teacherId: subject.teacherId || undefined }),
+  updateSubject: async (_id: string, _updates: Partial<Subject>): Promise<ApiResponse<Subject>> =>
+    unsupported('Subject update endpoint is not exposed by the current backend API.', {} as Subject),
 };
 
-// Users
 export const cloudUsersApi = {
-  getAllUsers: async (): Promise<ApiResponse<User[]>> => {
-    const { data, error } = await supabase.from('users').select('*');
-    if (error || !data) return fail('Failed to fetch users');
-    return ok(data);
-  },
-  createTeacher: async (teacher: Omit<User, 'id'>): Promise<ApiResponse<User>> => {
-    const payload = { ...teacher, role: teacher.role || UserRole.TEACHER, createdAt: isoNow(), updatedAt: isoNow() };
-    const { data, error } = await supabase.from('users').insert(payload).select().single();
-    if (error || !data) return fail('Failed to create teacher');
-    return ok(data, 'Teacher created successfully');
-  },
-  updateTeacher: async (id: string, updates: Partial<User>): Promise<ApiResponse<User>> => {
-    const { data, error } = await supabase.from('users').update({ ...updates, updatedAt: isoNow() }).eq('id', id).select().single();
-    if (error || !data) return fail('Teacher not found');
-    return ok(data, 'Teacher updated successfully');
-  },
-  deleteTeacher: async (id: string): Promise<ApiResponse<boolean>> => {
-    const { error } = await supabase.from('users').delete().eq('id', id);
-    if (error) return fail('Teacher deletion failed');
-    return ok(true, 'Teacher deleted successfully');
-  }
+  getAllUsers: () => api.getAllUsers(),
+  createTeacher: (teacher: Omit<User, 'id'>) => api.createTeacher(teacher),
+  updateTeacher: (id: string, updates: Partial<User>) => api.updateTeacher(id, updates),
+  deleteTeacher: (id: string) => api.deleteTeacher(id),
 };
 
-// Assessments
 export const cloudAssessmentsApi = {
-  getAllAssessments: async (): Promise<ApiResponse<Assessment[]>> => {
-    const { data, error } = await supabase.from('assessments').select('*');
-    if (error || !data) return fail('Failed to fetch assessments');
-    return ok(data);
-  },
+  getAllAssessments: () => api.getAssessments(),
   createAssessment: async (assessment: Omit<Assessment, 'id'>): Promise<ApiResponse<Assessment>> => {
-    const payload = { ...assessment, createdAt: isoNow(), updatedAt: isoNow() };
-    const { data, error } = await supabase.from('assessments').insert(payload).select().single();
-    if (error || !data) return fail('Failed to create assessment');
-    return ok(data, 'Assessment created successfully');
-  }
+    const result = await api.saveAssessments([assessment as Assessment]);
+    if (!result.ok) {
+      return { ok: false, data: {} as Assessment, message: result.message || 'Failed to save assessment' };
+    }
+    return { ok: true, data: assessment as Assessment, message: result.message };
+  },
 };
 
-// Schools
 export const cloudSchoolsApi = {
-  getAllSchools: async (): Promise<ApiResponse<School[]>> => {
-    const { data, error } = await supabase.from('schools').select('*');
-    if (error || !data) return fail('Failed to fetch schools');
-    return ok(data);
-  },
-  createSchool: async (school: Omit<School, 'id'>): Promise<ApiResponse<School>> => {
-    const payload = { ...school, createdAt: isoNow(), updatedAt: isoNow() };
-    const { data, error } = await supabase.from('schools').insert(payload).select().single();
-    if (error || !data) return fail('Failed to create school');
-    return ok(data, 'School created successfully');
-  },
+  getAllSchools: () => api.getSchools(),
+  createSchool: (school: Omit<School, 'id'>) =>
+    api.createSchool({
+      name: school.name,
+      code: school.code,
+      region: school.region,
+      adminName: school.adminName,
+      status: school.status,
+    }),
   updateSchool: async (id: string, updates: Partial<School>): Promise<ApiResponse<School>> => {
-    const { data, error } = await supabase.from('schools').update({ ...updates, updatedAt: isoNow() }).eq('id', id).select().single();
-    if (error || !data) return fail('School not found');
-    return ok(data, 'School updated successfully');
+    if (updates.status) {
+      return api.updateSchoolStatus(id, updates.status);
+    }
+    return unsupported('Only status updates are supported by the current backend API.', {} as School);
   },
-  deleteSchool: async (id: string): Promise<ApiResponse<boolean>> => {
-    const { error } = await supabase.from('schools').delete().eq('id', id);
-    if (error) return fail('School deletion failed');
-    return ok(true, 'School deleted successfully');
-  }
+  deleteSchool: (id: string) => api.deleteSchool(id),
 };
 
-export const setupSyncListener = (callback: (type: string, data: any) => void) => {
-  // Supabase realtime listeners per table
-  const channels = ['students', 'subjects', 'users', 'assessments', 'schools'].map((table) =>
-    supabase.channel(`${table}-sync`).on('postgres_changes', { event: '*', schema: 'public', table }, (payload) => {
-      callback(table, payload.new || payload.old);
-    }).subscribe()
-  );
-  return () => channels.forEach((ch) => supabase.removeChannel(ch));
+export const setupSyncListener = (callback: (type: string, data: unknown) => void) => {
+  let active = true;
+  api.getStudents()
+    .then((result) => {
+      if (active && result.ok) callback('students', result.data);
+    })
+    .catch(() => undefined);
+  return () => {
+    active = false;
+  };
 };
 
-export const initializeCloudData = async () => {
-  // No-op: Supabase should be seeded server-side. This placeholder keeps API compatibility.
-  return true;
-};
+export const initializeCloudData = async () => true;

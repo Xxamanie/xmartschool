@@ -30,7 +30,11 @@ const markSchema = z.array(
 router.post(
   '/',
   asyncHandler(async (req, res) => {
-    const payload = markSchema.parse(req.body);
+    const payload = markSchema.parse(req.body) as {
+      studentId: string;
+      status: 'Present' | 'Absent' | 'Late' | 'Excused';
+      date: string;
+    }[];
     const response = await appService.markAttendance(payload);
     res.json(response);
   }),
