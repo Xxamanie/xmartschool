@@ -106,7 +106,7 @@ async function main() {
     } as any,
   });
 
-  await prisma.aiActivity.upsert({
+  await prisma.aIActivity.upsert({
     where: { id: 'ai_activity_seed_001' },
     update: {},
     create: {

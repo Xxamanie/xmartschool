@@ -1,5 +1,6 @@
 import {
   Prisma,
+  ResultStatus,
   User as PrismaUserModel,
   School as PrismaSchoolModel,
   Student as PrismaStudentModel,
@@ -54,6 +55,41 @@ const toISODate = (date: Date) => date.toISOString().split('T')[0];
 const toDateOnly = (value: string) => new Date(`${value}T00:00:00.000Z`);
 const avatarFromName = (name: string) => `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`;
 const toInputJson = (value: unknown): Prisma.InputJsonValue => value as Prisma.InputJsonValue;
+
+const getDefaultSchoolId = async (): Promise<string> => {
+  const school = await prisma.school.findFirst({ orderBy: { name: 'asc' } });
+  if (!school) {
+    throw new Error('No school available');
+  }
+  return school.id;
+};
+
+const getSchoolIdForUser = async (userId?: string): Promise<string> => {
+  if (!userId) return getDefaultSchoolId();
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { schoolId: true } });
+  return user?.schoolId ?? getDefaultSchoolId();
+};
+
+const getSchoolIdForStudent = async (studentId: string): Promise<string> => {
+  const student = await prisma.student.findUnique({ where: { id: studentId }, select: { schoolId: true } });
+  return student?.schoolId ?? getDefaultSchoolId();
+};
+
+const getSchoolIdForSubject = async (subjectId?: string): Promise<string> => {
+  if (!subjectId) return getDefaultSchoolId();
+  const subject = await prisma.subject.findUnique({ where: { id: subjectId }, select: { schoolId: true } });
+  return subject?.schoolId ?? getDefaultSchoolId();
+};
+
+const getSchoolIdForExam = async (examId: string): Promise<string> => {
+  const exam = await prisma.exam.findUnique({ where: { id: examId }, select: { schoolId: true } });
+  return exam?.schoolId ?? getDefaultSchoolId();
+};
+
+const getSchoolIdForLiveClass = async (liveClassId: string): Promise<string> => {
+  const liveClass = await prisma.liveClass.findUnique({ where: { id: liveClassId }, select: { schoolId: true } });
+  return liveClass?.schoolId ?? getDefaultSchoolId();
+};
 
 const mapUserModel = (user: PrismaUserModel): User => ({
   id: user.id,
@@ -134,7 +170,12 @@ const mapResultModel = (result: PrismaResultModel & { student?: PrismaStudentMod
   subjectName: result.subjectName,
   average: result.average,
   grade: result.grade,
-  status: result.status as ResultData['status'],
+  status:
+    result.status === 'withheld'
+      ? 'withheld'
+      : result.status === 'incomplete'
+        ? 'Draft'
+        : 'Published',
   remarks: result.remarks ?? undefined,
   details: (result.details as Record<string, number | undefined> | undefined) ?? undefined,
 });
@@ -163,7 +204,12 @@ const mapExamSessionModel = (session: PrismaExamSessionModel): ExamSession => ({
   id: session.id,
   examId: session.examId,
   studentId: session.studentId,
-  status: session.status as ExamSession['status'],
+  status:
+    session.status === 'in_progress'
+      ? 'in-progress'
+      : session.status === 'submitted'
+        ? 'submitted'
+        : 'not-started',
   progress: session.progress,
   score: session.score ?? undefined,
   startTime: session.startTime?.toISOString(),
@@ -408,12 +454,15 @@ export const appService = {
 
   createSubject: async (subjectData: { name: string; teacherId?: string }): Promise<ApiResponse<Subject>> => {
     await wait(100);
+    const schoolId = await getSchoolIdForUser(subjectData.teacherId);
+    const teacherConnect = subjectData.teacherId ? { connect: { id: subjectData.teacherId } } : undefined;
     const created = await prisma.subject.create({
       data: {
         name: subjectData.name,
-        teacherId: subjectData.teacherId || 'u1',
         schedule: 'TBD',
         room: 'TBD',
+        school: { connect: { id: schoolId } },
+        ...(teacherConnect ? { teacher: teacherConnect } : {}),
       },
     });
     return success(mapSubjectModel(created), 'Subject enrolled successfully');
@@ -432,9 +481,11 @@ export const appService = {
     await wait(100);
     const subjectName = (metadata.subjectName as string) || 'Unknown Subject';
     const subject = await prisma.subject.findFirst({ where: { name: subjectName } });
+    const schoolId = subject?.schoolId ?? (await getDefaultSchoolId());
     const scheme = await prisma.schemeSubmission.create({
       data: {
-        subjectId: subject?.id,
+        school: { connect: { id: schoolId } },
+        ...(subject?.id ? { subject: { connect: { id: subject.id } } } : {}),
         subjectName,
         term: (metadata.term as string) || 'Term 1',
         status: 'Pending',
@@ -485,27 +536,46 @@ export const appService = {
 
   saveAssessments: async (assessments: Assessment[]): Promise<ApiResponse<{ success: boolean }>> => {
     await wait(100);
+    const studentSchoolMap = new Map<string, string>();
     await Promise.all(
       assessments.map((assessment) => {
-        const data = {
-          studentId: assessment.studentId,
-          subjectId: assessment.subjectId,
+        const resolveSchoolId = async () => {
+          if (studentSchoolMap.has(assessment.studentId)) {
+            return studentSchoolMap.get(assessment.studentId) as string;
+          }
+          const schoolId = await getSchoolIdForStudent(assessment.studentId);
+          studentSchoolMap.set(assessment.studentId, schoolId);
+          return schoolId;
+        };
+        return resolveSchoolId().then((schoolId) => {
+        const updateData: Prisma.AssessmentUpdateInput = {
+          ca1: assessment.ca1,
+          ca2: assessment.ca2,
+          ca3: assessment.ca3,
+          exam: assessment.exam,
+          term: assessment.term,
+        };
+        const createData: Prisma.AssessmentCreateInput = {
           term: assessment.term,
           ca1: assessment.ca1,
           ca2: assessment.ca2,
           ca3: assessment.ca3,
           exam: assessment.exam,
+          school: { connect: { id: schoolId } },
+          student: { connect: { id: assessment.studentId } },
+          subject: { connect: { id: assessment.subjectId } },
         };
 
         if (assessment.id) {
           return prisma.assessment.upsert({
             where: { id: assessment.id },
-            update: data,
-            create: { ...data, id: assessment.id },
+            update: updateData,
+            create: { ...createData, id: assessment.id },
           });
         }
 
-        return prisma.assessment.create({ data });
+        return prisma.assessment.create({ data: createData });
+        });
       }),
     );
     return success({ success: true }, 'Assessments saved successfully');
@@ -522,32 +592,53 @@ export const appService = {
 
   publishResults: async (newResults: ResultData[]): Promise<ApiResponse<{ success: boolean }>> => {
     await wait(100);
+    const studentSchoolMap = new Map<string, string>();
     await Promise.all(
       newResults.map((result) => {
+        const resolveSchoolId = async () => {
+          if (studentSchoolMap.has(result.studentId)) {
+            return studentSchoolMap.get(result.studentId) as string;
+          }
+          const schoolId = await getSchoolIdForStudent(result.studentId);
+          studentSchoolMap.set(result.studentId, schoolId);
+          return schoolId;
+        };
+        return resolveSchoolId().then((schoolId) => {
         const subjectName = result.subjectName || 'General Studies';
+        const normalizedStatus: ResultStatus =
+          result.status === 'withheld'
+            ? 'withheld'
+            : result.status === 'Draft'
+              ? 'incomplete'
+              : 'passed';
+        const updateData: Prisma.ResultUpdateInput = {
+          average: result.average,
+          grade: result.grade,
+          status: normalizedStatus,
+          remarks: result.remarks,
+          details: (result.details as Prisma.JsonValue) ?? undefined,
+        };
+        const createData: Prisma.ResultCreateInput = {
+          subjectName,
+          average: result.average,
+          grade: result.grade,
+          status: normalizedStatus,
+          remarks: result.remarks,
+          details: (result.details as Prisma.JsonValue) ?? undefined,
+          school: { connect: { id: schoolId } },
+          student: { connect: { id: result.studentId } },
+        };
         return prisma.result.upsert({
           where: {
-            studentId_subjectName: {
+            schoolId_studentId_subjectName: {
+              schoolId,
               studentId: result.studentId,
               subjectName,
             },
           },
-          update: {
-            average: result.average,
-            grade: result.grade,
-            status: result.status,
-            remarks: result.remarks,
-            details: (result.details as Prisma.JsonValue) ?? undefined,
-          },
-          create: {
-            studentId: result.studentId,
-            subjectName,
-            average: result.average,
-            grade: result.grade,
-            status: result.status,
-            remarks: result.remarks,
-            details: (result.details as Prisma.JsonValue) ?? undefined,
-          },
+          update: updateData,
+          create: createData,
+        });
         });
       }),
     );
@@ -576,6 +667,7 @@ export const appService = {
     teacherId?: string,
   ): Promise<ApiResponse<ActiveExam>> => {
     await wait(100);
+    const schoolId = examId ? await getSchoolIdForExam(examId) : await getSchoolIdForUser(teacherId);
     const questionPayload = questions.map((question) => ({
       type: question.type,
       text: question.text,
@@ -584,6 +676,7 @@ export const appService = {
       points: question.points,
       isAutoGrade: question.isAutoGrade ?? false,
       rubric: question.rubric ?? undefined,
+      school: { connect: { id: schoolId } },
     }));
 
     if (examId) {
@@ -591,7 +684,7 @@ export const appService = {
         where: { id: examId },
         data: {
           title,
-          teacherId,
+          ...(teacherId ? { teacher: { connect: { id: teacherId } } } : {}),
           questions: {
             deleteMany: {},
             create: questionPayload,
@@ -607,7 +700,8 @@ export const appService = {
         title,
         status: 'scheduled',
         duration: 60,
-        teacherId,
+        school: { connect: { id: schoolId } },
+        ...(teacherId ? { teacher: { connect: { id: teacherId } } } : {}),
         questions: {
           create: questionPayload,
         },
@@ -635,26 +729,28 @@ export const appService = {
 
   startExamSession: async (examId: string, studentId: string): Promise<ApiResponse<ExamSession>> => {
     await wait(100);
+    const schoolId = await getSchoolIdForExam(examId);
     let session = await prisma.examSession.findUnique({
-      where: { examId_studentId: { examId, studentId } },
+      where: { schoolId_examId_studentId: { schoolId, examId, studentId } },
     });
 
     if (!session) {
       session = await prisma.examSession.create({
         data: {
-          examId,
-          studentId,
-          status: 'in-progress',
+          school: { connect: { id: schoolId } },
+          exam: { connect: { id: examId } },
+          student: { connect: { id: studentId } },
+          status: 'in_progress',
           progress: 0,
           startTime: new Date(),
           answers: toInputJson({}),
         },
       });
-    } else if (session.status === 'not-started') {
+    } else if (session.status !== 'submitted') {
       session = await prisma.examSession.update({
-        where: { examId_studentId: { examId, studentId } },
+        where: { schoolId_examId_studentId: { schoolId, examId, studentId } },
         data: {
-          status: 'in-progress',
+          status: 'in_progress',
           startTime: new Date(),
         },
       });
@@ -670,8 +766,9 @@ export const appService = {
     answers?: Record<string, string>,
   ): Promise<ApiResponse<boolean>> => {
     await wait(100);
+    const schoolId = await getSchoolIdForExam(examId);
     const session = await prisma.examSession.findUnique({
-      where: { examId_studentId: { examId, studentId } },
+      where: { schoolId_examId_studentId: { schoolId, examId, studentId } },
     });
 
     if (!session || session.status === 'submitted') {
@@ -684,7 +781,7 @@ export const appService = {
     }
 
     await prisma.examSession.update({
-      where: { examId_studentId: { examId, studentId } },
+      where: { schoolId_examId_studentId: { schoolId, examId, studentId } },
       data,
     });
 
@@ -705,6 +802,7 @@ export const appService = {
     if (!exam) {
       return failure('No active exam found', false as unknown as boolean);
     }
+    const schoolId = exam.schoolId;
 
     let calculatedScore = 0;
 
@@ -728,7 +826,7 @@ export const appService = {
     const finalScore = calculatedScore;
 
     await prisma.examSession.upsert({
-      where: { examId_studentId: { examId: exam.id, studentId } },
+      where: { schoolId_examId_studentId: { schoolId, examId: exam.id, studentId } },
       update: {
         status: 'submitted',
         progress: 100,
@@ -737,8 +835,9 @@ export const appService = {
         answers: toInputJson(answers),
       },
       create: {
-        examId: exam.id,
-        studentId,
+        school: { connect: { id: schoolId } },
+        exam: { connect: { id: exam.id } },
+        student: { connect: { id: studentId } },
         status: 'submitted',
         progress: 100,
         score: finalScore,
@@ -766,23 +865,31 @@ export const appService = {
 
   markAttendance: async (updates: AppAttendanceRecord[]): Promise<ApiResponse<boolean>> => {
     await wait(100);
+    const studentSchoolMap = new Map<string, string>();
     await Promise.all(
-      updates.map((update) =>
-        prisma.attendanceRecord.upsert({
+      updates.map(async (update) => {
+        let schoolId = studentSchoolMap.get(update.studentId);
+        if (!schoolId) {
+          schoolId = await getSchoolIdForStudent(update.studentId);
+          studentSchoolMap.set(update.studentId, schoolId);
+        }
+        return prisma.attendanceRecord.upsert({
           where: {
-            studentId_date: {
+            schoolId_studentId_date: {
+              schoolId,
               studentId: update.studentId,
               date: toDateOnly(update.date),
             },
           },
           update: { status: update.status },
           create: {
-            studentId: update.studentId,
+            school: { connect: { id: schoolId } },
+            student: { connect: { id: update.studentId } },
             status: update.status,
             date: toDateOnly(update.date),
           },
-        }),
-      ),
+        });
+      }),
     );
     return success(true, 'Attendance marked successfully');
   },
@@ -811,8 +918,9 @@ export const appService = {
     source: string,
   ): Promise<ApiResponse<Announcement>> => {
     await wait(50);
+    const schoolId = await getDefaultSchoolId();
     const created = await prisma.announcement.create({
-      data: { title, message, targetAudience, source },
+      data: { title, message, targetAudience, source, schoolId },
     });
     return success(mapAnnouncementModel(created), 'Announcement created');
   },
@@ -828,7 +936,7 @@ export const appService = {
   }): Promise<ApiResponse<AIActivity>> => {
     await wait(30);
     const prismaAny = prisma as any;
-    const created = await prismaAny.aiActivity.create({
+    const created = await prismaAny.aIActivity.create({
       data: {
         action: input.action,
         scope: input.scope ?? 'general',
@@ -862,7 +970,7 @@ export const appService = {
     if (filters.status) where.status = filters.status;
     if (filters.scope) where.scope = filters.scope;
 
-    const activities = await prismaAny.aiActivity.findMany({
+    const activities = await prismaAny.aIActivity.findMany({
       where,
       include: { user: true },
       orderBy: { createdAt: 'desc' },
@@ -883,11 +991,13 @@ export const appService = {
     // Analyze frame for anomalies
     const analysis = await analyzeProctorFrame(frameData);
     if (analysis.anomaly) {
+      const schoolId = await getSchoolIdForExam(examId);
       // Create alert
       await prisma.proctoringAlert.create({
         data: {
-          examId,
-          studentId,
+          school: { connect: { id: schoolId } },
+          exam: { connect: { id: examId } },
+          student: { connect: { id: studentId } },
           description: analysis.description,
         },
       });
@@ -910,10 +1020,14 @@ export const appService = {
     meetingLink: string,
   ): Promise<ApiResponse<LiveClass>> => {
     await wait(50);
+    const schoolId = subjectId
+      ? await getSchoolIdForSubject(subjectId)
+      : await getSchoolIdForUser(teacherId);
     const created = await prisma.liveClass.create({
       data: {
-        subjectId: subjectId || undefined,
-        teacherId: teacherId || undefined,
+        school: { connect: { id: schoolId } },
+        ...(subjectId ? { subject: { connect: { id: subjectId } } } : {}),
+        ...(teacherId ? { teacher: { connect: { id: teacherId } } } : {}),
         scheduledTime: toDateOnly(scheduledTime),
         meetingLink,
       },
@@ -933,10 +1047,15 @@ export const appService = {
 
   assignClassMaster: async (grade: string, teacherId: string): Promise<ApiResponse<boolean>> => {
     await wait(100);
+    const schoolId = await getSchoolIdForUser(teacherId);
     await prisma.classMaster.upsert({
-      where: { grade },
-      update: { teacherId },
-      create: { grade, teacherId },
+      where: { schoolId_grade: { schoolId, grade } },
+      update: { teacher: { connect: { id: teacherId } } },
+      create: {
+        grade,
+        school: { connect: { id: schoolId } },
+        teacher: { connect: { id: teacherId } },
+      },
     });
     return success(true);
   },
@@ -944,8 +1063,9 @@ export const appService = {
   resetStudentExam: async (examId: string, studentId: string): Promise<ApiResponse<boolean>> => {
     await wait(100);
     try {
+      const schoolId = await getSchoolIdForExam(examId);
       await prisma.examSession.delete({
-        where: { examId_studentId: { examId, studentId } },
+        where: { schoolId_examId_studentId: { schoolId, examId, studentId } },
       });
       return success(true);
     } catch (error) {
@@ -956,10 +1076,15 @@ export const appService = {
   joinLiveClass: async (liveClassId: string, userId: string): Promise<ApiResponse<any>> => {
     await wait(50);
     try {
+      const schoolId = await getSchoolIdForUser(userId);
       const participant = await prisma.liveClassParticipant.upsert({
         where: { liveClassId_userId: { liveClassId, userId } },
         update: { leftAt: null },
-        create: { liveClassId, userId },
+        create: {
+          userId,
+          school: { connect: { id: schoolId } },
+          liveClass: { connect: { id: liveClassId } },
+        },
       });
       return success(participant, 'Joined live class');
     } catch (error) {
@@ -1017,8 +1142,14 @@ export const appService = {
       return failure('Message cannot be empty', null);
     }
     try {
+      const schoolId = await getSchoolIdForUser(userId);
       const created = await prisma.liveClassMessage.create({
-        data: { liveClassId, userId, message: message.trim() },
+        data: {
+          userId,
+          message: message.trim(),
+          school: { connect: { id: schoolId } },
+          liveClass: { connect: { id: liveClassId } },
+        },
       });
       return success(created, 'Message sent');
     } catch (error) {
@@ -1055,12 +1186,17 @@ export const appService = {
   startLiveClassRecording: async (liveClassId: string, recordingUrl: string): Promise<ApiResponse<any>> => {
     await wait(50);
     try {
+      const schoolId = await getSchoolIdForLiveClass(liveClassId);
       const recording = await prisma.liveClassRecording.create({
-        data: { liveClassId, recordingUrl },
+        data: {
+          recordingUrl,
+          school: { connect: { id: schoolId } },
+          liveClass: { connect: { id: liveClassId } },
+        },
       });
       await prisma.liveClass.update({
         where: { id: liveClassId },
-        data: { status: 'recording' },
+        data: { status: 'active' },
       });
       return success(recording, 'Recording started');
     } catch (error) {
@@ -1077,7 +1213,7 @@ export const appService = {
       });
       await prisma.liveClass.update({
         where: { id: liveClassId },
-        data: { status: 'completed' },
+        data: { status: 'ended' },
       });
       return success(updated, 'Recording stopped');
     } catch (error) {

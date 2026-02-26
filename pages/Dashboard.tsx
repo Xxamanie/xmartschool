@@ -39,6 +39,7 @@ export const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [aiActivities, setAiActivities] = useState<AIActivity[]>([]);
+  const [loggingAI, setLoggingAI] = useState(false);
   const [createState, setCreateState] = useState({ title: '', message: '', audience: 'all' as Announcement['targetAudience'], saving: false });
 
   useEffect(() => {
@@ -59,27 +60,45 @@ export const Dashboard: React.FC = () => {
     loadAnnouncements();
   }, [user?.role]);
 
+  const loadAIActivities = async () => {
+    if (!user) return;
+    const params: {
+      limit: number;
+      actorId?: string;
+      schoolId?: string;
+    } = { limit: 6 };
+
+    if (user.role === UserRole.TEACHER || user.role === UserRole.STUDENT) {
+      params.actorId = user.id;
+    } else if (user.schoolId) {
+      params.schoolId = user.schoolId;
+    }
+
+    const res = await api.getAIActivities(params);
+    if (res.ok) setAiActivities(res.data);
+  };
+
   useEffect(() => {
-    const loadAIActivities = async () => {
-      if (!user) return;
-      const params: {
-        limit: number;
-        actorId?: string;
-        schoolId?: string;
-      } = { limit: 6 };
-
-      if (user.role === UserRole.TEACHER || user.role === UserRole.STUDENT) {
-        params.actorId = user.id;
-      } else if (user.schoolId) {
-        params.schoolId = user.schoolId;
-      }
-
-      const res = await api.getAIActivities(params);
-      if (res.ok) setAiActivities(res.data);
-    };
-
     loadAIActivities();
   }, [user]);
+
+  const handleLogTestAI = async () => {
+    if (!user) return;
+    setLoggingAI(true);
+    const res = await api.logAIActivity({
+      action: 'manual_ai_activity_test',
+      scope: 'general',
+      status: 'success',
+      actorId: user.id,
+      actorRole: user.role,
+      schoolId: user.schoolId,
+      metadata: { source: 'dashboard_test' },
+    });
+    if (res.ok) {
+      await loadAIActivities();
+    }
+    setLoggingAI(false);
+  };
 
   const visibleAnnouncements = useMemo(() => {
     if (!user?.role) return announcements;
@@ -274,7 +293,19 @@ export const Dashboard: React.FC = () => {
             <Bot size={18} />
             AI Activity
           </h3>
-          <span className="text-xs text-gray-500">Last {aiActivities.length}</span>
+          <div className="flex items-center gap-2">
+            {(user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN) && (
+              <button
+                onClick={handleLogTestAI}
+                disabled={loggingAI}
+                className="text-xs font-semibold px-3 py-1 rounded-md border border-indigo-200 text-indigo-700 hover:bg-indigo-50 disabled:opacity-70"
+                title="Create a test AI activity entry"
+              >
+                {loggingAI ? 'Logging...' : 'Log Test Activity'}
+              </button>
+            )}
+            <span className="text-xs text-gray-500">Last {aiActivities.length}</span>
+          </div>
         </div>
         {aiActivities.length === 0 ? (
           <p className="text-sm text-gray-500">No AI actions logged yet.</p>
