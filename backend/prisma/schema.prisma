@@ -93,76 +93,91 @@ enum AIActivityStatus {
 }
 
 model School {
-  id           String        @id @default(cuid())
-  name         String
-  code         String?       @unique
-  region       String?
-  adminName    String?
-  status       SchoolStatus  @default(Active)
-  studentCount Int           @default(0)
-  motto        String        @default("")
-  logoUrl      String        @default("")
-  address      String        @default("")
-  contact      String        @default("")
-  users        User[]
-  students     Student[]
-  subjects     Subject[]
-  aiActivities AIActivity[]
+  id                    String                 @id @default(cuid())
+  name                  String
+  code                  String?                @unique
+  region                String?
+  adminName             String?
+  status                SchoolStatus           @default(Active)
+  studentCount          Int                    @default(0)
+  motto                 String                 @default("")
+  logoUrl               String                 @default("")
+  address               String                 @default("")
+  contact               String                 @default("")
+  users                 User[]
+  students              Student[]
+  subjects              Subject[]
+  assessments           Assessment[]
+  results               Result[]
+  schemes               SchemeSubmission[]
+  announcements         Announcement[]
+  liveClasses           LiveClass[]
+  liveClassParticipants LiveClassParticipant[]
+  liveClassMessages     LiveClassMessage[]
+  liveClassRecordings   LiveClassRecording[]
+  exams                 Exam[]
+  examQuestions         ExamQuestion[]
+  examSessions          ExamSession[]
+  attendanceRecords     AttendanceRecord[]
+  classMasters          ClassMaster[]
+  proctoringAlerts      ProctoringAlert[]
+  aiActivities          AIActivity[]
 }
 
 model User {
- id           String   @id @default(cuid())
- name         String
- email        String?  @unique
- password     String
- role         UserRole
- avatar       String?
- schoolId     String
- school       School   @relation(fields: [schoolId], references: [id])
- gender       String?
- phone        String?
- bio          String?
- subjects     Subject[] @relation("SubjectTeacher")
- exams        Exam[]    @relation("ExamTeacher")
- classMasters ClassMaster[]
- liveClasses  LiveClass[] @relation("LiveClassTeacher")
- aiActivities AIActivity[]
+  id           String        @id @default(cuid())
+  name         String
+  email        String?       @unique
+  password     String
+  role         UserRole
+  avatar       String?
+  schoolId     String
+  school       School        @relation(fields: [schoolId], references: [id])
+  gender       String?
+  phone        String?
+  bio          String?
+  subjects     Subject[]     @relation("SubjectTeacher")
+  exams        Exam[]        @relation("ExamTeacher")
+  classMasters ClassMaster[]
+  liveClasses  LiveClass[]   @relation("LiveClassTeacher")
+  aiActivities AIActivity[]
 
- @@index([schoolId])
+  @@index([schoolId])
 }
 
 model Student {
-  id                String           @id @default(uuid())
-  name              String
-  gender            String
-  grade             String
-  enrollmentDate    DateTime
-  status            StudentStatus    @default(Active)
-  gpa               Float            @default(0)
-  attendance        Int              @default(0)
-  accessCode        String           @unique
-  resultAccessCode  String?          @unique
-  isPaid            Boolean          @default(false)
-  enrolledSubjects  String[]         @default([])
-  schoolId          String
-  school            School           @relation(fields: [schoolId], references: [id])
-  assessments       Assessment[]
-  results           Result[]
-  examSessions      ExamSession[]
-  attendanceLogs    AttendanceRecord[]
+  id               String             @id @default(uuid())
+  name             String
+  gender           String
+  grade            String
+  enrollmentDate   DateTime
+  status           StudentStatus      @default(Active)
+  gpa              Float              @default(0)
+  attendance       Int                @default(0)
+  accessCode       String             @unique
+  resultAccessCode String?            @unique
+  isPaid           Boolean            @default(false)
+  enrolledSubjects String[]           @default([])
+  schoolId         String
+  school           School             @relation(fields: [schoolId], references: [id])
+  assessments      Assessment[]
+  results          Result[]
+  examSessions     ExamSession[]
+  attendanceLogs   AttendanceRecord[]
+  proctoringAlerts ProctoringAlert[]
 
   @@index([schoolId])
 }
 
 model Subject {
-  id          String            @id @default(cuid())
+  id          String             @id @default(cuid())
   name        String
   teacherId   String?
-  teacher     User?             @relation("SubjectTeacher", fields: [teacherId], references: [id])
+  teacher     User?              @relation("SubjectTeacher", fields: [teacherId], references: [id])
   schedule    String?
   room        String?
   schoolId    String
-  school      School            @relation(fields: [schoolId], references: [id])
+  school      School             @relation(fields: [schoolId], references: [id])
   assessments Assessment[]
   results     Result[]
   exams       Exam[]
@@ -174,18 +189,18 @@ model Subject {
 }
 
 model Assessment {
-  id        String   @id @default(cuid())
+  id        String  @id @default(cuid())
   schoolId  String
-  school    School   @relation(fields: [schoolId], references: [id])
+  school    School  @relation(fields: [schoolId], references: [id])
   studentId String
-  student   Student  @relation(fields: [studentId], references: [id])
+  student   Student @relation(fields: [studentId], references: [id])
   subjectId String
-  subject   Subject  @relation(fields: [subjectId], references: [id])
+  subject   Subject @relation(fields: [subjectId], references: [id])
   term      String
-  ca1       Float    @default(0)
-  ca2       Float    @default(0)
-  ca3       Float    @default(0)
-  exam      Float    @default(0)
+  ca1       Float   @default(0)
+  ca2       Float   @default(0)
+  ca3       Float   @default(0)
+  exam      Float   @default(0)
 
   @@unique([schoolId, studentId, subjectId, term])
   @@index([schoolId, studentId])
@@ -193,13 +208,13 @@ model Assessment {
 }
 
 model Result {
-  id          String   @id @default(cuid())
+  id          String       @id @default(cuid())
   schoolId    String
-  school      School   @relation(fields: [schoolId], references: [id])
+  school      School       @relation(fields: [schoolId], references: [id])
   studentId   String
-  student     Student  @relation(fields: [studentId], references: [id])
+  student     Student      @relation(fields: [studentId], references: [id])
   subjectId   String?
-  subject     Subject? @relation(fields: [subjectId], references: [id])
+  subject     Subject?     @relation(fields: [subjectId], references: [id])
   subjectName String
   average     Float
   grade       String
@@ -227,96 +242,97 @@ model SchemeSubmission {
 }
 
 model Announcement {
-  id             String          @id @default(cuid())
+  id             String         @id @default(cuid())
   schoolId       String
-  school         School          @relation(fields: [schoolId], references: [id])
+  school         School         @relation(fields: [schoolId], references: [id])
   title          String
   message        String
   targetAudience TargetAudience
   source         String
-  createdAt      DateTime        @default(now())
+  createdAt      DateTime       @default(now())
 
   @@index([schoolId, createdAt])
 }
 
 model LiveClass {
-  id            String                    @id @default(cuid())
+  id            String              @id @default(cuid())
   schoolId      String
-  school        School                    @relation(fields: [schoolId], references: [id])
+  school        School              @relation(fields: [schoolId], references: [id])
   subjectId     String?
   teacherId     String?
   scheduledTime DateTime
   meetingLink   String
-  status        LiveClassStatus           @default(scheduled)
+  status        LiveClassStatus     @default(scheduled)
   recording     LiveClassRecording?
-  createdAt     DateTime                  @default(now())
-  updatedAt     DateTime                  @updatedAt
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
 
-  subject       Subject?                  @relation(fields: [subjectId], references: [id])
-  teacher       User?                     @relation("LiveClassTeacher", fields: [teacherId], references: [id])
-  participants  LiveClassParticipant[]
-  messages      LiveClassMessage[]
+  subject      Subject?               @relation(fields: [subjectId], references: [id])
+  teacher      User?                  @relation("LiveClassTeacher", fields: [teacherId], references: [id])
+  participants LiveClassParticipant[]
+  messages     LiveClassMessage[]
 
   @@index([schoolId, scheduledTime])
 }
 
 model LiveClassParticipant {
-  id            String       @id @default(cuid())
-  schoolId      String
-  school        School       @relation(fields: [schoolId], references: [id])
-  liveClassId   String
-  liveClass     LiveClass    @relation(fields: [liveClassId], references: [id], onDelete: Cascade)
-  userId        String
-  joinedAt      DateTime     @default(now())
-  leftAt        DateTime?
-  cameraOn      Boolean      @default(false)
-  microphoneOn  Boolean      @default(false)
-  handRaised    Boolean      @default(false)
+  id           String    @id @default(cuid())
+  schoolId     String
+  school       School    @relation(fields: [schoolId], references: [id])
+  liveClassId  String
+  liveClass    LiveClass @relation(fields: [liveClassId], references: [id], onDelete: Cascade)
+  userId       String
+  joinedAt     DateTime  @default(now())
+  leftAt       DateTime?
+  cameraOn     Boolean   @default(false)
+  microphoneOn Boolean   @default(false)
+  handRaised   Boolean   @default(false)
 
   @@unique([liveClassId, userId])
   @@index([schoolId, liveClassId])
 }
 
 model LiveClassMessage {
-  id            String       @id @default(cuid())
-  schoolId      String
-  school        School       @relation(fields: [schoolId], references: [id])
-  liveClassId   String
-  liveClass     LiveClass    @relation(fields: [liveClassId], references: [id], onDelete: Cascade)
-  userId        String
-  message       String
-  createdAt     DateTime     @default(now())
+  id          String    @id @default(cuid())
+  schoolId    String
+  school      School    @relation(fields: [schoolId], references: [id])
+  liveClassId String
+  liveClass   LiveClass @relation(fields: [liveClassId], references: [id], onDelete: Cascade)
+  userId      String
+  message     String
+  createdAt   DateTime  @default(now())
 
   @@index([schoolId, liveClassId])
 }
 
 model LiveClassRecording {
-  id            String       @id @default(cuid())
-  schoolId      String
-  school        School       @relation(fields: [schoolId], references: [id])
-  liveClassId   String       @unique
-  liveClass     LiveClass    @relation(fields: [liveClassId], references: [id], onDelete: Cascade)
-  recordingUrl  String
-  duration      Int          @default(0)
-  createdAt     DateTime     @default(now())
+  id           String    @id @default(cuid())
+  schoolId     String
+  school       School    @relation(fields: [schoolId], references: [id])
+  liveClassId  String    @unique
+  liveClass    LiveClass @relation(fields: [liveClassId], references: [id], onDelete: Cascade)
+  recordingUrl String
+  duration     Int       @default(0)
+  createdAt    DateTime  @default(now())
 
   @@index([schoolId, liveClassId])
 }
 
 model Exam {
-  id        String     @id @default(cuid())
-  schoolId  String
-  school    School     @relation(fields: [schoolId], references: [id])
-  title     String
-  status    ExamStatus @default(scheduled)
-  duration  Int        @default(60)
-  teacherId String?
-  teacher   User?      @relation("ExamTeacher", fields: [teacherId], references: [id])
-  subjectId String?
-  subject   Subject?   @relation(fields: [subjectId], references: [id])
-  term      String     @default("Term 1")
-  questions ExamQuestion[]
-  sessions  ExamSession[]
+  id               String            @id @default(cuid())
+  schoolId         String
+  school           School            @relation(fields: [schoolId], references: [id])
+  title            String
+  status           ExamStatus        @default(scheduled)
+  duration         Int               @default(60)
+  teacherId        String?
+  teacher          User?             @relation("ExamTeacher", fields: [teacherId], references: [id])
+  subjectId        String?
+  subject          Subject?          @relation(fields: [subjectId], references: [id])
+  term             String            @default("Term 1")
+  questions        ExamQuestion[]
+  sessions         ExamSession[]
+  proctoringAlerts ProctoringAlert[]
 
   @@index([schoolId, subjectId])
 }
@@ -333,25 +349,25 @@ model ExamQuestion {
   correctAnswer String?
   points        Int          @default(1)
   isAutoGrade   Boolean      @default(false)
-  rubric       String?
+  rubric        String?
 
   @@index([schoolId, examId])
 }
 
 model ExamSession {
-  id         String    @id @default(cuid())
-  schoolId   String
-  school     School    @relation(fields: [schoolId], references: [id])
-  examId     String
-  exam       Exam      @relation(fields: [examId], references: [id])
-  studentId  String
-  student    Student   @relation(fields: [studentId], references: [id])
-  status     ExamSessionStatus @default(in_progress)
-  progress   Int       @default(0)
-  score      Float?
-  startTime  DateTime? @default(now())
-  endTime    DateTime?
-  answers    Json?
+  id        String            @id @default(cuid())
+  schoolId  String
+  school    School            @relation(fields: [schoolId], references: [id])
+  examId    String
+  exam      Exam              @relation(fields: [examId], references: [id])
+  studentId String
+  student   Student           @relation(fields: [studentId], references: [id])
+  status    ExamSessionStatus @default(in_progress)
+  progress  Int               @default(0)
+  score     Float?
+  startTime DateTime?         @default(now())
+  endTime   DateTime?
+  answers   Json?
 
   @@unique([schoolId, examId, studentId])
   @@index([schoolId, studentId])
