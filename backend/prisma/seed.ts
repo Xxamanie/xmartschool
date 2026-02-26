@@ -28,6 +28,23 @@ async function main() {
     },
   });
 
+  const rootedHouseSchool = await prisma.school.upsert({
+    where: { code: 'RHLC-001' },
+    update: {},
+    create: {
+      id: 'sch_rhlc_001',
+      name: 'Rooted House Learning Center',
+      code: 'RHLC-001',
+      region: 'Central District',
+      adminName: 'Vincent Madugu',
+      status: SchoolStatus.Active,
+      studentCount: 0,
+      motto: 'Rooted in purpose, driven by excellence',
+      address: '',
+      contact: '',
+    },
+  });
+
   // Create demo users
   const superAdmin = await prisma.user.upsert({
     where: { email: 'creator@smartschool.edu' },
@@ -38,6 +55,7 @@ async function main() {
       email: 'creator@smartschool.edu',
       password: hashedPassword,
       role: UserRole.SUPER_ADMIN,
+      schoolId: school1.id,
       avatar: 'https://ui-avatars.com/api/?name=System+Creator&background=0D8ABC&color=fff',
       gender: 'Male',
     } as any,
@@ -71,6 +89,39 @@ async function main() {
       avatar: 'https://picsum.photos/200/200',
       gender: 'Male',
     } as any,
+  });
+
+  const rootedHouseAdmin = await prisma.user.upsert({
+    where: { email: 'admin@rootedhouse.edu' },
+    update: {},
+    create: {
+      id: 'admin_rhlc_001',
+      name: 'Vincent Madugu',
+      email: 'admin@rootedhouse.edu',
+      password: hashedPassword,
+      role: UserRole.ADMIN,
+      schoolId: rootedHouseSchool.id,
+      avatar: 'https://ui-avatars.com/api/?name=Vincent+Madugu&background=0D8ABC&color=fff',
+      gender: 'Male',
+    } as any,
+  });
+
+  await prisma.aiActivity.upsert({
+    where: { id: 'ai_activity_seed_001' },
+    update: {},
+    create: {
+      id: 'ai_activity_seed_001',
+      action: 'seed_initial_ai_activity',
+      scope: 'general',
+      status: 'success',
+      actorId: rootedHouseAdmin.id,
+      actorRole: UserRole.ADMIN,
+      schoolId: rootedHouseSchool.id,
+      metadata: {
+        source: 'seed',
+        note: 'Initial AI activity row for verification',
+      },
+    },
   });
 
   // Create demo students
