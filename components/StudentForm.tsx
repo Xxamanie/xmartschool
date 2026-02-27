@@ -15,6 +15,7 @@ export const StudentForm: React.FC<StudentFormProps> = ({ student, onSubmit, onC
     name: '',
     gender: 'Male' as 'Male' | 'Female',
     grade: '',
+    house: 'Unassigned',
     status: 'Active' as 'Active' | 'Inactive' | 'Suspended',
     gpa: 0.0,
     attendance: 100,
@@ -28,6 +29,7 @@ export const StudentForm: React.FC<StudentFormProps> = ({ student, onSubmit, onC
         name: student.name,
         gender: student.gender,
         grade: student.grade,
+        house: student.house || 'Unassigned',
         status: student.status,
         gpa: student.gpa,
         attendance: student.attendance,
@@ -92,6 +94,20 @@ export const StudentForm: React.FC<StudentFormProps> = ({ student, onSubmit, onC
           onChange={(e) => handleChange('grade', e.target.value)}
           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
           placeholder="e.g., 10th Grade, Class A"
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          House *
+        </label>
+        <input
+          type="text"
+          required
+          value={formData.house}
+          onChange={(e) => handleChange('house', e.target.value)}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+          placeholder="e.g., Red House, Blue House"
         />
       </div>
 

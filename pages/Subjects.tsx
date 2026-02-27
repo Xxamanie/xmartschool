@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { BookOpen, Clock, MapPin, Users, MoreVertical, Plus, X, Check, Search, LayoutGrid, CheckCircle2, Tag, UserCheck } from 'lucide-react';
 import { api } from '../services/api';
 import { Subject, UserRole, User } from '../types';
@@ -71,6 +71,7 @@ const NIGERIAN_SUBJECTS: Record<string, string[]> = {
 
 export const Subjects: React.FC = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [teachers, setTeachers] = useState<User[]>([]);
@@ -89,7 +90,7 @@ export const Subjects: React.FC = () => {
     setLoading(true);
     try {
       const [subjectsRes, usersRes] = await Promise.all([
-          api.getSubjects(),
+          api.getSubjects(user?.role === UserRole.SUPER_ADMIN ? undefined : user?.schoolId),
           api.getAllUsers()
       ]);
 
@@ -208,6 +209,21 @@ export const Subjects: React.FC = () => {
       bar: 'bg-orange-500' 
     },
   ];
+
+  if (user?.role && !isAdmin) {
+    return (
+      <div className="bg-white border border-gray-200 rounded-xl p-8 text-center">
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">Access Restricted</h1>
+        <p className="text-gray-500 mb-6">Only admins can manage the subject catalog.</p>
+        <button
+          onClick={() => navigate('/')}
+          className="inline-flex items-center justify-center px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm font-medium"
+        >
+          Back to Dashboard
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

@@ -70,14 +70,24 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       return [
         { to: '/student-portal', icon: FileText, label: 'My Result Slip' },
       ];
-    } else {
-      // Standard School Admin / Teacher items
+    } else if (user?.role === UserRole.ADMIN) {
+      // Standard School Admin items
       return [
         { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
         { to: '/students', icon: Users, label: 'Students' },
         { to: '/teachers', icon: UserPlus, label: 'Teachers' },
         { to: '/classes', icon: Layers, label: 'Classes' },
         { to: '/subjects', icon: BookOpen, label: 'Subjects' },
+        { to: '/attendance', icon: CalendarCheck, label: 'Attendance' },
+        { to: '/assessments', icon: ClipboardCheck, label: 'Assessments' },
+        { to: '/results', icon: TrendingUp, label: 'Results' },
+        { to: '/scheme-of-work', icon: FileText, label: 'Scheme of Work' },
+        { to: '/live-classes', icon: Globe, label: 'Live Classes' },
+      ];
+    } else {
+      // Teacher items (role-isolated)
+      return [
+        { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
         { to: '/attendance', icon: CalendarCheck, label: 'Attendance' },
         { to: '/assessments', icon: ClipboardCheck, label: 'Assessments' },
         { to: '/results', icon: TrendingUp, label: 'Results' },

@@ -5,6 +5,7 @@ import { Save, User, Lock, Bell, Shield, CheckCircle2, AlertCircle } from 'lucid
 
 export const Settings: React.FC = () => {
   const { user, updateUser } = useAuth();
+  const canManageSecurity = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'notifications'>('profile');
   const [isLoading, setIsLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
@@ -62,13 +63,15 @@ export const Settings: React.FC = () => {
                  <User size={18} />
                  Profile
               </button>
-              <button
-                onClick={() => setActiveTab('security')}
-                className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg transition-colors ${activeTab === 'security' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-600 hover:bg-gray-100'}`}
-              >
-                 <Lock size={18} />
-                 Security
-              </button>
+              {canManageSecurity && (
+                <button
+                  onClick={() => setActiveTab('security')}
+                  className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg transition-colors ${activeTab === 'security' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-600 hover:bg-gray-100'}`}
+                >
+                   <Lock size={18} />
+                   Security
+                </button>
+              )}
               <button
                 onClick={() => setActiveTab('notifications')}
                 className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg transition-colors ${activeTab === 'notifications' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-600 hover:bg-gray-100'}`}
@@ -134,7 +137,7 @@ export const Settings: React.FC = () => {
               </div>
            )}
 
-           {activeTab === 'security' && (
+           {activeTab === 'security' && canManageSecurity && (
               <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex gap-3 text-amber-800 text-sm">
                     <Shield size={20} className="flex-shrink-0" />

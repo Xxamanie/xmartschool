@@ -161,6 +161,21 @@ export const Classes: React.FC = () => {
       }).slice(0, 50); // Limit results for performance
   }, [students, showEnrollModal, selectedClass, enrollSearchTerm]);
 
+  if (user?.role && !isAdmin) {
+    return (
+      <div className="bg-white border border-gray-200 rounded-xl p-8 text-center">
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">Access Restricted</h1>
+        <p className="text-gray-500 mb-6">Only admins can manage classes and enrollment.</p>
+        <button
+          onClick={() => navigate('/')}
+          className="inline-flex items-center justify-center px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm font-medium"
+        >
+          Back to Dashboard
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -331,9 +346,22 @@ export const Classes: React.FC = () => {
                         <h3 className="text-lg font-bold text-gray-900">Enroll Students</h3>
                         <p className="text-sm text-gray-500">Target Class: <span className="font-bold text-primary-600">{selectedClass}</span></p>
                     </div>
-                    <button onClick={() => setShowEnrollModal(false)} className="text-gray-400 hover:text-gray-600">
-                        <X size={20} />
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {isAdmin && (
+                            <button
+                                onClick={() => {
+                                    setShowEnrollModal(false);
+                                    navigate('/students?quick=create-student');
+                                }}
+                                className="px-3 py-1.5 text-xs font-semibold rounded-md border border-primary-200 text-primary-700 hover:bg-primary-50"
+                            >
+                                Add Student
+                            </button>
+                        )}
+                        <button onClick={() => setShowEnrollModal(false)} className="text-gray-400 hover:text-gray-600">
+                            <X size={20} />
+                        </button>
+                    </div>
                 </div>
                 
                 <div className="p-4 border-b border-gray-100">

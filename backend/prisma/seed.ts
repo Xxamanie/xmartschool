@@ -133,6 +133,7 @@ async function main() {
       name: 'Emma Thompson',
       gender: 'Female',
       grade: '10th',
+      house: 'Red House',
       enrollmentDate: new Date('2023-09-01'),
       status: StudentStatus.Active,
       gpa: 3.8,

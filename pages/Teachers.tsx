@@ -1,18 +1,34 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../services/api';
-import { User, UserRole } from '../types';
+import { Subject, User, UserRole } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { Search, Filter, MoreHorizontal, Plus, ArrowUp, ArrowDown, ArrowUpDown, X, UserCheck, CheckCircle2, Trash2, Edit, Mail, Phone, Save, Briefcase, User as UserIcon } from 'lucide-react';
 
 // Inline TeacherForm component to resolve module resolution issues
 interface InlineTeacherFormProps {
   teacher?: User | null;
+  availableClasses: string[];
+  availableHouses: string[];
+  availableSubjects: Subject[];
+  initialAssignments?: {
+    formClass?: string;
+    house?: string;
+    subjectIds?: string[];
+  };
   onSubmit: (teacherData: Partial<User>) => void;
   onCancel: () => void;
 }
 
-const InlineTeacherForm: React.FC<InlineTeacherFormProps> = ({ teacher, onSubmit, onCancel }) => {
+const InlineTeacherForm: React.FC<InlineTeacherFormProps> = ({
+  teacher,
+  availableClasses,
+  availableHouses,
+  availableSubjects,
+  initialAssignments,
+  onSubmit,
+  onCancel,
+}) => {
   const [formData, setFormData] = useState({
     name: teacher?.name || '',
     email: teacher?.email || '',
@@ -23,7 +39,23 @@ const InlineTeacherForm: React.FC<InlineTeacherFormProps> = ({ teacher, onSubmit
     schoolId: teacher?.schoolId || '',
   });
 
+  const [assignments, setAssignments] = useState({
+    formClass: initialAssignments?.formClass || '',
+    house: initialAssignments?.house || '',
+    subjectIds: initialAssignments?.subjectIds || ([] as string[]),
+  });
+
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (teacher) {
+      setAssignments({
+        formClass: initialAssignments?.formClass || '',
+        house: initialAssignments?.house || '',
+        subjectIds: initialAssignments?.subjectIds || [],
+      });
+    }
+  }, [teacher, initialAssignments]);
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
@@ -50,7 +82,7 @@ const InlineTeacherForm: React.FC<InlineTeacherFormProps> = ({ teacher, onSubmit
     e.preventDefault();
     
     if (validateForm()) {
-      onSubmit(formData);
+      onSubmit({ ...formData, ...assignments });
     }
   };
 
@@ -59,6 +91,18 @@ const InlineTeacherForm: React.FC<InlineTeacherFormProps> = ({ teacher, onSubmit
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
     }
+  };
+
+  const toggleSubject = (subjectId: string) => {
+    setAssignments((prev) => {
+      const next = new Set(prev.subjectIds);
+      if (next.has(subjectId)) {
+        next.delete(subjectId);
+      } else {
+        next.add(subjectId);
+      }
+      return { ...prev, subjectIds: Array.from(next) };
+    });
   };
 
   return (
@@ -162,6 +206,63 @@ const InlineTeacherForm: React.FC<InlineTeacherFormProps> = ({ teacher, onSubmit
               placeholder="Brief description about the teacher..."
             />
           </div>
+
+          <div className="border-t border-gray-200 pt-4 space-y-4">
+            <div>
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Form Teacher (Class)</label>
+              <input
+                type="text"
+                list="class-options"
+                value={assignments.formClass}
+                onChange={(e) => setAssignments((prev) => ({ ...prev, formClass: e.target.value }))}
+                className="px-3 py-2 sm:py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent block w-full"
+                placeholder="e.g., JSS 2B"
+              />
+              <datalist id="class-options">
+                {availableClasses.map((className) => (
+                  <option key={className} value={className} />
+                ))}
+              </datalist>
+            </div>
+
+            <div>
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">House Master/Mistress</label>
+              <input
+                type="text"
+                list="house-options"
+                value={assignments.house}
+                onChange={(e) => setAssignments((prev) => ({ ...prev, house: e.target.value }))}
+                className="px-3 py-2 sm:py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent block w-full"
+                placeholder="e.g., Red House"
+              />
+              <datalist id="house-options">
+                {availableHouses.map((house) => (
+                  <option key={house} value={house} />
+                ))}
+              </datalist>
+            </div>
+
+            <div>
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">Assigned Subjects</label>
+              <div className="max-h-36 overflow-y-auto border border-gray-200 rounded-lg p-2 space-y-2">
+                {availableSubjects.length > 0 ? (
+                  availableSubjects.map((subject) => (
+                    <label key={subject.id} className="flex items-center gap-2 text-xs sm:text-sm text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={assignments.subjectIds.includes(subject.id)}
+                        onChange={() => toggleSubject(subject.id)}
+                        className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                      />
+                      <span>{subject.name}</span>
+                    </label>
+                  ))
+                ) : (
+                  <p className="text-xs text-gray-500">No subjects available yet.</p>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -187,10 +288,16 @@ const InlineTeacherForm: React.FC<InlineTeacherFormProps> = ({ teacher, onSubmit
 
 export const Teachers: React.FC = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const isAdmin = user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN;
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [teachers, setTeachers] = useState<User[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [classes, setClasses] = useState<string[]>([]);
+  const [houses, setHouses] = useState<string[]>([]);
+  const [formMasters, setFormMasters] = useState<Record<string, string>>({});
+  const [houseMasters, setHouseMasters] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -205,7 +312,22 @@ export const Teachers: React.FC = () => {
   useEffect(() => {
     const fetchTeachers = async () => {
       try {
-        const response = await api.getAllUsers();
+        const [
+          response,
+          subjectsRes,
+          classMastersRes,
+          houseMastersRes,
+          studentsRes,
+          classesRes,
+        ] = await Promise.all([
+          api.getAllUsers(),
+          api.getSubjects(user?.schoolId),
+          api.getClassMasters(),
+          api.getHouseMasters(),
+          api.getStudents(user?.schoolId),
+          user?.schoolId ? api.getSchoolClasses(user.schoolId) : Promise.resolve({ ok: true, data: [] as string[] }),
+        ]);
+
         if (response.ok) {
           let filteredTeachers = response.data.filter(u => u.role === UserRole.TEACHER || u.role === UserRole.ADMIN);
           
@@ -215,6 +337,33 @@ export const Teachers: React.FC = () => {
           }
           
           setTeachers(filteredTeachers);
+        }
+
+        if (subjectsRes.ok) {
+          setSubjects(subjectsRes.data);
+        }
+
+        if (classMastersRes.ok) {
+          setFormMasters(classMastersRes.data);
+        }
+
+        if (houseMastersRes.ok) {
+          setHouseMasters(houseMastersRes.data);
+        }
+
+        if (studentsRes.ok) {
+          const classSet = new Set(studentsRes.data.map((student) => student.grade).filter(Boolean));
+          const houseSet = new Set(studentsRes.data.map((student) => student.house).filter(Boolean));
+          if (classSet.size > 0) {
+            setClasses(Array.from(classSet).sort());
+          }
+          if (houseSet.size > 0) {
+            setHouses(Array.from(houseSet).sort());
+          }
+        }
+
+        if (classesRes.ok && classesRes.data.length) {
+          setClasses(classesRes.data);
         }
       } catch (error) {
         console.error('Failed to fetch teachers', error);
@@ -276,24 +425,43 @@ export const Teachers: React.FC = () => {
     return result;
   }, [teachers, searchTerm, sortConfig, isAdmin]);
 
-  const handleAddTeacher = async (teacherData: Partial<User>) => {
+  const handleAddTeacher = async (teacherData: Partial<User> & { formClass?: string; house?: string; subjectIds?: string[] }) => {
     try {
-      const response = await api.createTeacher(teacherData as Omit<User, 'id'>);
+      const response = await api.createTeacher({
+        ...teacherData,
+        schoolId: teacherData.schoolId || user?.schoolId,
+      });
       setTeachers(prev => [...prev, response.data]);
       setShowAddModal(false);
-      alert('Teacher added successfully!');
+      const [classMastersRes, houseMastersRes, subjectsRes] = await Promise.all([
+        api.getClassMasters(),
+        api.getHouseMasters(),
+        api.getSubjects(user?.schoolId),
+      ]);
+      if (classMastersRes.ok) setFormMasters(classMastersRes.data);
+      if (houseMastersRes.ok) setHouseMasters(houseMastersRes.data);
+      if (subjectsRes.ok) setSubjects(subjectsRes.data);
+      alert(response.message || 'Teacher added successfully!');
     } catch (e) {
       console.error("Failed to add teacher", e);
       alert(`Error adding teacher: ${(e as any)?.message || 'Unknown error'}`);
     }
   };
 
-  const handleEditTeacher = async (teacherData: Partial<User>) => {
+  const handleEditTeacher = async (teacherData: Partial<User> & { formClass?: string; house?: string; subjectIds?: string[] }) => {
     if (!editingTeacher) return;
     try {
       const response = await api.updateTeacher(editingTeacher.id, teacherData);
       setTeachers(prev => prev.map(t => t.id === editingTeacher.id ? response.data : t));
       setEditingTeacher(null);
+      const [classMastersRes, houseMastersRes, subjectsRes] = await Promise.all([
+        api.getClassMasters(),
+        api.getHouseMasters(),
+        api.getSubjects(user?.schoolId),
+      ]);
+      if (classMastersRes.ok) setFormMasters(classMastersRes.data);
+      if (houseMastersRes.ok) setHouseMasters(houseMastersRes.data);
+      if (subjectsRes.ok) setSubjects(subjectsRes.data);
       alert('Teacher updated successfully!');
     } catch (e) {
       console.error("Failed to update teacher", e);
@@ -329,6 +497,28 @@ export const Teachers: React.FC = () => {
     if (!active) return <ArrowUpDown size={14} className="opacity-0 group-hover:opacity-40 ml-1 transition-opacity" />;
     return direction === 'asc' ? <ArrowUp size={14} className="ml-1" /> : <ArrowDown size={14} className="ml-1" />;
   };
+
+  const getAssignmentsForTeacher = (teacherId: string) => {
+    const formClass = Object.entries(formMasters).find(([_, id]) => id === teacherId)?.[0] || '';
+    const house = Object.entries(houseMasters).find(([_, id]) => id === teacherId)?.[0] || '';
+    const subjectIds = subjects.filter((subject) => subject.teacherId === teacherId).map((subject) => subject.id);
+    return { formClass, house, subjectIds };
+  };
+
+  if (user?.role && !isAdmin) {
+    return (
+      <div className="bg-white border border-gray-200 rounded-xl p-8 text-center">
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">Access Restricted</h1>
+        <p className="text-gray-500 mb-6">Teachers are not permitted to manage staff records.</p>
+        <button
+          onClick={() => navigate('/')}
+          className="inline-flex items-center justify-center px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm font-medium"
+        >
+          Back to Dashboard
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -520,6 +710,10 @@ export const Teachers: React.FC = () => {
             <div className="flex-1 overflow-y-auto p-4 sm:p-6">
               <InlineTeacherForm
                 teacher={editingTeacher}
+                availableClasses={classes}
+                availableHouses={houses}
+                availableSubjects={subjects}
+                initialAssignments={editingTeacher ? getAssignmentsForTeacher(editingTeacher.id) : undefined}
                 onSubmit={editingTeacher ? handleEditTeacher : handleAddTeacher}
                 onCancel={() => {
                   setShowAddModal(false);

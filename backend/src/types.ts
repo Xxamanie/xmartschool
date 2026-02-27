@@ -36,6 +36,7 @@ export interface Student {
   name: string;
   gender: 'Male' | 'Female';
   grade: string;
+  house: string;
   enrollmentDate: string;
   status: 'Active' | 'Inactive' | 'Suspended';
   gpa: number;
@@ -45,12 +46,27 @@ export interface Student {
   enrolledSubjects?: string[];
 }
 
+export interface GraduatedStudent {
+  id: string;
+  schoolId: string;
+  studentId?: string;
+  name: string;
+  gender: 'Male' | 'Female';
+  grade: string;
+  house: string;
+  level: string;
+  term: string;
+  year: number;
+  archivedAt: string;
+}
+
 export interface Subject {
   id: string;
   name: string;
   teacherId: string;
   schedule: string;
   room: string;
+  schoolId?: string;
 }
 
 export interface SchemeSubmission {
@@ -81,6 +97,7 @@ export interface ResultData {
   studentName: string;
   studentId: string;
   subjectName?: string;
+  term?: string;
   average: number;
   grade: string;
   status: 'Published' | 'Draft' | 'withheld';

@@ -1,4 +1,4 @@
-import { Student, Subject, ApiResponse, SchemeSubmission, Assessment, ResultData, School, User, UserRole, ActiveExam, ExamQuestion, ExamSession, Announcement, LiveClass, AIActivity } from '../types';
+import { Student, Subject, ApiResponse, SchemeSubmission, Assessment, ResultData, School, User, UserRole, ActiveExam, ExamQuestion, ExamSession, Announcement, LiveClass, AIActivity, GraduatedStudent } from '../types';
 import { MOCK_STUDENTS, MOCK_SUBJECTS, MOCK_SCHEMES, MOCK_ASSESSMENTS, MOCK_RESULTS, MOCK_SCHOOLS, MOCK_USER, MOCK_SUPER_ADMIN } from './mockData';
 import apiClient from '../src/utils/api';
 
@@ -298,6 +298,44 @@ export const api = {
     }
   },
 
+  promoteStudents: async (payload: {
+    schoolId?: string;
+    term: string;
+    year: number;
+    nextGradeByCurrent?: Record<string, string>;
+    graduatingGrades?: string[];
+  }): Promise<ApiResponse<{ promoted: number; graduated: number; skipped: number }>> => {
+    try {
+      const { data } = await apiClient.post('/students/promote', payload);
+      return { ok: true, data: data?.data ?? data, message: data?.message };
+    } catch (error) {
+      console.error('Failed to promote students:', error);
+      throw error;
+    }
+  },
+
+  getGraduatedStudents: async (params?: {
+    schoolId?: string;
+    level?: string;
+    year?: number;
+    term?: string;
+  }): Promise<ApiResponse<GraduatedStudent[]>> => {
+    try {
+      const search = new URLSearchParams();
+      if (params?.schoolId) search.append('schoolId', params.schoolId);
+      if (params?.level) search.append('level', params.level);
+      if (params?.year) search.append('year', String(params.year));
+      if (params?.term) search.append('term', params.term);
+      const query = search.toString();
+      const { data } = await apiClient.get(`/students/graduated${query ? `?${query}` : ''}`);
+      return { ok: true, data: data?.data ?? data ?? [] };
+    } catch (error) {
+      console.error('Failed to load graduated students:', error);
+      await delay(500);
+      return { ok: true, data: [] };
+    }
+  },
+
   deleteStudent: async (studentId: string): Promise<ApiResponse<boolean>> => {
     try {
       console.log('[deleteStudent] ID:', studentId);
@@ -309,9 +347,10 @@ export const api = {
     }
   },
 
-  getSubjects: async (): Promise<ApiResponse<Subject[]>> => {
+  getSubjects: async (schoolId?: string): Promise<ApiResponse<Subject[]>> => {
     try {
-      const { data } = await apiClient.get('/subjects');
+      const url = schoolId ? `/subjects?schoolId=${schoolId}` : '/subjects';
+      const { data } = await apiClient.get(url);
       return { ok: true, data: data || data.data || [] };
     } catch (error) {
       console.error('Failed to load subjects:', error);
@@ -325,7 +364,7 @@ export const api = {
         ...subjectData,
         schedule: 'TBD',
         room: 'TBD',
-        teacherId: subjectData.teacherId || 'unassigned'
+        teacherId: subjectData.teacherId || undefined
       };
       const { data } = await apiClient.post('/subjects', payload);
       return { ok: true, data: data || data.data, message: 'Subject created successfully' };
@@ -368,7 +407,7 @@ export const api = {
 
   publishResults: async (newResults: ResultData[]): Promise<ApiResponse<{ success: boolean }>> => {
     try {
-      const { data } = await apiClient.post('/results', { results: newResults });
+      const { data } = await apiClient.post('/results/publish', { results: newResults });
       return { ok: true, data, message: 'Results published successfully' };
     } catch (error) {
       console.error('Failed to publish results:', error);
@@ -436,7 +475,7 @@ export const api = {
     }
   },
 
-  createTeacher: async (teacherData: Omit<User, 'id'>): Promise<ApiResponse<User>> => {
+  createTeacher: async (teacherData: Omit<User, 'id'> & { formClass?: string; house?: string; subjectIds?: string[] }): Promise<ApiResponse<User>> => {
     try {
       const { data } = await apiClient.post('/users', teacherData);
       return { ok: true, data: data || data.data, message: 'Teacher created successfully' };
@@ -446,7 +485,7 @@ export const api = {
     }
   },
 
-  updateTeacher: async (teacherId: string, updates: Partial<User>): Promise<ApiResponse<User>> => {
+  updateTeacher: async (teacherId: string, updates: Partial<User> & { formClass?: string; house?: string; subjectIds?: string[] }): Promise<ApiResponse<User>> => {
     try {
       const { data } = await apiClient.put(`/users/${teacherId}`, updates);
       return { ok: true, data: data || data.data, message: 'Teacher updated successfully' };
@@ -656,6 +695,28 @@ export const api = {
       console.error('Failed to assign class master:', error);
       await delay(500);
       return { ok: false, data: false, message: 'Failed to assign class master' };
+    }
+  },
+
+  getHouseMasters: async (): Promise<ApiResponse<Record<string, string>>> => {
+    try {
+      const { data } = await apiClient.get('/users/house-masters');
+      return { ok: true, data: data?.data ?? data ?? {} };
+    } catch (error) {
+      console.error('Failed to get house masters:', error);
+      await delay(500);
+      return { ok: true, data: {} };
+    }
+  },
+
+  assignHouseMaster: async (house: string, teacherId: string): Promise<ApiResponse<boolean>> => {
+    try {
+      await apiClient.post('/users/house-masters', { house, teacherId });
+      return { ok: true, data: true, message: 'House master assigned successfully' };
+    } catch (error) {
+      console.error('Failed to assign house master:', error);
+      await delay(500);
+      return { ok: false, data: false, message: 'Failed to assign house master' };
     }
   },
 

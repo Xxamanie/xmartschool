@@ -453,6 +453,7 @@ export const Assessments: React.FC = () => {
                 studentName: a.studentName,
                 studentId: a.studentId,
                 subjectName: subject?.name || 'Unknown Subject',
+                term: selectedTerm,
                 average: total,
                 grade: grade,
                 status: 'Published',

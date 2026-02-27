@@ -14,6 +14,7 @@ import { announcementsRouter } from './modules/announcements';
 import { proctoringRouter } from './modules/proctoring';
 import { liveClassesRouter } from './modules/liveClasses';
 import { aiActivityRouter } from './modules/aiActivity';
+import { aiActivitySmokeRouter } from './modules/aiActivitySmoke';
 
 export const registerRoutes = (app: Express) => {
   app.use('/api/health', healthRouter);
@@ -31,4 +32,5 @@ export const registerRoutes = (app: Express) => {
   app.use('/api/proctoring', proctoringRouter);
   app.use('/api/live-classes', liveClassesRouter);
   app.use('/api/ai-activity', aiActivityRouter);
+  app.use('/api/ai-activity', aiActivitySmokeRouter);
 };

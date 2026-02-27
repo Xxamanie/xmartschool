@@ -120,6 +120,8 @@ model School {
   examSessions          ExamSession[]
   attendanceRecords     AttendanceRecord[]
   classMasters          ClassMaster[]
+  houseMasters          HouseMaster[]
+  graduatedStudents     GraduatedStudent[]
   proctoringAlerts      ProctoringAlert[]
   aiActivities          AIActivity[]
 }
@@ -139,6 +141,7 @@ model User {
   subjects     Subject[]     @relation("SubjectTeacher")
   exams        Exam[]        @relation("ExamTeacher")
   classMasters ClassMaster[]
+  houseMasters HouseMaster[]
   liveClasses  LiveClass[]   @relation("LiveClassTeacher")
   aiActivities AIActivity[]
 
@@ -150,6 +153,7 @@ model Student {
   name             String
   gender           String
   grade            String
+  house            String             @default("Unassigned")
   enrollmentDate   DateTime
   status           StudentStatus      @default(Active)
   gpa              Float              @default(0)
@@ -216,13 +220,14 @@ model Result {
   subjectId   String?
   subject     Subject?     @relation(fields: [subjectId], references: [id])
   subjectName String
+  term        String       @default("Term 1")
   average     Float
   grade       String
   status      ResultStatus
   remarks     String?
   details     Json?
 
-  @@unique([schoolId, studentId, subjectName])
+  @@unique([schoolId, studentId, subjectName, term])
   @@index([schoolId, studentId])
 }
 
@@ -396,6 +401,37 @@ model ClassMaster {
 
   @@unique([schoolId, grade])
   @@index([schoolId])
+}
+
+model HouseMaster {
+  id        String @id @default(cuid())
+  schoolId  String
+  school    School @relation(fields: [schoolId], references: [id])
+  house     String
+  teacherId String
+  teacher   User   @relation(fields: [teacherId], references: [id])
+
+  @@unique([schoolId, house])
+  @@index([schoolId])
+}
+
+model GraduatedStudent {
+  id         String   @id @default(cuid())
+  schoolId   String
+  school     School   @relation(fields: [schoolId], references: [id])
+  studentId  String?
+  student    Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  name       String
+  gender     String
+  grade      String
+  house      String   @default("Unassigned")
+  level      String
+  term       String
+  year       Int
+  archivedAt DateTime @default(now())
+
+  @@index([schoolId, level])
+  @@index([year, term])
 }
 
 model ProctoringAlert {

@@ -21,11 +21,66 @@ router.get(
 const updateSchema = z
   .object({
     grade: z.string().optional(),
+    house: z.string().optional(),
     status: z.enum(['Active', 'Inactive', 'Suspended']).optional(),
   })
   .passthrough();
 
 const idParam = z.object({ id: z.string().min(1) });
+
+const createSchema = z.object({
+  name: z.string().min(1),
+  gender: z.string().min(1),
+  grade: z.string().min(1),
+  house: z.string().min(1),
+  status: z.enum(['Active', 'Inactive', 'Suspended']).optional(),
+  gpa: z.number().optional(),
+  attendance: z.number().optional(),
+  schoolId: z.string().optional(),
+});
+
+router.post(
+  '/',
+  asyncHandler(async (req, res) => {
+    const payload = createSchema.parse(req.body);
+    const response = await appService.createStudent(payload as any);
+    res.json(response);
+  }),
+);
+
+const promoteSchema = z.object({
+  schoolId: z.string().optional(),
+  term: z.string().min(1),
+  year: z.number().int(),
+  nextGradeByCurrent: z.record(z.string(), z.string()).optional(),
+  graduatingGrades: z.array(z.string()).optional(),
+  eligibleStudentIds: z.array(z.string()).optional(),
+});
+
+router.post(
+  '/promote',
+  asyncHandler(async (req, res) => {
+    const payload = promoteSchema.parse(req.body);
+    const response = await appService.promoteStudents(payload);
+    res.json(response);
+  }),
+);
+
+const graduatedQuery = z.object({
+  schoolId: z.string().optional(),
+  level: z.string().optional(),
+  year: z.coerce.number().int().optional(),
+  term: z.string().optional(),
+});
+
+router.get(
+  '/graduated',
+  asyncHandler(async (req, res) => {
+    const filters = graduatedQuery.parse(req.query);
+    const response = await appService.getGraduatedStudents(filters);
+    res.json(response);
+  }),
+);
 
 router.put(
   '/:id',
@@ -33,6 +88,15 @@ router.put(
     const { id } = idParam.parse(req.params);
     const updates = updateSchema.parse(req.body);
     const response = await appService.updateStudent(id, updates);
+    res.json(response);
+  }),
+);
+
+router.delete(
+  '/:id',
+  asyncHandler(async (req, res) => {
+    const { id } = idParam.parse(req.params);
+    const response = await appService.deleteStudent(id);
     res.json(response);
   }),
 );

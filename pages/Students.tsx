@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../services/api';
-import { Student, UserRole, User } from '../types';
+import { GraduatedStudent, Student, UserRole, User } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { StudentForm } from '../components/StudentForm';
 import { Search, Filter, MoreHorizontal, Plus, ArrowUp, ArrowDown, ArrowUpDown, Calendar, Crown, X, UserCheck, CheckCircle2, Trash2, Edit } from 'lucide-react';
@@ -23,6 +23,17 @@ export const Students: React.FC = () => {
   const [deleteConfirm, setDeleteConfirm] = useState<Student | null>(null);
   const [bulkDeleteMode, setBulkDeleteMode] = useState(false);
   const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
+  const [showPromotionModal, setShowPromotionModal] = useState(false);
+  const [promotionTerm, setPromotionTerm] = useState('Term 3');
+  const [promotionYear, setPromotionYear] = useState(new Date().getFullYear());
+  const [graduatingInput, setGraduatingInput] = useState('Primary 5, JSS 3, SSS 3');
+  const [promotionSummary, setPromotionSummary] = useState<{ promoted: number; graduated: number; skipped: number } | null>(null);
+  const [promotionLoading, setPromotionLoading] = useState(false);
+  const [showGraduatedModal, setShowGraduatedModal] = useState(false);
+  const [graduatedStudents, setGraduatedStudents] = useState<GraduatedStudent[]>([]);
+  const [graduatedLevel, setGraduatedLevel] = useState('All');
+  const [graduatedTerm, setGraduatedTerm] = useState('');
+  const [graduatedYear, setGraduatedYear] = useState<number | ''>(new Date().getFullYear());
   
   const [sortConfig, setSortConfig] = useState<{ key: keyof Student; direction: 'asc' | 'desc' }>({
     key: 'name',
@@ -91,7 +102,8 @@ export const Students: React.FC = () => {
       result = result.filter(
         (s) =>
           s.name.toLowerCase().includes(term) ||
-          s.grade.toLowerCase().includes(term)
+          s.grade.toLowerCase().includes(term) ||
+          (s.house || '').toLowerCase().includes(term)
       );
     }
 
@@ -131,10 +143,14 @@ export const Students: React.FC = () => {
 
   const handleAddStudent = async (studentData: Omit<Student, 'id' | 'enrollmentDate'>) => {
       try {
-          const response = await api.createStudent(studentData);
+          const payload = {
+            ...studentData,
+            schoolId: studentData.schoolId || user?.schoolId,
+          };
+          const response = await api.createStudent(payload);
           setStudents(prev => [...prev, response.data]);
           setShowAddModal(false);
-          alert('Student added successfully!');
+          alert(response.message || 'Student added successfully!');
       } catch (e) {
           console.error("Failed to add student", e);
           alert(`Error adding student: ${(e as any)?.message || 'Unknown error'}`);
@@ -211,6 +227,52 @@ export const Students: React.FC = () => {
       return direction === 'asc' ? <ArrowUp size={14} className="ml-1" /> : <ArrowDown size={14} className="ml-1" />;
   };
 
+  const loadGraduatedStudents = async () => {
+    try {
+      const response = await api.getGraduatedStudents({
+        schoolId: user?.schoolId,
+        level: graduatedLevel === 'All' ? undefined : graduatedLevel,
+        term: graduatedTerm || undefined,
+        year: typeof graduatedYear === 'number' ? graduatedYear : undefined,
+      });
+      if (response.ok) {
+        setGraduatedStudents(response.data);
+      }
+    } catch (error) {
+      console.error('Failed to load graduated students', error);
+    }
+  };
+
+  const handlePromoteStudents = async () => {
+    setPromotionLoading(true);
+    try {
+      const graduatingGrades = graduatingInput
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean);
+
+      const response = await api.promoteStudents({
+        schoolId: user?.schoolId,
+        term: promotionTerm,
+        year: promotionYear,
+        graduatingGrades,
+      });
+
+      if (response.ok) {
+        setPromotionSummary(response.data);
+        const studentsRes = await api.getStudents(user?.schoolId);
+        if (studentsRes.ok) {
+          setStudents(studentsRes.data);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to promote students', error);
+      alert(`Promotion failed: ${(error as any)?.message || 'Unknown error'}`);
+    } finally {
+      setPromotionLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -225,6 +287,24 @@ export const Students: React.FC = () => {
                     className="inline-flex items-center justify-center px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium shadow-sm"
                 >
                     <Crown size={16} className="mr-2 text-amber-500" /> Form Masters
+                </button>
+                <button
+                    onClick={() => {
+                      setPromotionSummary(null);
+                      setShowPromotionModal(true);
+                    }}
+                    className="inline-flex items-center justify-center px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium shadow-sm"
+                >
+                    Promote Students
+                </button>
+                <button
+                    onClick={() => {
+                      setShowGraduatedModal(true);
+                      loadGraduatedStudents();
+                    }}
+                    className="inline-flex items-center justify-center px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium shadow-sm"
+                >
+                    Graduation Archive
                 </button>
                 <button className="inline-flex items-center justify-center px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm font-medium shadow-sm" onClick={() => setShowAddModal(true)}>
                     <Plus size={16} className="mr-2" /> Add Student
@@ -345,6 +425,9 @@ export const Students: React.FC = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Grade
                 </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  House
+                </th>
                 <th 
                     className={`px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${isAdmin ? 'cursor-pointer hover:bg-gray-100 group select-none' : ''}`}
                     onClick={() => handleSort('enrollmentDate')}
@@ -373,7 +456,7 @@ export const Students: React.FC = () => {
                 [...Array(5)].map((_, i) => (
                   <tr key={i}>
                     {bulkDeleteMode && <td className="px-6 py-4"><div className="h-4 w-4 bg-gray-200 rounded animate-pulse"></div></td>}
-                    <td colSpan={bulkDeleteMode ? 7 : 8} className="px-6 py-4">
+                    <td colSpan={9} className="px-6 py-4">
                       <div className="h-4 bg-gray-200 rounded w-3/4 animate-pulse"></div>
                     </td>
                   </tr>
@@ -409,6 +492,9 @@ export const Students: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {student.grade}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {student.house || 'Unassigned'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       <div className="flex items-center gap-1.5">
@@ -469,7 +555,7 @@ export const Students: React.FC = () => {
               ) : (
                 <tr>
                   <td
-                    colSpan={bulkDeleteMode ? 9 : 8}
+                    colSpan={bulkDeleteMode ? 10 : 9}
                     className="px-6 py-12 text-center text-gray-500"
                   >
                     No students found matching your search.
@@ -561,6 +647,167 @@ export const Students: React.FC = () => {
                  </div>
              </div>
           </div>
+      )}
+
+      {/* Promotion Modal */}
+      {showPromotionModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-lg rounded-xl shadow-2xl flex flex-col">
+            <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50 rounded-t-xl">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Promote Students</h2>
+                <p className="text-sm text-gray-500">Move students to the next class and archive graduating lists.</p>
+              </div>
+              <button onClick={() => setShowPromotionModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Term</label>
+                <select
+                  value={promotionTerm}
+                  onChange={(e) => setPromotionTerm(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                >
+                  <option value="Term 1">Term 1</option>
+                  <option value="Term 2">Term 2</option>
+                  <option value="Term 3">Term 3</option>
+                </select>
+                <p className="text-xs text-gray-500 mt-1">Graduating classes are archived only in Term 3.</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Year</label>
+                <input
+                  type="number"
+                  value={promotionYear}
+                  onChange={(e) => setPromotionYear(Number(e.target.value))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Graduating Classes (comma-separated)</label>
+                <input
+                  type="text"
+                  value={graduatingInput}
+                  onChange={(e) => setGraduatingInput(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                />
+              </div>
+
+              {promotionSummary && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 text-sm text-emerald-800">
+                  <p><strong>{promotionSummary.promoted}</strong> promoted</p>
+                  <p><strong>{promotionSummary.graduated}</strong> archived as graduates</p>
+                  <p><strong>{promotionSummary.skipped}</strong> skipped (no next class mapping)</p>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-gray-200 bg-gray-50 rounded-b-xl flex justify-end gap-2">
+              <button
+                onClick={() => setShowPromotionModal(false)}
+                className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors shadow-sm"
+                disabled={promotionLoading}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handlePromoteStudents}
+                className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors shadow-sm disabled:opacity-50"
+                disabled={promotionLoading}
+              >
+                {promotionLoading ? 'Promoting...' : 'Run Promotion'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Graduation Archive Modal */}
+      {showGraduatedModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-3xl rounded-xl shadow-2xl flex flex-col max-h-[85vh]">
+            <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50 rounded-t-xl">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Graduation Archive</h2>
+                <p className="text-sm text-gray-500">View graduating students by level.</p>
+              </div>
+              <button onClick={() => setShowGraduatedModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="p-4 border-b border-gray-100 flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
+              <div className="flex flex-col sm:flex-row gap-2">
+                <select
+                  value={graduatedLevel}
+                  onChange={(e) => setGraduatedLevel(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                >
+                  <option value="All">All Levels</option>
+                  <option value="Primary">Primary</option>
+                  <option value="Junior Secondary">Junior Secondary</option>
+                  <option value="Senior Secondary">Senior Secondary</option>
+                </select>
+                <input
+                  type="text"
+                  value={graduatedTerm}
+                  onChange={(e) => setGraduatedTerm(e.target.value)}
+                  placeholder="Term (optional)"
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+                <input
+                  type="number"
+                  value={graduatedYear}
+                  onChange={(e) => setGraduatedYear(e.target.value ? Number(e.target.value) : '')}
+                  placeholder="Year"
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+              <button
+                onClick={loadGraduatedStudents}
+                className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors shadow-sm"
+              >
+                Refresh
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto">
+              {graduatedStudents.length > 0 ? (
+                <table className="min-w-full divide-y divide-gray-200 text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Grade</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">House</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Level</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Term</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Year</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {graduatedStudents.map((student) => (
+                      <tr key={student.id}>
+                        <td className="px-4 py-3 text-gray-900">{student.name}</td>
+                        <td className="px-4 py-3 text-gray-600">{student.grade}</td>
+                        <td className="px-4 py-3 text-gray-600">{student.house || 'Unassigned'}</td>
+                        <td className="px-4 py-3 text-gray-600">{student.level}</td>
+                        <td className="px-4 py-3 text-gray-600">{student.term}</td>
+                        <td className="px-4 py-3 text-gray-600">{student.year}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="p-12 text-center text-gray-500">No graduates found for the selected filters.</div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Add/Edit Student Modal */}

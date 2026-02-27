@@ -41,11 +41,11 @@ const COMMANDS: CommandItem[] = [
   { id: 'dashboard', title: 'Open Dashboard', subtitle: 'Overview and priorities', path: '/' },
   { id: 'students', title: 'Manage Students', subtitle: 'Add, update, or remove learners', path: '/students', roles: [UserRole.ADMIN, UserRole.TEACHER] },
   { id: 'create-student', title: 'Create Student', subtitle: 'Quick action: open Add Student form', path: '/students?quick=create-student', roles: [UserRole.ADMIN, UserRole.SUPER_ADMIN] },
-  { id: 'teachers', title: 'Manage Teachers', subtitle: 'Staff records and assignments', path: '/teachers', roles: [UserRole.ADMIN, UserRole.TEACHER] },
+  { id: 'teachers', title: 'Manage Teachers', subtitle: 'Staff records and assignments', path: '/teachers', roles: [UserRole.ADMIN, UserRole.SUPER_ADMIN] },
   { id: 'create-teacher', title: 'Create Teacher', subtitle: 'Quick action: open Add Teacher form', path: '/teachers?quick=create-teacher', roles: [UserRole.ADMIN, UserRole.SUPER_ADMIN] },
-  { id: 'classes', title: 'Open Classes', subtitle: 'Class structure and enrollment', path: '/classes', roles: [UserRole.ADMIN, UserRole.TEACHER] },
+  { id: 'classes', title: 'Open Classes', subtitle: 'Class structure and enrollment', path: '/classes', roles: [UserRole.ADMIN, UserRole.SUPER_ADMIN] },
   { id: 'create-class', title: 'Create Class', subtitle: 'Quick action: open class creation form', path: '/classes?quick=create-class', roles: [UserRole.ADMIN, UserRole.SUPER_ADMIN] },
-  { id: 'subjects', title: 'Open Subjects', subtitle: 'Curriculum and subject ownership', path: '/subjects', roles: [UserRole.ADMIN, UserRole.TEACHER] },
+  { id: 'subjects', title: 'Open Subjects', subtitle: 'Curriculum and subject ownership', path: '/subjects', roles: [UserRole.ADMIN, UserRole.SUPER_ADMIN] },
   { id: 'enroll-subjects', title: 'Enroll Subjects', subtitle: 'Quick action: open curriculum enrollment', path: '/subjects?quick=enroll-subjects', roles: [UserRole.ADMIN, UserRole.SUPER_ADMIN] },
   { id: 'attendance', title: 'Take Attendance', subtitle: 'Daily presence tracking', path: '/attendance', roles: [UserRole.ADMIN, UserRole.TEACHER] },
   { id: 'assessments', title: 'Open Assessments', subtitle: 'Continuous assessment workflow', path: '/assessments', roles: [UserRole.ADMIN, UserRole.TEACHER] },
@@ -173,7 +173,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose, u
           api.getSchools(),
           api.getAllUsers(),
           api.getStudents(user?.schoolId),
-          api.getSubjects(),
+          api.getSubjects(role === UserRole.SUPER_ADMIN ? undefined : user?.schoolId),
           api.getLiveClasses(),
         ]);
 
@@ -189,14 +189,14 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose, u
         const usersByRole = users.filter((entry) => {
           if (entry.role !== UserRole.TEACHER && entry.role !== UserRole.ADMIN) return false;
           if (role === UserRole.SUPER_ADMIN) return true;
-          return !!user?.schoolId && entry.schoolId === user.schoolId;
+          return role === UserRole.ADMIN && !!user?.schoolId && entry.schoolId === user.schoolId;
         });
 
         const roleScopedStudents = students.filter((student) => role === UserRole.SUPER_ADMIN || (!!user?.schoolId && student.schoolId === user.schoolId));
         const roleScopedSubjects = subjects.filter((subject) => {
           if (role === UserRole.SUPER_ADMIN) return true;
-          if (role === UserRole.TEACHER) return subject.teacherId === user?.id;
-          return true;
+          if (role === UserRole.ADMIN) return !!user?.schoolId && subject.schoolId === user.schoolId;
+          return false;
         });
         const roleScopedLiveClasses = liveClasses.filter((liveClass) => {
           if (role === UserRole.SUPER_ADMIN) return true;
@@ -209,11 +209,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose, u
           return {
             id: `student-${student.id}`,
             title: student.name,
-            subtitle: `Student | ${student.grade} | ${school?.code || 'School'}`,
+            subtitle: `Student | ${student.grade} | ${student.house || 'Unassigned'} | ${school?.code || 'School'}`,
             path: '/students',
             type: 'student',
             roles: [UserRole.ADMIN, UserRole.TEACHER, UserRole.SUPER_ADMIN],
-            keywords: `${student.name} ${student.grade} ${student.accessCode} ${school?.name || ''} ${school?.code || ''}`.toLowerCase(),
+            keywords: `${student.name} ${student.grade} ${student.house || ''} ${student.accessCode} ${school?.name || ''} ${school?.code || ''}`.toLowerCase(),
           };
         });
 
@@ -223,7 +223,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose, u
           subtitle: `${entry.role === UserRole.ADMIN ? 'Admin' : 'Teacher'} | ${entry.email || 'No email'}`,
           path: '/teachers',
           type: 'teacher',
-          roles: [UserRole.ADMIN, UserRole.TEACHER, UserRole.SUPER_ADMIN],
+          roles: [UserRole.ADMIN, UserRole.SUPER_ADMIN],
           keywords: `${entry.name} ${entry.email || ''} ${entry.role}`.toLowerCase(),
         }));
 
@@ -233,7 +233,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose, u
           subtitle: `Subject | ${subject.schedule || 'Schedule TBD'} | ${subject.room || 'Room TBD'}`,
           path: '/subjects',
           type: 'subject',
-          roles: [UserRole.ADMIN, UserRole.TEACHER, UserRole.SUPER_ADMIN],
+          roles: [UserRole.ADMIN, UserRole.SUPER_ADMIN],
           keywords: `${subject.name} ${subject.schedule || ''} ${subject.room || ''}`.toLowerCase(),
         }));
 
@@ -250,7 +250,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose, u
           }));
 
         let classItems: IndexedItem[] = [];
-        if (user?.schoolId) {
+        if (user?.schoolId && (role === UserRole.ADMIN || role === UserRole.SUPER_ADMIN)) {
           const classRes = await api.getSchoolClasses(user.schoolId);
           if (classRes.ok) {
             classItems = classRes.data.map((className: string) => ({
@@ -259,7 +259,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose, u
               subtitle: 'Class | Enrollment and structure',
               path: '/classes',
               type: 'class',
-              roles: [UserRole.ADMIN, UserRole.TEACHER],
+              roles: [UserRole.ADMIN, UserRole.SUPER_ADMIN],
               keywords: `${className} class enrollment grade`.toLowerCase(),
             }));
           }

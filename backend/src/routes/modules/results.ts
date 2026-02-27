@@ -18,13 +18,28 @@ router.get(
   }),
 );
 
-const publishSchema = z.array(z.any());
+const publishSchema = z.union([
+  z.array(z.any()),
+  z.object({ results: z.array(z.any()) }),
+]);
+
+const extractResults = (payload: z.infer<typeof publishSchema>) =>
+  Array.isArray(payload) ? payload : payload.results;
+
+router.post(
+  '/',
+  asyncHandler(async (req, res) => {
+    const payload = publishSchema.parse(req.body);
+    const response = await appService.publishResults(extractResults(payload) as any);
+    res.json(response);
+  }),
+);
 
 router.post(
   '/publish',
   asyncHandler(async (req, res) => {
     const payload = publishSchema.parse(req.body);
-    const response = await appService.publishResults(payload as any);
+    const response = await appService.publishResults(extractResults(payload) as any);
     res.json(response);
   }),
 );

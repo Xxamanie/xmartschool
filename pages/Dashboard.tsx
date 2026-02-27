@@ -33,6 +33,18 @@ const performanceData = [
   { subject: 'Art', score: 95 },
 ];
 
+const upcomingEvents = [
+  { title: 'Live Class: Mathematics 101', meta: 'Today, 09:00 AM', path: '/live-classes' },
+  { title: 'Staff Meeting', meta: 'Today, 11:00 AM', path: '/live-classes' },
+  { title: 'Physics Basics', meta: 'Today, 01:00 PM', path: '/live-classes' },
+];
+
+const pendingReports = [
+  { title: 'Term Results Drafts', meta: 'Review & publish', path: '/results' },
+  { title: 'Assessments Pending', meta: 'Update CA scores', path: '/assessments' },
+  { title: 'Scheme Reviews', meta: 'Approve or reject', path: '/scheme-of-work' },
+];
+
 export const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -375,7 +387,10 @@ export const Dashboard: React.FC = () => {
             <h3 className="text-lg font-bold text-gray-900">
               Weekly Attendance
             </h3>
-            <button className="text-primary-600 text-sm font-medium hover:text-primary-700">
+            <button
+              onClick={() => navigate('/attendance')}
+              className="text-primary-600 text-sm font-medium hover:text-primary-700"
+            >
               View Report
             </button>
           </div>
@@ -431,7 +446,10 @@ export const Dashboard: React.FC = () => {
             <h3 className="text-lg font-bold text-gray-900">
               Average Subject Scores
             </h3>
-            <button className="text-primary-600 text-sm font-medium hover:text-primary-700">
+            <button
+              onClick={() => navigate('/results')}
+              className="text-primary-600 text-sm font-medium hover:text-primary-700"
+            >
               Details
             </button>
           </div>
@@ -472,6 +490,56 @@ export const Dashboard: React.FC = () => {
                 />
               </BarChart>
             </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-bold text-gray-900">Upcoming Events</h3>
+            <button
+              onClick={() => navigate('/live-classes')}
+              className="text-primary-600 text-sm font-medium hover:text-primary-700"
+            >
+              Open Schedule
+            </button>
+          </div>
+          <div className="space-y-3">
+            {upcomingEvents.map((event) => (
+              <button
+                key={event.title}
+                onClick={() => navigate(event.path)}
+                className="w-full text-left p-3 rounded-lg border border-gray-200 hover:border-primary-300 hover:bg-primary-50 transition-colors"
+              >
+                <p className="text-sm font-semibold text-gray-900">{event.title}</p>
+                <p className="text-xs text-gray-500">{event.meta}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-bold text-gray-900">Pending Reports</h3>
+            <button
+              onClick={() => navigate('/results')}
+              className="text-primary-600 text-sm font-medium hover:text-primary-700"
+            >
+              Open Reports
+            </button>
+          </div>
+          <div className="space-y-3">
+            {pendingReports.map((report) => (
+              <button
+                key={report.title}
+                onClick={() => navigate(report.path)}
+                className="w-full text-left p-3 rounded-lg border border-gray-200 hover:border-primary-300 hover:bg-primary-50 transition-colors"
+              >
+                <p className="text-sm font-semibold text-gray-900">{report.title}</p>
+                <p className="text-xs text-gray-500">{report.meta}</p>
+              </button>
+            ))}
           </div>
         </div>
       </div>
@@ -531,7 +599,10 @@ export const Dashboard: React.FC = () => {
                   </div>
                 </div>
               </div>
-              <button className="text-gray-400 hover:text-primary-600">
+              <button
+                onClick={() => navigate('/live-classes')}
+                className="text-gray-400 hover:text-primary-600"
+              >
                 Details
               </button>
             </div>
