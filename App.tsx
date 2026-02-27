@@ -21,6 +21,7 @@ import { UserRole } from './types';
 import { useClickSound } from './src/utils/useClickSound';
 import { LiveClasses } from './pages/LiveClasses';
 import { LiveClassRoom } from './pages/LiveClassRoom';
+import { Library } from './pages/Library';
 
 const ProtectedRoute = ({ children, allowedRoles }: React.PropsWithChildren<{ allowedRoles?: UserRole[] }>) => {
   const { user, isAuthenticated } = useAuth();
@@ -98,6 +99,7 @@ const App: React.FC = () => {
             <Route path="results" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Results /></ProtectedRoute>} />
             <Route path="live-classes" element={<ProtectedRoute><LiveClasses /></ProtectedRoute>} />
             <Route path="live-classes/:classId" element={<ProtectedRoute><LiveClassRoom /></ProtectedRoute>} />
+            <Route path="library" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Library /></ProtectedRoute>} />
             
             <Route path="settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
           </Route>

@@ -751,5 +751,46 @@ export const api = {
       await delay(500);
       return { ok: false, data: false, message: 'Failed to add class' };
     }
-  }
+  },
+
+  // Library functions
+  getLibraryMaterials: async (schoolId?: string): Promise<ApiResponse<any[]>> => {
+    try {
+      const url = schoolId ? `/library?schoolId=${schoolId}` : '/library';
+      const { data } = await apiClient.get(url);
+      return { ok: true, data: data || data.data || [] };
+    } catch (error) {
+      console.error('Failed to get library materials:', error);
+      return { ok: false, data: [], message: 'Failed to load library' };
+    }
+  },
+
+  createLibraryMaterial: async (material: {
+    title: string;
+    description?: string;
+    fileUrl: string;
+    fileType: string;
+    fileName: string;
+    fileSize?: number;
+    schoolId: string;
+    uploadedBy: string;
+  }): Promise<ApiResponse<any>> => {
+    try {
+      const { data } = await apiClient.post('/library', material);
+      return { ok: true, data: data || data.data, message: 'Material uploaded successfully' };
+    } catch (error) {
+      console.error('Failed to upload library material:', error);
+      return { ok: false, data: null, message: 'Failed to upload material' };
+    }
+  },
+
+  deleteLibraryMaterial: async (id: string): Promise<ApiResponse<boolean>> => {
+    try {
+      await apiClient.delete(`/library/${id}`);
+      return { ok: true, data: true, message: 'Material deleted successfully' };
+    } catch (error) {
+      console.error('Failed to delete library material:', error);
+      return { ok: false, data: false, message: 'Failed to delete material' };
+    }
+  },
 };

@@ -1,22 +1,19 @@
-# TODO
+# Library Feature Implementation
 
-## High Priority
+## TODO:
+- [x] Plan approved by user
+- [x] Add Library model to Prisma schema
+- [x] Create backend route (library.ts)
+- [x] Register library route in routes/index.ts
+- [x] Add frontend API functions
+- [x] Add Library type to types.ts
+- [x] Update Sidebar with Library navigation
+- [x] Create Library page component
+- [x] Add Library route to App.tsx
 
-- [ ] Add route-level authentication middleware for protected backend modules.
-- [ ] Add authorization checks (role-based) for admin-only write operations.
-- [ ] Add integration tests for:
-  - [ ] `POST /api/auth/login`
-  - [ ] `POST /api/auth/student`
-  - [ ] `GET/POST /api/students/form-masters`
-  - [ ] `GET/POST /api/attendance`
-
-## Medium Priority
-
-- [ ] Replace `any` in backend service mappers with explicit Prisma model types.
-- [ ] Normalize response shape handling in frontend API client (single helper).
-- [ ] Add request/response schema tests for route contracts.
-
-## Low Priority
-
-- [ ] Remove legacy compatibility wrappers once downstream references are retired.
-- [ ] Add architecture diagram to README.
+## Completed:
+- Database schema: Added Library model with fields (id, title, description, fileUrl, fileType, fileName, fileSize, schoolId, uploadedBy, createdAt)
+- Backend API: Created library route with GET, POST, DELETE endpoints
+- Frontend: Created Library page with upload form and material display
+- Navigation: Added Library link to Sidebar for Admin and Teacher roles
+- Routing: Added /library route in App.tsx

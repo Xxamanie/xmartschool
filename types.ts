@@ -216,3 +216,16 @@ export interface ApiResponse<T> {
   message?: string;
   ok: boolean;
 }
+
+export interface Library {
+  id: string;
+  title: string;
+  description?: string;
+  fileUrl: string;
+  fileType: string;
+  fileName: string;
+  fileSize: number;
+  schoolId: string;
+  uploadedBy: string;
+  createdAt: string;
+}

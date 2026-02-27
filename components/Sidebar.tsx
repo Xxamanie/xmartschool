@@ -17,7 +17,8 @@ import {
   Globe,
   Crown,
   Layers,
-  CalendarCheck
+  CalendarCheck,
+  Library
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useClickSound } from '../src/utils/useClickSound';
@@ -81,7 +82,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
         { to: '/attendance', icon: CalendarCheck, label: 'Attendance' },
         { to: '/assessments', icon: ClipboardCheck, label: 'Assessments' },
         { to: '/results', icon: TrendingUp, label: 'Results' },
-        { to: '/scheme-of-work', icon: FileText, label: 'Scheme of Work' },
+{ to: '/scheme-of-work', icon: FileText, label: 'Scheme of Work' },
+        { to: '/library', icon: Library, label: 'Library' },
         { to: '/live-classes', icon: Globe, label: 'Live Classes' },
       ];
     } else {
@@ -92,6 +94,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
         { to: '/assessments', icon: ClipboardCheck, label: 'Assessments' },
         { to: '/results', icon: TrendingUp, label: 'Results' },
         { to: '/scheme-of-work', icon: FileText, label: 'Scheme of Work' },
+        { to: '/library', icon: Library, label: 'Library' },
         { to: '/live-classes', icon: Globe, label: 'Live Classes' },
       ];
     }

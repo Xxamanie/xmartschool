@@ -1715,4 +1715,49 @@ export const appService = {
       return failure('Failed to stop recording', null);
     }
   },
+
+  // Library functions
+  getLibraryMaterials: async (schoolId?: string): Promise<ApiResponse<any[]>> => {
+    await wait(50);
+    const where: any = {};
+    if (schoolId) {
+      where.schoolId = schoolId;
+    }
+    const materials = await prisma.library.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+    });
+    return success(materials);
+  },
+
+  createLibraryMaterial: async (data: {
+    title: string;
+    description?: string;
+    fileUrl: string;
+    fileType: string;
+    fileName: string;
+    fileSize: number;
+    schoolId: string;
+    uploadedBy: string;
+  }): Promise<ApiResponse<any>> => {
+    await wait(50);
+    try {
+      const created = await prisma.library.create({
+        data,
+      });
+      return success(created, 'Library material uploaded successfully');
+    } catch (error) {
+      return failure('Failed to upload library material', null);
+    }
+  },
+
+  deleteLibraryMaterial: async (id: string): Promise<ApiResponse<boolean>> => {
+    await wait(50);
+    try {
+      await prisma.library.delete({ where: { id } });
+      return success(true, 'Library material deleted successfully');
+    } catch (error) {
+      return failure('Failed to delete library material', false as unknown as boolean);
+    }
+  },
 };

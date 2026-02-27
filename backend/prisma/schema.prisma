@@ -124,6 +124,7 @@ model School {
   graduatedStudents     GraduatedStudent[]
   proctoringAlerts      ProctoringAlert[]
   aiActivities          AIActivity[]
+  library               Library[]
 }
 
 model User {
@@ -446,6 +447,23 @@ model ProctoringAlert {
   timestamp   DateTime @default(now())
 
   @@index([schoolId, examId])
+}
+
+model Library {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  fileUrl     String
+  fileType    String
+  fileName    String
+  fileSize    Int      @default(0)
+  schoolId    String
+  school      School   @relation(fields: [schoolId], references: [id])
+  uploadedBy  String
+  createdAt   DateTime @default(now())
+
+  @@index([schoolId])
+  @@index([schoolId, createdAt])
 }
 
 model AIActivity {
