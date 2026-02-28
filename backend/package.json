@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "ts-node-dev src/server.ts",
-    "build": "prisma migrate deploy && tsc --project tsconfig.json",
+    "build": "prisma generate && tsc --project tsconfig.json",
     "db:seed": "tsx prisma/seed.ts",
     "prebuild": "prisma generate",
     "start": "node dist/src/server.js",
