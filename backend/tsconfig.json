@@ -12,5 +12,5 @@
     "rootDir": "."
   },
   "include": ["src", "prisma/**/*.ts", "prisma/prisma.config.js"],
-  "exclude": ["node_modules", "dist"]
+  "exclude": ["node_modules", "dist", "prisma/seed.ts"]
 }
