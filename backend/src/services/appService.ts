@@ -274,18 +274,21 @@ export const appService = {
       });
       return success(mapUserModel(updated), 'Profile updated successfully');
     } catch (error) {
+      const userData: any = {
+        id: userId,
+        name: updates.name || 'Smart School User',
+        role: updates.role || UserRole.TEACHER,
+        email: updates.email,
+        avatar: updates.avatar,
+        gender: updates.gender,
+        bio: updates.bio,
+        phone: updates.phone,
+      };
+      if (updates.schoolId) {
+        userData.schoolId = updates.schoolId;
+      }
       const created = await prisma.user.create({
-        data: {
-          id: userId,
-          name: updates.name || 'Smart School User',
-          role: updates.role || UserRole.TEACHER,
-          email: updates.email,
-          avatar: updates.avatar,
-          gender: updates.gender,
-          bio: updates.bio,
-          phone: updates.phone,
-          schoolId: updates.schoolId ?? undefined,
-        },
+        data: userData,
       });
       return success(mapUserModel(created), 'Profile updated successfully');
     }
