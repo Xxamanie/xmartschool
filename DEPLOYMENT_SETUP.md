@@ -28,9 +28,11 @@ VITE_SUPABASE_ANON_KEY=
 ## 2. Backend Deployment (Render)
 
 Recommended settings:
-- Build command: `npm ci && npm run build`
-- Start command: `npm start`
-- Root directory: `backend`
+- **Build command**: `npm install && npm run build`
+- **Start command**: `npm run prisma:deploy && npm start`
+- **Root directory**: `backend`
+
+> **Pro-Tip**: If you must run `prisma migrate deploy` during the **Build command**, ensure `DATABASE_URL` is set to the **External Database URL** (e.g. `dpg-xxxx.onrender.com`). Otherwise, use the **Start command** as shown above.
 
 After deploy:
 - Verify health endpoint: `https://<backend-domain>/api/health`

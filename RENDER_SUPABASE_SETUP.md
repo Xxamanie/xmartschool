@@ -20,8 +20,11 @@ Notes:
 
 ## 2. Build/Start Commands
 
-- Build: `npm ci && npm run build`
-- Start: `npm start`
+- **Build Command**: `npm install && npm run build`
+- **Start Command**: `npm run prisma:deploy && npm start`
+- **Root Directory**: `backend` (if not already set)
+
+> **Note**: Do not run `prisma migrate deploy` in the Build Command on Render if you are using an Internal Database Hostname, as the build environment may not have access to the internal network. Moving it to the Start Command ensures it runs in the runtime environment.
 
 ## 3. Verify Deployment
 
