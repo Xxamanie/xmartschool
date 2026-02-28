@@ -7,14 +7,14 @@ const router = Router();
 
 const loginSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(6),
+  password: z.string().min(0).optional(),
 });
 
 router.post(
   '/login',
   asyncHandler(async (req, res) => {
     const { email, password } = loginSchema.parse(req.body);
-    const response = await appService.login(email, password);
+    const response = await appService.login(email, password || '');
     res.json(response);
   }),
 );
