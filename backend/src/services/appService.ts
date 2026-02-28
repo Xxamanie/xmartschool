@@ -284,7 +284,7 @@ export const appService = {
           gender: updates.gender,
           bio: updates.bio,
           phone: updates.phone,
-          schoolId: updates.schoolId,
+          schoolId: updates.schoolId ?? undefined,
         },
       });
       return success(mapUserModel(created), 'Profile updated successfully');
