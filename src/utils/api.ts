@@ -1,6 +1,9 @@
 import axios from 'axios';
 import { getSupabaseClient } from '../services/supabaseClient';
 
+export const DEMO_AUTH_TOKEN_KEY = 'smartschool_auth_token';
+export const DEMO_AUTH_USER_KEY = 'smartschool_auth_user';
+
 let API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://xmartschool.onrender.com/api';
 if (!API_BASE_URL.startsWith('http://') && !API_BASE_URL.startsWith('https://')) {
   API_BASE_URL = `https://${API_BASE_URL}`;
@@ -18,6 +21,12 @@ export const apiClient = axios.create({
 // Request interceptor
 apiClient.interceptors.request.use(async (config) => {
   try {
+    const demoToken = window.localStorage.getItem(DEMO_AUTH_TOKEN_KEY);
+    if (demoToken) {
+      config.headers.Authorization = `Bearer ${demoToken}`;
+      return config;
+    }
+
     const supabase = getSupabaseClient();
     if (supabase) {
       const { data } = await supabase.auth.getSession();

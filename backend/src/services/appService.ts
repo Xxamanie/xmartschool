@@ -14,6 +14,7 @@ import {
   ClassMaster as PrismaClassMasterModel,
 } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { createSessionToken } from '../utils/session';
 import {
   ActiveExam,
   ApiResponse,
@@ -63,6 +64,47 @@ const mapUserModel = (user: PrismaUserModel): User => ({
   phone: user.phone ?? undefined,
   bio: user.bio ?? undefined,
 });
+
+const withSession = (user: User): User => ({
+  ...user,
+  authToken: createSessionToken(user),
+});
+
+const getDemoUserByEmail = (email: string): User | null => {
+  if (email === 'creator@smartschool.edu') {
+    return {
+      id: 'demo-super-admin',
+      name: 'SmartSchool Creator',
+      email,
+      role: UserRole.SUPER_ADMIN,
+      avatar: avatarFromName('SmartSchool Creator'),
+    };
+  }
+
+  if (email.includes('admin')) {
+    return {
+      id: 'demo-admin',
+      name: 'School Principal',
+      email,
+      role: UserRole.ADMIN,
+      schoolId: 'school1',
+      avatar: avatarFromName('School Principal'),
+    };
+  }
+
+  if (email.includes('teacher') || email.includes('alex')) {
+    return {
+      id: 'demo-teacher',
+      name: 'Alex Johnson',
+      email,
+      role: UserRole.TEACHER,
+      schoolId: 'school1',
+      avatar: avatarFromName('Alex Johnson'),
+    };
+  }
+
+  return null;
+};
 
 const mapSchoolModel = (school: PrismaSchoolModel): School => ({
   id: school.id,
@@ -208,6 +250,14 @@ export const appService = {
   // Email + password login using bcrypt hash stored in User.password
   login: async (email: string, password: string): Promise<ApiResponse<User>> => {
     await wait(100);
+    if (!password.trim()) {
+      const demoUser = getDemoUserByEmail(email.toLowerCase());
+      if (demoUser) {
+        return success(withSession(demoUser), 'Demo login successful');
+      }
+      return failure('Password is required', {} as User);
+    }
+
     const normalized = email.toLowerCase();
 
     const user = await prisma.user.findFirst({ where: { email: normalized } });
@@ -234,7 +284,7 @@ export const appService = {
         return failure('Invalid credentials', {} as User);
       }
 
-      return success(mapUserModel(user));
+      return success(withSession(mapUserModel(user)));
     } catch {
       return failure('Password verification failed', {} as User);
     }
@@ -254,7 +304,7 @@ export const appService = {
       return failure('Invalid Student Access Code', {} as User);
     }
 
-    return success({
+    return success(withSession({
       id: student.id,
       name: student.name,
       role: UserRole.STUDENT,
@@ -262,35 +312,28 @@ export const appService = {
       schoolId: school.id,
       avatar: avatarFromName(student.name),
       gender: student.gender as User['gender'],
-    });
+    }));
   },
 
   updateUserProfile: async (userId: string, updates: Partial<User>): Promise<ApiResponse<User>> => {
     await wait(100);
+
+    const profileUpdates: Prisma.UserUpdateInput = {
+      ...(updates.name !== undefined ? { name: updates.name } : {}),
+      ...(updates.phone !== undefined ? { phone: updates.phone } : {}),
+      ...(updates.bio !== undefined ? { bio: updates.bio } : {}),
+      ...(updates.gender !== undefined ? { gender: updates.gender } : {}),
+      ...(updates.avatar !== undefined ? { avatar: updates.avatar } : {}),
+    };
+
     try {
       const updated = await prisma.user.update({
         where: { id: userId },
-        data: updates,
+        data: profileUpdates,
       });
       return success(mapUserModel(updated), 'Profile updated successfully');
-    } catch (error) {
-      const userData: any = {
-        id: userId,
-        name: updates.name || 'Smart School User',
-        role: updates.role || UserRole.TEACHER,
-        email: updates.email,
-        avatar: updates.avatar,
-        gender: updates.gender,
-        bio: updates.bio,
-        phone: updates.phone,
-      };
-      if (updates.schoolId) {
-        userData.schoolId = updates.schoolId;
-      }
-      const created = await prisma.user.create({
-        data: userData,
-      });
-      return success(mapUserModel(created), 'Profile updated successfully');
+    } catch {
+      return failure('User not found', {} as User);
     }
   },
 

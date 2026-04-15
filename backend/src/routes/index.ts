@@ -1,6 +1,7 @@
 import { Express } from 'express';
 import { healthRouter } from './health';
 import { authRouter } from './modules/auth';
+import { requireAuth } from '../middleware/auth';
 import { schoolsRouter } from './modules/schools';
 import { studentsRouter } from './modules/students';
 import { subjectsRouter } from './modules/subjects';
@@ -17,6 +18,7 @@ import { liveClassesRouter } from './modules/liveClasses';
 export const registerRoutes = (app: Express) => {
   app.use('/api/health', healthRouter);
   app.use('/api/auth', authRouter);
+  app.use('/api', requireAuth);
   app.use('/api/schools', schoolsRouter);
   app.use('/api/users', usersRouter);
   app.use('/api/students', studentsRouter);

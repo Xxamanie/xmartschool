@@ -1,27 +1,30 @@
 
-import React from 'react';
+import React, { Suspense } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Layout } from './components/Layout';
 import { LoadingScreen } from './components/LoadingScreen';
-import { Login } from './pages/Login';
-import { Dashboard } from './pages/Dashboard';
-import { Students } from './pages/Students';
-import { Classes } from './pages/Classes';
-import { Attendance } from './pages/Attendance';
-import { SchemeOfWork } from './pages/SchemeOfWork';
-import { Subjects } from './pages/Subjects';
-import { Assessments } from './pages/Assessments';
-import { Results } from './pages/Results';
-import { Teachers } from './pages/Teachers';
-import { SuperAdmin } from './pages/SuperAdmin';
-import { StudentPortal } from './pages/StudentPortal';
-import { Settings } from './pages/Settings';
-import { SchoolDetail } from './pages/SchoolDetail';
 import { UserRole } from './types';
 import { useClickSound } from './src/utils/useClickSound';
-import { LiveClasses } from './pages/LiveClasses';
-import { LiveClassRoom } from './pages/LiveClassRoom';
+
+const Login = React.lazy(() => import('./pages/Login').then((module) => ({ default: module.Login })));
+const Dashboard = React.lazy(() => import('./pages/Dashboard').then((module) => ({ default: module.Dashboard })));
+const Students = React.lazy(() => import('./pages/Students').then((module) => ({ default: module.Students })));
+const Classes = React.lazy(() => import('./pages/Classes').then((module) => ({ default: module.Classes })));
+const Attendance = React.lazy(() => import('./pages/Attendance').then((module) => ({ default: module.Attendance })));
+const SchemeOfWork = React.lazy(() => import('./pages/SchemeOfWork').then((module) => ({ default: module.SchemeOfWork })));
+const Subjects = React.lazy(() => import('./pages/Subjects').then((module) => ({ default: module.Subjects })));
+const Assessments = React.lazy(() => import('./pages/Assessments').then((module) => ({ default: module.Assessments })));
+const Results = React.lazy(() => import('./pages/Results').then((module) => ({ default: module.Results })));
+const Teachers = React.lazy(() => import('./pages/Teachers').then((module) => ({ default: module.Teachers })));
+const SuperAdmin = React.lazy(() => import('./pages/SuperAdmin').then((module) => ({ default: module.SuperAdmin })));
+const StudentPortal = React.lazy(() => import('./pages/StudentPortal').then((module) => ({ default: module.StudentPortal })));
+const Settings = React.lazy(() => import('./pages/Settings').then((module) => ({ default: module.Settings })));
+const SchoolDetail = React.lazy(() => import('./pages/SchoolDetail').then((module) => ({ default: module.SchoolDetail })));
+const LiveClasses = React.lazy(() => import('./pages/LiveClasses').then((module) => ({ default: module.LiveClasses })));
+const LiveClassRoom = React.lazy(() => import('./pages/LiveClassRoom').then((module) => ({ default: module.LiveClassRoom })));
+
+const RouteFallback = () => <LoadingScreen message="Loading page..." />;
 
 const ProtectedRoute = ({ children, allowedRoles }: React.PropsWithChildren<{ allowedRoles?: UserRole[] }>) => {
   const { user, isAuthenticated, isLoading } = useAuth();
@@ -67,52 +70,54 @@ const AppContent: React.FC = () => {
 
   return (
     <Router>
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        
-        <Route path="/" element={<Layout />}>
-          {/* Super Admin Routes */}
-          <Route index element={
-             <ProtectedRoute>
-                <DashboardWrapper />
-             </ProtectedRoute>
-          } />
+      <Suspense fallback={<RouteFallback />}>
+        <Routes>
+          <Route path="/login" element={<Login />} />
           
-          <Route path="schools" element={
-             <ProtectedRoute allowedRoles={[UserRole.SUPER_ADMIN]}>
-                <SuperAdmin />
-             </ProtectedRoute>
-          } />
-          <Route path="schools/:schoolId" element={
-             <ProtectedRoute allowedRoles={[UserRole.SUPER_ADMIN]}>
-                <SchoolDetail />
-             </ProtectedRoute>
-          } />
+          <Route path="/" element={<Layout />}>
+            {/* Super Admin Routes */}
+            <Route index element={
+               <ProtectedRoute>
+                  <DashboardWrapper />
+               </ProtectedRoute>
+            } />
+            
+            <Route path="schools" element={
+               <ProtectedRoute allowedRoles={[UserRole.SUPER_ADMIN]}>
+                  <SuperAdmin />
+               </ProtectedRoute>
+            } />
+            <Route path="schools/:schoolId" element={
+               <ProtectedRoute allowedRoles={[UserRole.SUPER_ADMIN]}>
+                  <SchoolDetail />
+               </ProtectedRoute>
+            } />
 
-          {/* Student Portal Route */}
-          <Route path="student-portal" element={
-             <ProtectedRoute allowedRoles={[UserRole.STUDENT]}>
-                <StudentPortal />
-             </ProtectedRoute>
-          } />
+            {/* Student Portal Route */}
+            <Route path="student-portal" element={
+               <ProtectedRoute allowedRoles={[UserRole.STUDENT]}>
+                  <StudentPortal />
+               </ProtectedRoute>
+            } />
 
-          {/* Regular Admin/Teacher Routes */}
-          <Route path="teachers" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Teachers /></ProtectedRoute>} />
-          <Route path="classes" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Classes /></ProtectedRoute>} />
-          <Route path="attendance" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Attendance /></ProtectedRoute>} />
-          <Route path="students" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Students /></ProtectedRoute>} />
-          <Route path="subjects" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Subjects /></ProtectedRoute>} />
-          <Route path="scheme-of-work" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><SchemeOfWork /></ProtectedRoute>} />
-          <Route path="assessments" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Assessments /></ProtectedRoute>} />
-          <Route path="results" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Results /></ProtectedRoute>} />
-          <Route path="live-classes" element={<ProtectedRoute><LiveClasses /></ProtectedRoute>} />
-          <Route path="live-classes/:classId" element={<ProtectedRoute><LiveClassRoom /></ProtectedRoute>} />
-          
-          <Route path="settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-        </Route>
+            {/* Regular Admin/Teacher Routes */}
+            <Route path="teachers" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Teachers /></ProtectedRoute>} />
+            <Route path="classes" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Classes /></ProtectedRoute>} />
+            <Route path="attendance" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Attendance /></ProtectedRoute>} />
+            <Route path="students" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Students /></ProtectedRoute>} />
+            <Route path="subjects" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Subjects /></ProtectedRoute>} />
+            <Route path="scheme-of-work" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><SchemeOfWork /></ProtectedRoute>} />
+            <Route path="assessments" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Assessments /></ProtectedRoute>} />
+            <Route path="results" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Results /></ProtectedRoute>} />
+            <Route path="live-classes" element={<ProtectedRoute><LiveClasses /></ProtectedRoute>} />
+            <Route path="live-classes/:classId" element={<ProtectedRoute><LiveClassRoom /></ProtectedRoute>} />
+            
+            <Route path="settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+          </Route>
 
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
     </Router>
   );
 };

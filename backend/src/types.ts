@@ -10,6 +10,7 @@ export interface User {
   name: string;
   email?: string;
   role: UserRole;
+  authToken?: string;
   avatar?: string;
   schoolId?: string;
   gender?: 'Male' | 'Female';

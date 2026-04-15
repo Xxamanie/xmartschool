@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, PropsWithChildre
 import { User, UserRole } from '../types';
 import { api } from '../services/api';
 import { supabaseAuthService } from '../src/services/supabaseAuthService';
+import { DEMO_AUTH_TOKEN_KEY, DEMO_AUTH_USER_KEY } from '../src/utils/api';
 
 interface AuthContextType {
   user: User | null;
@@ -27,6 +28,18 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
   const [authMode, setAuthMode] = useState<'supabase' | 'demo' | 'unknown'>('unknown');
   const [error, setError] = useState<string | null>(null);
 
+  const persistDemoSession = (nextUser: User) => {
+    if (nextUser.authToken) {
+      window.localStorage.setItem(DEMO_AUTH_TOKEN_KEY, nextUser.authToken);
+    }
+    window.localStorage.setItem(DEMO_AUTH_USER_KEY, JSON.stringify(nextUser));
+  };
+
+  const clearDemoSession = () => {
+    window.localStorage.removeItem(DEMO_AUTH_TOKEN_KEY);
+    window.localStorage.removeItem(DEMO_AUTH_USER_KEY);
+  };
+
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;
 
@@ -37,6 +50,7 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
         // Check if Supabase is configured
         if (supabaseAuthService.isConfigured()) {
           setAuthMode('supabase');
+          clearDemoSession();
           
           // Try to get current user from Supabase
           const supabaseUser = await supabaseAuthService.getCurrentUser();
@@ -51,6 +65,19 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
           });
         } else {
           setAuthMode('demo');
+          const storedToken = window.localStorage.getItem(DEMO_AUTH_TOKEN_KEY);
+          const storedUser = window.localStorage.getItem(DEMO_AUTH_USER_KEY);
+          if (storedToken && storedUser) {
+            try {
+              setUser(JSON.parse(storedUser) as User);
+            } catch {
+              clearDemoSession();
+              setUser(null);
+            }
+          } else {
+            clearDemoSession();
+            setUser(null);
+          }
           console.log('Running in demo mode - Supabase not configured');
         }
       } catch (error) {
@@ -94,8 +121,9 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
 
       // Fallback to API login (for demo/mock users)
       console.log('Attempting demo login for:', email);
-      const response = await api.login(email);
+      const response = await api.login(email, password);
       if (response.ok) {
+        persistDemoSession(response.data);
         setUser(response.data);
         setAuthMode('demo');
       } else {
@@ -117,6 +145,7 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
     try {
       const response = await api.verifyStudent(schoolCode, studentCode);
       if (response.ok) {
+        persistDemoSession(response.data);
         setUser(response.data);
         setAuthMode('demo');
       } else {
@@ -134,6 +163,7 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
   const updateUser = (userData: Partial<User>) => {
     if (user) {
       const updatedUser = { ...user, ...userData };
+      persistDemoSession(updatedUser);
       setUser(updatedUser);
     }
   };
@@ -187,6 +217,7 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
       setError('Logout failed, but clearing local session');
     } finally {
       // Always clear local state
+      clearDemoSession();
       setUser(null);
       setOriginalUser(null);
       setIsLoading(false);

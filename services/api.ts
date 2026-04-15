@@ -24,6 +24,15 @@ const wrapError = <T>(error: any, fallbackData?: T, fallbackMessage?: string): A
   message: error?.response?.data?.message || error?.message || fallbackMessage || 'Operation failed'
 });
 
+const normalizeApiResponse = <T>(response: any, fallbackMessage?: string): ApiResponse<T> => {
+  if (response?.data && typeof response.data.ok === 'boolean') {
+    return response.data as ApiResponse<T>;
+  }
+
+  const data = extractData(response);
+  return wrapResponse(data, fallbackMessage);
+};
+
 // Consistent data extraction from API responses
 const extractData = (response: any): any => {
   // Handle different response structures consistently
@@ -201,11 +210,17 @@ export const api = {
     }
   },
 
-  login: async (email: string): Promise<ApiResponse<User>> => {
+  login: async (email: string, password?: string): Promise<ApiResponse<User>> => {
     try {
-      const response = await apiClient.post('/auth/login', { email });
-      const data = extractData(response);
-      return wrapResponse(data, 'Login successful');
+      const response = await apiClient.post('/auth/login', { email, password });
+      const normalized = normalizeApiResponse<User>(response);
+      if (normalized.ok) {
+        return {
+          ...normalized,
+          message: normalized.message || 'Login successful',
+        };
+      }
+      throw new Error(normalized.message || 'Login failed');
     } catch (error) {
       console.warn('Backend login failed, using demo fallback:', error);
       
@@ -243,8 +258,14 @@ export const api = {
   verifyStudent: async (schoolCode: string, studentCode: string): Promise<ApiResponse<User>> => {
     try {
       const response = await apiClient.post('/auth/verify-student', { schoolCode, studentCode });
-      const data = extractData(response);
-      return wrapResponse(data, 'Student verification successful');
+      const normalized = normalizeApiResponse<User>(response);
+      if (normalized.ok) {
+        return {
+          ...normalized,
+          message: normalized.message || 'Student verification successful',
+        };
+      }
+      throw new Error(normalized.message || 'Verification failed');
     } catch (error) {
       console.warn('Backend student verification failed, using demo fallback:', error);
       
@@ -264,6 +285,16 @@ export const api = {
       } else {
         return wrapError(error, {} as User, 'Invalid school code or student access code. Try: SPR-001 / STU-2024-001');
       }
+    }
+  },
+
+  updateUserProfile: async (userId: string, updates: Pick<User, 'name' | 'phone' | 'bio'> & Partial<Pick<User, 'gender' | 'avatar'>>): Promise<ApiResponse<User>> => {
+    try {
+      const response = await apiClient.put('/auth/profile', { userId, updates });
+      return normalizeApiResponse<User>(response, 'Profile updated successfully');
+    } catch (error) {
+      console.error('Failed to update profile:', error);
+      return wrapError(error, {} as User, 'Failed to update profile');
     }
   },
 
