@@ -2,6 +2,8 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { api } from '../services/api';
 import { User, UserRole } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { ToastContainer } from '../components/Toast';
+import { useToast } from '../src/utils/useToast';
 import { Search, Filter, MoreHorizontal, Plus, ArrowUp, ArrowDown, ArrowUpDown, X, UserCheck, CheckCircle2, Trash2, Edit, Mail, Phone, Save, Briefcase, User as UserIcon } from 'lucide-react';
 
 // Inline TeacherForm component to resolve module resolution issues
@@ -187,6 +189,7 @@ const InlineTeacherForm: React.FC<InlineTeacherFormProps> = ({ teacher, onSubmit
 export const Teachers: React.FC = () => {
   const { user } = useAuth();
   const isAdmin = user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN;
+  const { toasts, toast, dismiss } = useToast();
 
   const [teachers, setTeachers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -268,10 +271,10 @@ export const Teachers: React.FC = () => {
       const response = await api.createTeacher(teacherData as Omit<User, 'id'>);
       setTeachers(prev => [...prev, response.data]);
       setShowAddModal(false);
-      alert('Teacher added successfully!');
+      toast.success('Teacher added successfully!');
     } catch (e) {
       console.error("Failed to add teacher", e);
-      alert(`Error adding teacher: ${(e as any)?.message || 'Unknown error'}`);
+      toast.error(`Error adding teacher: ${(e as any)?.message || 'Unknown error'}`);
     }
   };
 
@@ -281,10 +284,10 @@ export const Teachers: React.FC = () => {
       const response = await api.updateTeacher(editingTeacher.id, teacherData);
       setTeachers(prev => prev.map(t => t.id === editingTeacher.id ? response.data : t));
       setEditingTeacher(null);
-      alert('Teacher updated successfully!');
+      toast.success('Teacher updated successfully!');
     } catch (e) {
       console.error("Failed to update teacher", e);
-      alert(`Error updating teacher: ${(e as any)?.message || 'Unknown error'}`);
+      toast.error(`Error updating teacher: ${(e as any)?.message || 'Unknown error'}`);
     }
   };
 
@@ -294,10 +297,10 @@ export const Teachers: React.FC = () => {
       await api.deleteTeacher(deleteConfirm.id);
       setTeachers(prev => prev.filter(t => t.id !== deleteConfirm.id));
       setDeleteConfirm(null);
-      alert('Teacher deleted successfully!');
+      toast.success('Teacher deleted successfully!');
     } catch (e) {
       console.error("Failed to delete teacher", e);
-      alert(`Error deleting teacher: ${(e as any)?.message || 'Unknown error'}`);
+      toast.error(`Error deleting teacher: ${(e as any)?.message || 'Unknown error'}`);
     }
   };
 
@@ -319,6 +322,7 @@ export const Teachers: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <ToastContainer toasts={toasts} onDismiss={dismiss} />
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Teachers</h1>

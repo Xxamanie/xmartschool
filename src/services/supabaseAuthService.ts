@@ -50,13 +50,10 @@ export const supabaseAuthService = {
     
     try {
       const { data, error } = await supabase.auth.getUser();
-      if (error) {
-        console.warn('Failed to get current user:', error);
-        return null;
-      }
+      // AuthSessionMissingError is expected when no user is logged in — not a real error
+      if (error) return null;
       return data.user ? mapUser(data.user) : null;
-    } catch (error) {
-      console.warn('Error getting current user:', error);
+    } catch {
       return null;
     }
   },

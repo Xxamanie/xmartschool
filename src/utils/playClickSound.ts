@@ -1,58 +1,62 @@
 let audioContext: AudioContext | null = null;
 let clickBuffer: AudioBuffer | null = null;
 
-const isMobile = () => {
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-    navigator.userAgent
-  );
-};
+const isMobile = () =>
+  /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
-const getMobileVolume = () => (isMobile() ? 0.3 : 0.5);
+const getVolume = () => (isMobile() ? 0.25 : 0.4);
 
-const initAudioContext = () => {
+const initAudioContext = (): AudioContext | null => {
   if (audioContext) return audioContext;
-  
   const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
-  if (!AudioContextClass) {
-    console.warn('AudioContext not supported');
-    return null;
-  }
-  
+  if (!AudioContextClass) return null;
   audioContext = new AudioContextClass();
   return audioContext;
 };
 
-const generateClickSound = async (): Promise<AudioBuffer | null> => {
-  const context = initAudioContext();
-  if (!context) return null;
-
+const generateClickSound = (context: AudioContext): AudioBuffer => {
   const sampleRate = context.sampleRate;
-  const audioBuffer = context.createBuffer(1, sampleRate * 0.1, sampleRate);
-  const data = audioBuffer.getChannelData(0);
+  // Short sharp click: ~8ms transient + ~20ms tail
+  const duration = 0.028;
+  const length = Math.floor(sampleRate * duration);
+  const buffer = context.createBuffer(1, length, sampleRate);
+  const data = buffer.getChannelData(0);
 
-  for (let i = 0; i < audioBuffer.length; i++) {
+  for (let i = 0; i < length; i++) {
     const t = i / sampleRate;
-    const frequency = 800;
-    const decay = Math.exp(-3 * t);
-    data[i] = Math.sin(2 * Math.PI * frequency * t) * decay * 0.3;
+    // White noise burst for the "click" transient
+    const noise = (Math.random() * 2 - 1);
+    // Sharp attack, very fast exponential decay — mimics a physical click
+    const envelope = Math.exp(-t * 400);
+    // Slight low-mid body (around 200Hz) to give it weight
+    const body = Math.sin(2 * Math.PI * 180 * t) * Math.exp(-t * 250) * 0.4;
+    data[i] = (noise * envelope + body) * 0.8;
   }
 
-  return audioBuffer;
+  return buffer;
 };
 
-const preloadSound = async () => {
-  if (clickBuffer) return;
-
-  clickBuffer = await generateClickSound();
-};
-
-export const playClickSound = async () => {
-  if (!clickBuffer) {
-    await preloadSound();
-  }
-
+const preloadSound = (): void => {
   const context = initAudioContext();
-  if (!context || !clickBuffer) return;
+  if (!context || clickBuffer) return;
+  try {
+    clickBuffer = generateClickSound(context);
+  } catch {
+    // silently fail
+  }
+};
+
+export const playClickSound = async (): Promise<void> => {
+  const context = initAudioContext();
+  if (!context) return;
+
+  if (!clickBuffer) {
+    try {
+      clickBuffer = generateClickSound(context);
+    } catch {
+      return;
+    }
+  }
 
   try {
     if (context.state === 'suspended') {
@@ -61,19 +65,16 @@ export const playClickSound = async () => {
 
     const source = context.createBufferSource();
     const gainNode = context.createGain();
+    gainNode.gain.value = getVolume();
 
     source.buffer = clickBuffer;
-    gainNode.gain.value = getMobileVolume();
-
     source.connect(gainNode);
     gainNode.connect(context.destination);
-
     source.start(0);
-  } catch (error) {
-    console.warn('Failed to play click sound:', error);
+  } catch {
+    // silently fail — don't break UI for audio issues
   }
 };
 
-preloadSound().catch(() => {
-  console.warn('Failed to preload click sound');
-});
+// Preload on module init
+preloadSound();

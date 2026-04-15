@@ -7,7 +7,7 @@ import { Crown, ChevronLeft } from 'lucide-react';
 import { UserRole } from '../types';
 
 export const Layout: React.FC = () => {
-  const { isAuthenticated, isImpersonating, stopImpersonating, user } = useAuth();
+  const { isAuthenticated, isImpersonating, stopImpersonating, user, isCreator, viewingSchoolId, setViewingSchoolId } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   if (!isAuthenticated) {
@@ -15,10 +15,13 @@ export const Layout: React.FC = () => {
   }
 
   const isStudent = user?.role === UserRole.STUDENT;
+  const isScopedToSchool = isCreator && !!viewingSchoolId;
+  // Show top banner for either impersonation or creator school scope
+  const showBanner = isImpersonating || isScopedToSchool;
 
   return (
     <div className="min-h-screen bg-gray-50 relative">
-      {/* God Mode Banner */}
+      {/* Impersonation Banner */}
       {isImpersonating && (
         <div className="fixed top-0 left-0 right-0 h-12 bg-amber-500 text-slate-900 font-bold flex items-center justify-between px-6 z-50 shadow-lg">
             <div className="flex items-center gap-3 text-sm">
@@ -37,23 +40,41 @@ export const Layout: React.FC = () => {
         </div>
       )}
 
-      <div className={isImpersonating ? 'pt-12' : ''}>
+      {/* Creator School Scope Banner */}
+      {isScopedToSchool && !isImpersonating && (
+        <div className="fixed top-0 left-0 right-0 h-12 bg-slate-900 border-b border-amber-500/30 text-white font-bold flex items-center justify-between px-6 z-50 shadow-lg">
+            <div className="flex items-center gap-3 text-sm">
+                <div className="bg-amber-500/20 text-amber-400 p-1 rounded border border-amber-500/30">
+                   <Crown size={18} fill="currentColor" />
+                </div>
+                <span className="text-amber-400">CREATOR ACCESS</span>
+                <span className="text-slate-400 font-normal">— Viewing school database directly. All changes are real.</span>
+            </div>
+            <button 
+              onClick={() => setViewingSchoolId(null)} 
+              className="bg-amber-500/10 border border-amber-500/30 text-amber-400 px-4 py-1.5 rounded text-xs font-bold hover:bg-amber-500/20 transition-colors uppercase tracking-wider flex items-center gap-2"
+            >
+                <ChevronLeft size={14} />
+                Back to HQ
+            </button>
+        </div>
+      )}
+
+      <div className={showBanner ? 'pt-12' : ''}>
           {!isStudent && (
             <>
               <Sidebar isOpen={isMobileMenuOpen} onClose={() => setIsMobileMenuOpen(false)} />
-              {/* Mobile Sidebar Overlay */}
               {isMobileMenuOpen && (
                 <div className="fixed inset-0 bg-black/50 z-30 md:hidden" onClick={() => setIsMobileMenuOpen(false)} />
               )}
             </>
           )}
           
-          {/* Adjust header position if impersonating */}
-          <div className={isImpersonating ? 'relative top-12' : ''}>
+          <div className={showBanner ? 'relative top-12' : ''}>
              <Header toggleSidebar={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
           </div>
           
-          <main className={`pt-20 ${!isStudent ? 'md:pl-64' : ''} p-6 min-h-screen transition-all duration-300 ${isImpersonating ? 'mt-12' : ''}`}>
+          <main className={`pt-20 ${!isStudent ? 'md:pl-64' : ''} p-6 min-h-screen transition-all duration-300 ${showBanner ? 'mt-12' : ''}`}>
             <div className="max-w-7xl mx-auto">
               <Outlet />
             </div>

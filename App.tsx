@@ -34,11 +34,14 @@ const ProtectedRoute = ({ children, allowedRoles }: React.PropsWithChildren<{ al
     return <Navigate to="/login" replace />;
   }
 
+  // SUPER_ADMIN has unrestricted access to all routes
+  if (user?.role === UserRole.SUPER_ADMIN) {
+    return <>{children}</>;
+  }
+
   if (allowedRoles && user && !allowedRoles.includes(user.role)) {
-     // Redirect based on role if trying to access unauthorized page
-     if (user.role === UserRole.STUDENT) return <Navigate to="/student-portal" replace />;
-     if (user.role === UserRole.SUPER_ADMIN) return <Navigate to="/" replace />; // Super Admin Root
-     return <Navigate to="/" replace />;
+    if (user.role === UserRole.STUDENT) return <Navigate to="/student-portal" replace />;
+    return <Navigate to="/" replace />;
   }
 
   return <>{children}</>;
@@ -128,10 +131,14 @@ const App: React.FC = () => {
 
 // Helper to decide which Dashboard to show at root '/'
 const DashboardWrapper = () => {
-   const { user } = useAuth();
-   if (user?.role === UserRole.SUPER_ADMIN) return <SuperAdmin />; // Super Admin sees School Manager primarily
+   const { user, viewingSchoolId } = useAuth();
+   if (user?.role === UserRole.SUPER_ADMIN) {
+     // If Creator has scoped to a school, show the school dashboard
+     if (viewingSchoolId) return <Dashboard />;
+     return <SuperAdmin />;
+   }
    if (user?.role === UserRole.STUDENT) return <Navigate to="/student-portal" replace />;
-   return <Dashboard />; // Teachers/Admins see standard dashboard
+   return <Dashboard />;
 };
 
 export default App;

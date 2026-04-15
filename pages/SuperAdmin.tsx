@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { School, User, UserRole } from '../types';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { ToastContainer } from '../components/Toast';
+import { useToast } from '../src/utils/useToast';
 import { 
   Building2, MapPin, Users, Plus, Search, 
   CheckCircle2, XCircle, BarChart3, Crown, 
@@ -26,12 +28,14 @@ const getRoleBadgeClasses = (role: string | undefined) => {
 };
 
 export const SuperAdmin: React.FC = () => {
-  const { impersonateSchool } = useAuth();
+  const { impersonateSchool, setViewingSchoolId } = useAuth();
   const navigate = useNavigate();
+  const { toasts, toast, dismiss } = useToast();
   const [schools, setSchools] = useState<School[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'schools' | 'users'>('schools');
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   
   // School Actions State
   const [isCreating, setIsCreating] = useState(false);
@@ -66,7 +70,7 @@ export const SuperAdmin: React.FC = () => {
 
   const handleCreateSchool = async () => {
     if (!newSchoolName.trim()) {
-      alert('School name is required');
+      toast.warning('School name is required');
       return;
     }
     try {
@@ -84,35 +88,40 @@ export const SuperAdmin: React.FC = () => {
             setNewSchoolCode('');
             setNewSchoolRegion('');
             setNewSchoolAdminName('');
-            alert('School created successfully!');
+            toast.success('School created successfully!');
         }
     } catch (e) {
         console.error('Failed to create school:', e);
-        alert(`Error creating school: ${(e as any)?.message || 'Unknown error'}`);
+        toast.error(`Error creating school: ${(e as any)?.message || 'Unknown error'}`);
     }
   };
 
   const handleDeleteSchool = async (id: string) => {
-      if (window.confirm("WARNING: This will permanently delete the school and all associated data. This action cannot be undone. Proceed?")) {
-          try {
-              const res = await api.deleteSchool(id);
-              if (res.ok) {
-                  setSchools(prev => prev.filter(s => s.id !== id));
-              }
-          } catch (e) {
-              console.error(e);
+      try {
+          const res = await api.deleteSchool(id);
+          if (res.ok) {
+              setSchools(prev => prev.filter(s => s.id !== id));
+              toast.success('School deleted successfully');
           }
+      } catch (e) {
+          console.error(e);
+          toast.error('Failed to delete school');
+      } finally {
+          setDeleteConfirmId(null);
       }
   };
 
   const handleViewSchool = (schoolId: string) => {
-    // Navigate to school admin view while maintaining creator context
     navigate(`/schools/${schoolId}`);
   };
 
-  const handleViewUser = (userId: string) => {
-    // Navigate to user profile or management page
-    navigate(`/users/${userId}`);
+  const handleEnterSchool = (schoolId: string) => {
+    setViewingSchoolId(schoolId);
+    navigate('/');
+  };
+
+  const handleViewUser = (_userId: string) => {
+    // User detail page not yet implemented — no-op
   };
 
   const toggleSchoolStatus = async (school: School) => {
@@ -159,6 +168,7 @@ export const SuperAdmin: React.FC = () => {
 
   return (
     <div className="space-y-8">
+      <ToastContainer toasts={toasts} onDismiss={dismiss} />
       {/* Hero Section - Dark Slate & Gold */}
       <div className="bg-slate-900 rounded-2xl p-8 text-white shadow-xl border border-slate-800 relative overflow-hidden">
          {/* Decorative ambient lights */}
@@ -432,6 +442,13 @@ export const SuperAdmin: React.FC = () => {
                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                              <div className="flex items-center justify-end gap-2">
                                 <button 
+                                   onClick={() => handleEnterSchool(school.id)}
+                                   className="p-1.5 text-amber-500 hover:text-amber-400 hover:bg-amber-500/10 rounded-lg transition-colors"
+                                   title="Enter School (God Mode — full unrestricted access)"
+                                >
+                                    <Crown size={18} />
+                                </button>
+                                <button 
                                    onClick={() => impersonateSchool(school.id)}
                                    className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                                    title="Impersonate Administrator"
@@ -446,7 +463,7 @@ export const SuperAdmin: React.FC = () => {
                                     {school.status === 'Active' ? <Lock size={18} /> : <Unlock size={18} />}
                                 </button>
                                 <button 
-                                    onClick={() => handleDeleteSchool(school.id)}
+                                    onClick={() => setDeleteConfirmId(school.id)}
                                     className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                     title="Delete School Permanently"
                                 >
@@ -465,6 +482,40 @@ export const SuperAdmin: React.FC = () => {
            </table>
         </div>
       </div>
+      )}
+
+      {/* Delete School Confirm Modal */}
+      {deleteConfirmId && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-sm rounded-xl shadow-2xl">
+            <div className="p-6 border-b border-gray-200 bg-red-50 rounded-t-xl">
+              <h2 className="text-lg font-bold text-red-900 flex items-center gap-2">
+                <Trash2 size={20} className="text-red-600" />
+                Delete School Permanently
+              </h2>
+              <p className="text-sm text-red-700 mt-1">This action cannot be undone.</p>
+            </div>
+            <div className="p-6">
+              <p className="text-sm text-gray-700">
+                All associated students, teachers, and data will be permanently removed. Are you sure you want to proceed?
+              </p>
+            </div>
+            <div className="p-4 border-t border-gray-200 bg-gray-50 rounded-b-xl flex justify-end gap-2">
+              <button
+                onClick={() => setDeleteConfirmId(null)}
+                className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDeleteSchool(deleteConfirmId)}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700 transition-colors"
+              >
+                Yes, Delete
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Users Tab */}

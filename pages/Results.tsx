@@ -1,33 +1,14 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer, 
-  PieChart, 
-  Pie, 
-  Cell 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell 
 } from 'recharts';
 import { 
-  Download, 
-  Search, 
-  FileText, 
-  TrendingUp, 
-  Award, 
-  CheckCircle2, 
-  Wand2, 
-  Loader2,
-  ArrowUpDown,
-  ArrowUp,
-  ArrowDown,
-  Printer,
-  X,
-  GraduationCap
+  Download, Search, FileText, TrendingUp, Award, CheckCircle2, Wand2, Loader2,
+  ArrowUpDown, ArrowUp, ArrowDown, Printer, X, GraduationCap
 } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
+import { ToastContainer } from '../components/Toast';
+import { useToast } from '../src/utils/useToast';
 import { api } from '../services/api';
 import { ResultData, School, Student, UserRole, Subject } from '../types';
 import { useAuth } from '../context/AuthContext';
@@ -43,6 +24,7 @@ const GRADE_DISTRIBUTION_COLORS: Record<string, string> = {
 
 export const Results: React.FC = () => {
   const { user } = useAuth();
+  const { toasts, toast, dismiss } = useToast();
   const [results, setResults] = useState<ResultData[]>([]);
   const [allSchools, setAllSchools] = useState<School[]>([]);
   const [allStudents, setAllStudents] = useState<Student[]>([]);
@@ -108,7 +90,7 @@ export const Results: React.FC = () => {
       setResults(prev => prev.map(r => r.id === result.id ? { ...r, remarks: remark } : r));
     } catch (error) {
       console.error("Failed to generate remark", error);
-      alert("Failed to generate remark. Please try again.");
+      toast.error("Failed to generate remark. Please try again.");
     } finally {
       setLoadingRemarkId(null);
     }
@@ -229,6 +211,7 @@ export const Results: React.FC = () => {
 
   return (
     <div className="space-y-8">
+      <ToastContainer toasts={toasts} onDismiss={dismiss} />
       {/* Global Print Styles */}
       <style>{`
         @media print {

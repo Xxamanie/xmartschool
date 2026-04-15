@@ -4,11 +4,14 @@ import { api } from '../services/api';
 import { Student, UserRole, User } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { StudentForm } from '../components/StudentForm';
+import { ToastContainer } from '../components/Toast';
+import { useToast } from '../src/utils/useToast';
 import { Search, Filter, MoreHorizontal, Plus, ArrowUp, ArrowDown, ArrowUpDown, Calendar, Crown, X, UserCheck, CheckCircle2, Trash2, Edit } from 'lucide-react';
 
 export const Students: React.FC = () => {
-  const { user } = useAuth();
+  const { user, isCreator, effectiveSchoolId } = useAuth();
   const isAdmin = user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN;
+  const { toasts, toast, dismiss } = useToast();
 
   const [students, setStudents] = useState<Student[]>([]);
   const [teachers, setTeachers] = useState<User[]>([]);
@@ -31,7 +34,8 @@ export const Students: React.FC = () => {
     const fetchData = async () => {
       try {
         const [response, usersRes, mastersRes] = await Promise.all([
-            api.getStudents(),
+            // Creator scoped to a school fetches that school's students
+            api.getStudents(effectiveSchoolId || undefined),
             api.getAllUsers(),
             api.getClassMasters()
         ]);
@@ -59,7 +63,7 @@ export const Students: React.FC = () => {
       }
     };
     fetchData();
-  }, [user]);
+  }, [user, effectiveSchoolId]);
 
   const handleSort = (key: keyof Student) => {
     if (!isAdmin) return;
@@ -121,10 +125,10 @@ export const Students: React.FC = () => {
           const response = await api.createStudent(studentData);
           setStudents(prev => [...prev, response.data]);
           setShowAddModal(false);
-          alert('Student added successfully!');
+          toast.success('Student added successfully!');
       } catch (e) {
           console.error("Failed to add student", e);
-          alert(`Error adding student: ${(e as any)?.message || 'Unknown error'}`);
+          toast.error(`Error adding student: ${(e as any)?.message || 'Unknown error'}`);
       }
   };
 
@@ -134,10 +138,10 @@ export const Students: React.FC = () => {
           const response = await api.updateStudent(editingStudent.id, studentData);
           setStudents(prev => prev.map(s => s.id === editingStudent.id ? response.data : s));
           setEditingStudent(null);
-          alert('Student updated successfully!');
+          toast.success('Student updated successfully!');
       } catch (e) {
           console.error("Failed to update student", e);
-          alert(`Error updating student: ${(e as any)?.message || 'Unknown error'}`);
+          toast.error(`Error updating student: ${(e as any)?.message || 'Unknown error'}`);
       }
   };
 
@@ -147,10 +151,10 @@ export const Students: React.FC = () => {
           await api.deleteStudent(deleteConfirm.id);
           setStudents(prev => prev.filter(s => s.id !== deleteConfirm.id));
           setDeleteConfirm(null);
-          alert('Student deleted successfully!');
+          toast.success('Student deleted successfully!');
       } catch (e) {
           console.error("Failed to delete student", e);
-          alert(`Error deleting student: ${(e as any)?.message || 'Unknown error'}`);
+          toast.error(`Error deleting student: ${(e as any)?.message || 'Unknown error'}`);
       }
   };
 
@@ -161,10 +165,10 @@ export const Students: React.FC = () => {
           setStudents(prev => prev.filter(s => !selectedStudents.has(s.id)));
           setSelectedStudents(new Set());
           setBulkDeleteMode(false);
-          alert('Students deleted successfully!');
+          toast.success('Students deleted successfully!');
       } catch (e) {
           console.error("Failed to delete students", e);
-          alert(`Error deleting students: ${(e as any)?.message || 'Unknown error'}`);
+          toast.error(`Error deleting students: ${(e as any)?.message || 'Unknown error'}`);
       }
   };
 
@@ -200,6 +204,7 @@ export const Students: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <ToastContainer toasts={toasts} onDismiss={dismiss} />
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Students</h1>
@@ -232,7 +237,7 @@ export const Students: React.FC = () => {
                         onClick={handleBulkDelete}
                         className="inline-flex items-center justify-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium shadow-sm"
                     >
-                        Delete {selectedStudents.length} Selected
+                        Delete {selectedStudents.size} Selected
                     </button>
                 )}
             </div>
@@ -278,7 +283,7 @@ export const Students: React.FC = () => {
                   onClick={handleBulkDelete}
                   className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors shadow-sm"
                 >
-                  Delete {selectedStudents.length} Selected
+                  Delete {selectedStudents.size} Selected
                 </button>
               )}
               <button 
