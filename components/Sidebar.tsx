@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   Users,
@@ -17,7 +17,9 @@ import {
   Globe,
   Crown,
   Layers,
-  CalendarCheck
+  CalendarCheck,
+  ArrowLeft,
+  Video,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useClickSound } from '../src/utils/useClickSound';
@@ -29,11 +31,12 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
-  const { logout, user, isImpersonating } = useAuth();
+  const { logout, user, isImpersonating, viewingSchoolId, setViewingSchoolId } = useAuth();
   const { playSound } = useClickSound();
+  const navigate = useNavigate();
   const isCreator = user?.role === UserRole.SUPER_ADMIN;
+  const isScopedToSchool = isCreator && !!viewingSchoolId;
 
-  // Theme Configuration based on Role
   const theme = isCreator ? {
     container: 'bg-slate-950 border-slate-800',
     headerBorder: 'border-slate-800',
@@ -45,7 +48,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     inactiveItem: 'text-slate-400 hover:bg-white/5 hover:text-slate-100',
     logoutBtn: 'text-slate-400 hover:bg-slate-900 hover:text-red-400'
   } : {
-    container: 'bg-[#2e1065] border-primary-900', // Darker Purple (Violet 950 equivalent)
+    container: 'bg-[#2e1065] border-primary-900',
     headerBorder: 'border-primary-900',
     logoBox: 'bg-white text-primary-900',
     title: 'text-white',
@@ -59,32 +62,42 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const activeClass = `flex items-center gap-3 px-4 py-3 text-sm font-medium border-r-4 transition-colors ${theme.activeItem}`;
   const inactiveClass = `flex items-center gap-3 px-4 py-3 text-sm font-medium border-r-4 border-transparent transition-colors ${theme.inactiveItem}`;
 
+  const schoolNavItems = [
+    { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+    { to: '/teachers', icon: UserPlus, label: 'Teachers' },
+    { to: '/classes', icon: Layers, label: 'Classes' },
+    { to: '/students', icon: Users, label: 'Students' },
+    { to: '/attendance', icon: CalendarCheck, label: 'Attendance' },
+    { to: '/subjects', icon: BookOpen, label: 'Subjects' },
+    { to: '/scheme-of-work', icon: FileText, label: 'Scheme of Work' },
+    { to: '/assessments', icon: ClipboardCheck, label: 'Assessments' },
+    { to: '/results', icon: TrendingUp, label: 'Results' },
+    { to: '/live-classes', icon: Video, label: 'Live Classes' },
+  ];
+
   const getNavItems = () => {
-    if (user?.role === UserRole.SUPER_ADMIN) {
+    if (isCreator && !isScopedToSchool) {
+      // Creator global view
       return [
         { to: '/', icon: Globe, label: 'Global Dashboard' },
         { to: '/schools', icon: Building2, label: 'Schools Registry' },
         { to: '/settings', icon: Settings, label: 'System Config' },
       ];
+    } else if (isCreator && isScopedToSchool) {
+      // Creator scoped to a school — full school nav
+      return schoolNavItems;
     } else if (user?.role === UserRole.STUDENT) {
-      return [
-        { to: '/student-portal', icon: FileText, label: 'My Result Slip' },
-      ];
+      return [{ to: '/student-portal', icon: FileText, label: 'My Result Slip' }];
     } else {
-      // Standard School Admin / Teacher items
-      return [
-        { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-        { to: '/teachers', icon: UserPlus, label: 'Teachers' },
-        { to: '/classes', icon: Layers, label: 'Classes' },
-        { to: '/students', icon: Users, label: 'Students' },
-        { to: '/attendance', icon: CalendarCheck, label: 'Attendance' },
-        { to: '/subjects', icon: BookOpen, label: 'Subjects' },
-        { to: '/scheme-of-work', icon: FileText, label: 'Scheme of Work' },
-        { to: '/assessments', icon: ClipboardCheck, label: 'Assessments' },
-        { to: '/results', icon: TrendingUp, label: 'Results' },
-        { to: '/live-classes', icon: CalendarCheck, label: 'Live Classes' },
-      ];
+      return schoolNavItems;
     }
+  };
+
+  const handleExitSchoolScope = () => {
+    playSound();
+    setViewingSchoolId(null);
+    navigate('/');
+    onClose?.();
   };
 
   return (
@@ -95,7 +108,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     >
       <div className={`p-6 flex items-center justify-between border-b ${theme.headerBorder}`}>
         <div className="flex items-center gap-3">
-          {/* Logo Box */}
           <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${theme.logoBox}`}>
             {isCreator ? <Crown size={18} fill="currentColor" className="opacity-90" /> : <GraduationCap size={20} />}
           </div>
@@ -104,7 +116,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
               SmartSchool
             </span>
             <span className={`text-[10px] uppercase tracking-wider font-bold ${theme.subtitle}`}>
-              {user?.role === UserRole.SUPER_ADMIN ? 'Creator Mode' : user?.role === UserRole.STUDENT ? 'Student Portal' : 'Admin Panel'}
+              {isScopedToSchool ? 'God Mode — School View' : isCreator ? 'Creator Mode' : user?.role === UserRole.STUDENT ? 'Student Portal' : 'Admin Panel'}
             </span>
           </div>
         </div>
@@ -116,16 +128,26 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
         </button>
       </div>
 
-      <nav className="flex-1 py-6 overflow-y-auto">
+      {/* Creator school scope banner */}
+      {isScopedToSchool && (
+        <button
+          onClick={handleExitSchoolScope}
+          className="mx-3 mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-bold hover:bg-amber-500/20 transition-colors"
+        >
+          <ArrowLeft size={14} />
+          Exit School View
+        </button>
+      )}
+
+      <nav className="flex-1 py-4 overflow-y-auto">
         <ul className="space-y-1">
           {getNavItems().map((item) => (
-            <li key={item.to}>
+            <li key={item.to + item.label}>
               <NavLink
                 to={item.to}
+                end={item.to === '/'}
                 onClick={() => { playSound(); onClose?.(); }}
-                className={({ isActive }) =>
-                  isActive ? activeClass : inactiveClass
-                }
+                className={({ isActive }) => isActive ? activeClass : inactiveClass}
               >
                 <item.icon size={20} />
                 {item.label}

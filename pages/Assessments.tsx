@@ -1,9 +1,11 @@
 
-import React, { useEffect, useState, useRef, useMemo } from 'react';
+import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { api } from '../services/api';
 import { Assessment, Student, Subject, ResultData, ExamQuestion, ActiveExam, UserRole } from '../types';
 import { GoogleGenAI, Type } from "@google/genai";
 import { useAuth } from '../context/AuthContext';
+import { ToastContainer } from '../components/Toast';
+import { useToast } from '../src/utils/useToast';
 import { 
   Save, 
   FileSpreadsheet, 
@@ -74,6 +76,16 @@ const DEFAULT_GRADING_SCALE: GradeThreshold[] = [
 
 export const Assessments: React.FC = () => {
   const { isImpersonating, user } = useAuth();
+  const { toasts, toast, dismiss } = useToast();
+
+  // Inline confirm/prompt state (replaces window.confirm and window.prompt)
+  const [confirmDialog, setConfirmDialog] = useState<{
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
+  const [newCAName, setNewCAName] = useState('');
+  const [showCANameModal, setShowCANameModal] = useState(false);
+
   const [students, setStudents] = useState<Student[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [assessments, setAssessments] = useState<Assessment[]>([]);
@@ -276,9 +288,23 @@ export const Assessments: React.FC = () => {
       
       // Safe switching for Builder Mode
       if (mode === 'builder' && selectedExamId === 'new' && builderQuestions.length > 0) {
-          if (!window.confirm("You have unsaved questions in the current new exam. Switching will discard them. Continue?")) {
-              return;
-          }
+          setConfirmDialog({
+            message: 'You have unsaved questions in the current new exam. Switching will discard them. Continue?',
+            onConfirm: () => {
+              setSelectedExamId(id);
+              const exam = allExams.find(ex => ex.id === id);
+              if (exam) {
+                setBuilderQuestions(exam.questions);
+                setBuilderConfig(prev => ({ ...prev, topic: exam.title }));
+                setExamStats({});
+              } else if (id === 'new') {
+                setBuilderQuestions([]);
+                setBuilderConfig(prev => ({ ...prev, topic: '' }));
+                setExamStats({});
+              }
+            }
+          });
+          return;
       }
 
       setSelectedExamId(id);
@@ -347,9 +373,11 @@ export const Assessments: React.FC = () => {
   const handleSubjectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
      const newValue = e.target.value;
      if (modifiedRows.size > 0) {
-         if(!window.confirm("You have unsaved changes. Switching subjects will discard them.")) {
-             return;
-         }
+         setConfirmDialog({
+           message: 'You have unsaved changes. Switching subjects will discard them.',
+           onConfirm: () => setSelectedSubject(newValue)
+         });
+         return;
      }
      setSelectedSubject(newValue);
   };
@@ -357,9 +385,11 @@ export const Assessments: React.FC = () => {
   const handleTermChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
      const newValue = e.target.value;
      if (modifiedRows.size > 0) {
-         if(!window.confirm("You have unsaved changes. Switching terms will discard them.")) {
-             return;
-         }
+         setConfirmDialog({
+           message: 'You have unsaved changes. Switching terms will discard them.',
+           onConfirm: () => setSelectedTerm(newValue)
+         });
+         return;
      }
      setSelectedTerm(newValue);
   };
@@ -410,46 +440,42 @@ export const Assessments: React.FC = () => {
   };
 
   const handlePublish = async () => {
-    if (window.confirm('Are you sure you want to publish these results? This will update the main Results sheet.')) {
-      setPublishing(true);
-      setSaveMessage(null);
-      try {
-        const subject = subjects.find(s => s.id === selectedSubject);
-        
-        const resultsToPublish: ResultData[] = assessments.map(a => {
+    setConfirmDialog({
+      message: 'Are you sure you want to publish these results? This will update the main Results sheet.',
+      onConfirm: async () => {
+        setPublishing(true);
+        setSaveMessage(null);
+        try {
+          const subject = subjects.find(s => s.id === selectedSubject);
+          const resultsToPublish: ResultData[] = assessments.map(a => {
             const total = calculateTotal(a);
             const grade = calculateGrade(total);
-            
-            // Capture details
             const details: any = { exam: a.exam };
-            caColumns.forEach(col => {
-               details[col.id] = (a as any)[col.id];
-            });
-
+            caColumns.forEach(col => { details[col.id] = (a as any)[col.id]; });
             return {
-                id: `res-${a.studentId}-${selectedSubject}`, // Unique ID per subject per student
-                studentName: a.studentName,
-                studentId: a.studentId,
-                subjectName: subject?.name || 'Unknown Subject',
-                average: total,
-                grade: grade,
-                status: 'Published',
-                remarks: '',
-                details: details
+              id: `res-${a.studentId}-${selectedSubject}`,
+              studentName: a.studentName,
+              studentId: a.studentId,
+              subjectName: subject?.name || 'Unknown Subject',
+              average: total,
+              grade,
+              status: 'Published',
+              remarks: '',
+              details
             };
-        });
-
-        const res = await api.publishResults(resultsToPublish);
-        if (res.ok) {
-           setSaveMessage({ type: 'success', text: 'Results published to Report Sheets!' });
-           setTimeout(() => setSaveMessage(null), 4000);
+          });
+          const res = await api.publishResults(resultsToPublish);
+          if (res.ok) {
+            setSaveMessage({ type: 'success', text: 'Results published to Report Sheets!' });
+            setTimeout(() => setSaveMessage(null), 4000);
+          }
+        } catch (error) {
+          setSaveMessage({ type: 'error', text: 'Failed to publish results.' });
+        } finally {
+          setPublishing(false);
         }
-      } catch (error) {
-         setSaveMessage({ type: 'error', text: 'Failed to publish results.' });
-      } finally {
-         setPublishing(false);
       }
-    }
+    });
   };
 
   const handleSyncScores = () => {
@@ -466,26 +492,22 @@ export const Assessments: React.FC = () => {
   
   const handleResetExam = async (studentId: string) => {
     if (!selectedExamId) return;
-    if (window.confirm('GOD MODE ACTION: Are you sure you want to reset this student\'s exam?\n\nThis action is intended for UNDUE SUBMISSION cases only. It will wipe the previous score and allow the student to retake the exam immediately.')) {
+    setConfirmDialog({
+      message: 'GOD MODE: Reset this student\'s exam? This will wipe their previous score and allow a retake. Only use for undue submission cases.',
+      onConfirm: async () => {
         try {
-            await api.resetStudentExam(selectedExamId, studentId);
-            
-            // Update local state
-            setExamStats(prev => ({
-                ...prev,
-                [studentId]: {
-                    status: 'not-started',
-                    progress: 0,
-                    score: undefined,
-                    startTime: undefined
-                }
-            }));
-            setSaveMessage({ type: 'success', text: 'Exam reset successfully.' });
-            setTimeout(() => setSaveMessage(null), 3000);
+          await api.resetStudentExam(selectedExamId, studentId);
+          setExamStats(prev => ({
+            ...prev,
+            [studentId]: { status: 'not-started', progress: 0, score: undefined, startTime: undefined }
+          }));
+          setSaveMessage({ type: 'success', text: 'Exam reset successfully.' });
+          setTimeout(() => setSaveMessage(null), 3000);
         } catch (e) {
-            setSaveMessage({ type: 'error', text: 'Failed to reset exam.' });
+          setSaveMessage({ type: 'error', text: 'Failed to reset exam.' });
         }
-    }
+      }
+    });
   };
 
   const calculateTotal = (a: Assessment) => {
@@ -533,25 +555,31 @@ export const Assessments: React.FC = () => {
 
   const handleAddCA = () => {
     const nextNum = caColumns.length + 1;
-    const defaultName = `CA ${nextNum}`;
-    const name = window.prompt("Enter a name for the new Continuous Assessment (CA):", defaultName);
-    if (name) {
-      const newId = `ca_${Date.now()}`; 
-      setCaColumns([...caColumns, { id: newId, label: name, maxScore: 10 }]);
+    setNewCAName(`CA ${nextNum}`);
+    setShowCANameModal(true);
+  };
+
+  const confirmAddCA = () => {
+    if (newCAName.trim()) {
+      const newId = `ca_${Date.now()}`;
+      setCaColumns([...caColumns, { id: newId, label: newCAName.trim(), maxScore: 10 }]);
     }
+    setShowCANameModal(false);
+    setNewCAName('');
   };
 
   const deleteCAColumn = (id: string) => {
-    if (window.confirm('Are you sure you want to delete this column?')) {
-        setCaColumns(caColumns.filter(c => c.id !== id));
-    }
+    setConfirmDialog({
+      message: 'Are you sure you want to delete this column?',
+      onConfirm: () => setCaColumns(caColumns.filter(c => c.id !== id))
+    });
   };
 
   // --- Exam Builder Logic ---
 
   const handleGenerateQuestions = async () => {
     if (!builderConfig.topic) {
-      alert('Please enter a topic to generate questions.');
+      toast.warning('Please enter a topic to generate questions.');
       return;
     }
     setIsGenerating(true);
@@ -622,7 +650,7 @@ export const Assessments: React.FC = () => {
 
     } catch (error) {
       console.error('AI Generation Error:', error);
-      alert('Failed to generate questions. Please try again.');
+      toast.error('Failed to generate questions. Please try again.');
     } finally {
       setIsGenerating(false);
     }
@@ -657,7 +685,7 @@ export const Assessments: React.FC = () => {
 
   const handleSaveExam = async () => {
     if (builderQuestions.length === 0) {
-      alert("Please add at least one question.");
+      toast.warning('Please add at least one question.');
       return;
     }
     try {
@@ -679,7 +707,7 @@ export const Assessments: React.FC = () => {
 
   const handleSaveAndActivate = async () => {
     if (builderQuestions.length === 0) {
-        alert("Please add at least one question.");
+        toast.warning('Please add at least one question.');
         return;
     }
     try {
@@ -724,9 +752,10 @@ export const Assessments: React.FC = () => {
 
   const handleClearExam = () => {
     if (builderQuestions.length > 0) {
-      if (window.confirm('Are you sure you want to clear all questions? This cannot be undone.')) {
-        setBuilderQuestions([]);
-      }
+      setConfirmDialog({
+        message: 'Are you sure you want to clear all questions? This cannot be undone.',
+        onConfirm: () => setBuilderQuestions([])
+      });
     }
   };
   
@@ -785,6 +814,54 @@ export const Assessments: React.FC = () => {
 
   return (
     <div className="space-y-6 relative">
+      <ToastContainer toasts={toasts} onDismiss={dismiss} />
+
+      {/* Confirm Dialog Modal */}
+      {confirmDialog && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-sm rounded-xl shadow-2xl">
+            <div className="p-6">
+              <p className="text-sm text-gray-700">{confirmDialog.message}</p>
+            </div>
+            <div className="p-4 border-t border-gray-200 bg-gray-50 rounded-b-xl flex justify-end gap-2">
+              <button onClick={() => setConfirmDialog(null)} className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors">
+                Cancel
+              </button>
+              <button onClick={() => { confirmDialog.onConfirm(); setConfirmDialog(null); }} className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-bold hover:bg-primary-700 transition-colors">
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add CA Column Name Modal */}
+      {showCANameModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-sm rounded-xl shadow-2xl">
+            <div className="p-6">
+              <h3 className="text-sm font-bold text-gray-900 mb-3">New CA Column Name</h3>
+              <input
+                type="text"
+                value={newCAName}
+                onChange={(e) => setNewCAName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && confirmAddCA()}
+                className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                placeholder="e.g. Mid-Term CA"
+                autoFocus
+              />
+            </div>
+            <div className="p-4 border-t border-gray-200 bg-gray-50 rounded-b-xl flex justify-end gap-2">
+              <button onClick={() => setShowCANameModal(false)} className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors">
+                Cancel
+              </button>
+              <button onClick={confirmAddCA} className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-bold hover:bg-primary-700 transition-colors">
+                Add Column
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Assessments</h1>

@@ -17,6 +17,12 @@ interface AuthContextType {
   isImpersonating: boolean;
   authMode: 'supabase' | 'demo' | 'unknown';
   error: string | null;
+  // Creator god-mode: scope to a school without impersonating
+  viewingSchoolId: string | null;
+  setViewingSchoolId: (schoolId: string | null) => void;
+  isCreator: boolean;
+  // Effective schoolId — either the user's own or the one Creator is viewing
+  effectiveSchoolId: string | null | undefined;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -27,6 +33,11 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [authMode, setAuthMode] = useState<'supabase' | 'demo' | 'unknown'>('unknown');
   const [error, setError] = useState<string | null>(null);
+  const [viewingSchoolId, setViewingSchoolId] = useState<string | null>(null);
+
+  const isCreator = user?.role === UserRole.SUPER_ADMIN;
+  // Creator viewing a school sees that school's data; everyone else sees their own
+  const effectiveSchoolId = isCreator ? viewingSchoolId : user?.schoolId;
 
   const persistDemoSession = (nextUser: User) => {
     if (nextUser.authToken) {
@@ -104,16 +115,19 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
     
     try {
       if (password && authMode === 'supabase') {
-        // Try Supabase authentication first
         try {
           const supabaseUser = await supabaseAuthService.login(email, password);
           setUser(supabaseUser);
           return;
         } catch (supabaseError: any) {
-          console.warn('Supabase login failed:', supabaseError.message);
+          const isNetworkError = supabaseError.message === 'Failed to fetch' || supabaseError.message?.includes('NetworkError');
           
-          // If Supabase is configured but login failed, don't fall back to demo
-          if (supabaseAuthService.isConfigured()) {
+          if (isNetworkError) {
+            // Supabase unreachable — fall through to demo mode
+            console.warn('Supabase unreachable, falling back to demo mode');
+            setAuthMode('demo');
+          } else {
+            // Real auth error (wrong password, user not found, etc.) — surface it
             throw new Error(supabaseError.message || 'Invalid email or password');
           }
         }
@@ -236,7 +250,11 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
     stopImpersonating,
     isImpersonating: !!originalUser,
     authMode,
-    error
+    error,
+    viewingSchoolId,
+    setViewingSchoolId,
+    isCreator,
+    effectiveSchoolId,
   };
 
   return (

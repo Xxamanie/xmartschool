@@ -108,7 +108,7 @@ export const Dashboard: React.FC = () => {
             Dashboard Overview
           </h1>
           <p className="text-gray-500">
-            Welcome back, Alex! Here's what's happening today.
+            Welcome back, {user?.name?.split(' ')[0] || 'there'}! Here's what's happening today.
           </p>
         </div>
         <div className="flex items-center gap-2">
