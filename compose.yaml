@@ -1,10 +1,34 @@
+version: '3.9'
 services:
-  smartschool:
-    image: smartschool
+  backend:
+    image: smartschool-backend
+    build:
+      context: ./backend
+      dockerfile: ./Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: ${DATABASE_URL}
+      FRONTEND_URL: ${FRONTEND_URL}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+    ports:
+      - 4000:4000
+
+  frontend:
+    image: smartschool-frontend
     build:
       context: .
       dockerfile: ./Dockerfile
     environment:
       NODE_ENV: production
+      VITE_API_BASE_URL: http://backend:4000/api
+      VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
+      VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
+      VITE_SUPABASE_STORAGE_BUCKET: ${VITE_SUPABASE_STORAGE_BUCKET}
+      VITE_GEMINI_API_KEY: ${VITE_GEMINI_API_KEY}
     ports:
       - 3000:3000
+    depends_on:
+      - backend

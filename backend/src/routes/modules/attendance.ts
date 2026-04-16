@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { appService } from '../../services/appService';
+import { requireAuth, requireRole } from '../../middleware/auth';
+import { UserRole } from '../../types';
 
 const router = Router();
 
@@ -12,9 +14,10 @@ const getSchema = z.object({
 
 router.get(
   '/',
+  requireAuth,
   asyncHandler(async (req, res) => {
     const { date, grade } = getSchema.parse(req.query);
-    const response = await appService.getAttendance(date, grade);
+    const response = await appService.getAttendance(date, grade, req.auth?.schoolId);
     res.json(response);
   }),
 );
@@ -29,6 +32,8 @@ const markSchema = z.array(
 
 router.post(
   '/',
+  requireAuth,
+  requireRole(UserRole.ADMIN, UserRole.TEACHER, UserRole.SUPER_ADMIN),
   asyncHandler(async (req, res) => {
     const payload = markSchema.parse(req.body);
     const response = await appService.markAttendance(payload);

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { appService } from '../../services/appService';
+import { requireRole } from '../../middleware/auth';
 import { UserRole } from '../../types';
 
 const router = Router();
@@ -14,7 +15,7 @@ router.get(
   '/',
   asyncHandler(async (req, res) => {
     const { role } = listQuery.parse(req.query);
-    const response = await appService.getAnnouncements(role);
+    const response = await appService.getAnnouncements(role ?? req.auth?.role);
     res.json(response);
   }),
 );
@@ -28,6 +29,7 @@ const createSchema = z.object({
 
 router.post(
   '/',
+  requireRole(UserRole.ADMIN, UserRole.SUPER_ADMIN),
   asyncHandler(async (req, res) => {
     const { title, message, targetAudience, source } = createSchema.parse(req.body);
     const response = await appService.createAnnouncement(title, message, targetAudience, source);

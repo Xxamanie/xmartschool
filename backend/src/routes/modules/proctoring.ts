@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { appService } from '../../services/appService';
+import { requireRole } from '../../middleware/auth';
+import { UserRole } from '../../types';
 
 const router = Router();
 
@@ -13,6 +15,7 @@ const frameSchema = z.object({
 
 router.post(
   '/frame',
+  requireRole(UserRole.ADMIN, UserRole.TEACHER, UserRole.SUPER_ADMIN),
   asyncHandler(async (req, res) => {
     const { examId, studentId, frameData } = frameSchema.parse(req.body);
     const response = await appService.recordProctorFrame(examId, studentId, frameData);

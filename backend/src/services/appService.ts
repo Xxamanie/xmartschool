@@ -398,6 +398,26 @@ export const appService = {
     return success([...users.map(mapUserModel), ...studentAsUsers]);
   },
 
+  getUsersBySchoolId: async (schoolId: string): Promise<ApiResponse<User[]>> => {
+    await wait(100);
+    const [users, students] = await Promise.all([
+      prisma.user.findMany({ where: { schoolId } }),
+      prisma.student.findMany({ where: { schoolId } }),
+    ]);
+
+    const studentAsUsers: User[] = students.map((student: PrismaStudentModel) => ({
+      id: student.id,
+      name: student.name,
+      role: UserRole.STUDENT,
+      email: `student.${student.id}@school.edu`,
+      schoolId: student.schoolId,
+      avatar: avatarFromName(student.name),
+      gender: student.gender as User['gender'],
+    }));
+
+    return success([...users.map(mapUserModel), ...studentAsUsers]);
+  },
+
   getStudents: async (schoolId?: string): Promise<ApiResponse<Student[]>> => {
     await wait(100);
     const students = await prisma.student.findMany({
@@ -405,6 +425,14 @@ export const appService = {
       orderBy: { name: 'asc' },
     });
     return success(students.map(mapStudentModel));
+  },
+
+  getStudentById: async (studentId: string): Promise<ApiResponse<Student>> => {
+    await wait(100);
+    const student = await prisma.student.findUnique({ where: { id: studentId } });
+    return student
+      ? success(mapStudentModel(student))
+      : failure('Student not found', {} as Student);
   },
 
   updateStudent: async (studentId: string, updates: Partial<Student>): Promise<ApiResponse<Student>> => {
@@ -423,28 +451,36 @@ export const appService = {
     }
   },
 
-  getSubjects: async (): Promise<ApiResponse<Subject[]>> => {
+  getSubjects: async (schoolId?: string): Promise<ApiResponse<Subject[]>> => {
     await wait(100);
-    const subjects = await prisma.subject.findMany({ orderBy: { name: 'asc' } });
+    const subjects = await prisma.subject.findMany({
+      where: schoolId ? { schoolId } : undefined,
+      orderBy: { name: 'asc' },
+    });
     return success(subjects.map(mapSubjectModel));
   },
 
-  createSubject: async (subjectData: { name: string; teacherId?: string }): Promise<ApiResponse<Subject>> => {
+  createSubject: async (subjectData: { name: string; teacherId?: string; schoolId?: string }): Promise<ApiResponse<Subject>> => {
     await wait(100);
     const created = await prisma.subject.create({
       data: {
         name: subjectData.name,
-        teacherId: subjectData.teacherId || 'u1',
+        teacherId: subjectData.teacherId || undefined,
         schedule: 'TBD',
         room: 'TBD',
+        schoolId: subjectData.schoolId,
       },
     });
     return success(mapSubjectModel(created), 'Subject enrolled successfully');
   },
 
-  getSchemes: async (): Promise<ApiResponse<SchemeSubmission[]>> => {
+  getSchemes: async (schoolId?: string): Promise<ApiResponse<SchemeSubmission[]>> => {
     await wait(100);
-    const schemes = await prisma.schemeSubmission.findMany({ orderBy: { uploadDate: 'desc' } });
+    const schemes = await prisma.schemeSubmission.findMany({
+      where: schoolId ? { subject: { schoolId } } : undefined,
+      orderBy: { uploadDate: 'desc' },
+      include: { subject: true },
+    });
     return success(schemes.map(mapSchemeModel));
   },
 
@@ -468,6 +504,7 @@ export const appService = {
   },
 
   getAssessments: async (
+    schoolId?: string,
     subjectId?: string,
     term?: string,
     studentId?: string,
@@ -491,6 +528,7 @@ export const appService = {
     const where: Prisma.AssessmentWhereInput = {
       ...(term ? { term } : {}),
       ...(studentId ? { studentId } : {}),
+      ...(schoolId ? { student: { schoolId } } : {}),
     };
 
     if (subjectId) {
@@ -534,46 +572,57 @@ export const appService = {
     return success({ success: true }, 'Assessments saved successfully');
   },
 
-  getResults: async (studentId?: string): Promise<ApiResponse<ResultData[]>> => {
+  getResults: async (schoolId?: string, studentId?: string): Promise<ApiResponse<ResultData[]>> => {
     await wait(100);
     const results = await prisma.result.findMany({
-      where: studentId ? { studentId } : undefined,
+      where: {
+        ...(studentId ? { studentId } : {}),
+        ...(schoolId ? { student: { schoolId } } : {}),
+      },
       include: { student: true },
     });
     return success(results.map(mapResultModel));
   },
 
-  publishResults: async (newResults: ResultData[]): Promise<ApiResponse<{ success: boolean }>> => {
+  publishResults: async (schoolId: string | undefined, newResults: ResultData[]): Promise<ApiResponse<{ success: boolean }>> => {
     await wait(100);
-    await Promise.all(
-      newResults.map((result) => {
-        const subjectName = result.subjectName || 'General Studies';
-        return prisma.result.upsert({
-          where: {
-            studentId_subjectName: {
-              studentId: result.studentId,
-              subjectName,
-            },
-          },
-          update: {
-            average: result.average,
-            grade: result.grade,
-            status: result.status,
-            remarks: result.remarks,
-            details: (result.details as Prisma.JsonValue) ?? undefined,
-          },
-          create: {
+
+    for (const result of newResults) {
+      const student = await prisma.student.findUnique({ where: { id: result.studentId } });
+      if (!student) {
+        return failure('Student not found', { success: false });
+      }
+      if (schoolId && student.schoolId !== schoolId) {
+        return failure('Cannot publish results for students outside your school', { success: false });
+      }
+
+      const subjectName = result.subjectName || 'General Studies';
+      await prisma.result.upsert({
+        where: {
+          studentId_subjectName: {
             studentId: result.studentId,
             subjectName,
-            average: result.average,
-            grade: result.grade,
-            status: result.status,
-            remarks: result.remarks,
-            details: (result.details as Prisma.JsonValue) ?? undefined,
           },
-        });
-      }),
-    );
+        },
+        update: {
+          average: result.average,
+          grade: result.grade,
+          status: result.status,
+          remarks: result.remarks,
+          details: (result.details as Prisma.JsonValue) ?? undefined,
+        },
+        create: {
+          studentId: result.studentId,
+          subjectName,
+          average: result.average,
+          grade: result.grade,
+          status: result.status,
+          remarks: result.remarks,
+          details: (result.details as Prisma.JsonValue) ?? undefined,
+        },
+      });
+    }
+
     return success({ success: true }, 'Results published successfully');
   },
 
@@ -751,13 +800,14 @@ export const appService = {
     return success(true);
   },
 
-  getAttendance: async (date: string, grade?: string): Promise<ApiResponse<AppAttendanceRecord[]>> => {
+  getAttendance: async (date: string, grade?: string, schoolId?: string): Promise<ApiResponse<AppAttendanceRecord[]>> => {
     await wait(100);
     const { start, end } = getDateBounds(date);
     const records = await prisma.attendanceRecord.findMany({
       where: {
         date: { gte: start, lt: end },
         ...(grade ? { student: { grade } } : {}),
+        ...(schoolId ? { student: { schoolId } } : {}),
       },
       include: { student: true },
     });
@@ -828,9 +878,12 @@ export const appService = {
     return success({ stored: true });
   },
 
-  getLiveClasses: async (): Promise<ApiResponse<LiveClass[]>> => {
+  getLiveClasses: async (schoolId?: string): Promise<ApiResponse<LiveClass[]>> => {
     await wait(50);
-    const classes = await prisma.liveClass.findMany({ orderBy: { scheduledTime: 'asc' } });
+    const classes = await prisma.liveClass.findMany({
+      where: schoolId ? { subject: { schoolId } } : undefined,
+      orderBy: { scheduledTime: 'asc' },
+    });
     return success(classes.map(mapLiveClassModel));
   },
 

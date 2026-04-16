@@ -160,14 +160,31 @@ The application supports both:
    npm run build
    ```
 
-2. **Deploy the `dist` folder** to your hosting provider
+2. **Deploy the `dist` folder** to your hosting provider, or use Docker Compose for fullstack deployment.
+
+### Fullstack Docker Deployment
+
+The repository now includes production and development compose files for frontend and backend.
+
+- **Production**
+  ```bash
+  docker compose -f docker-compose.production.yaml up --build
+  ```
+
+- **Development**
+  ```bash
+  docker compose -f compose.debug.yaml up --build
+  ```
+
+> Note: The backend requires production environment variables such as `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and optional `GEMINI_API_KEY`.
 
 ### Environment Configuration
 
 Ensure production environment variables are properly set:
-- Set `VITE_API_BASE_URL` to your backend API URL
+- Set `VITE_API_BASE_URL` to your backend API URL (for frontend)
 - Configure Supabase credentials
 - Set `VITE_GEMINI_API_KEY` for AI features (optional)
+- Set backend-specific variables: `DATABASE_URL`, `FRONTEND_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY`
 
 ## Features Overview
 

@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { appService } from '../../services/appService';
+import { requireRole } from '../../middleware/auth';
+import { UserRole } from '../../types';
 
 const router = Router();
 
@@ -39,6 +41,7 @@ const examBuilderSchema = z.object({
 
 router.post(
   '/builder',
+  requireRole(UserRole.ADMIN, UserRole.TEACHER, UserRole.SUPER_ADMIN),
   asyncHandler(async (req, res) => {
     const payload = examBuilderSchema.parse(req.body);
     const response = await appService.updateExamQuestions(
@@ -55,6 +58,7 @@ const statusSchema = z.object({ status: z.enum(['scheduled', 'active', 'ended'])
 
 router.patch(
   '/:id/status',
+  requireRole(UserRole.ADMIN, UserRole.SUPER_ADMIN),
   asyncHandler(async (req, res) => {
     const { id } = z.object({ id: z.string() }).parse(req.params);
     const { status } = statusSchema.parse(req.body);
@@ -72,14 +76,19 @@ router.get(
   }),
 );
 
-const startSessionSchema = z.object({ studentId: z.string() });
+const startSessionSchema = z.object({ studentId: z.string().optional() });
 
 router.post(
   '/:id/sessions/start',
   asyncHandler(async (req, res) => {
     const { id } = z.object({ id: z.string() }).parse(req.params);
     const { studentId } = startSessionSchema.parse(req.body);
-    const response = await appService.startExamSession(id, studentId);
+    const effectiveStudentId = req.auth?.role === UserRole.STUDENT ? req.auth.userId : studentId;
+    if (!effectiveStudentId) {
+      res.status(400).json({ ok: false, data: null, message: 'studentId required' });
+      return;
+    }
+    const response = await appService.startExamSession(id, effectiveStudentId);
     res.json(response);
   }),
 );
@@ -95,7 +104,12 @@ router.post(
   asyncHandler(async (req, res) => {
     const { id } = z.object({ id: z.string() }).parse(req.params);
     const { studentId, progress, answers } = progressSchema.parse(req.body);
-    const response = await appService.updateExamSessionProgress(id, studentId, progress, answers);
+    const effectiveStudentId = req.auth?.role === UserRole.STUDENT ? req.auth.userId : studentId;
+    if (!effectiveStudentId) {
+      res.status(400).json({ ok: false, data: null, message: 'studentId required' });
+      return;
+    }
+    const response = await appService.updateExamSessionProgress(id, effectiveStudentId, progress, answers);
     res.json(response);
   }),
 );
@@ -111,7 +125,12 @@ router.post(
   asyncHandler(async (req, res) => {
     const { id } = z.object({ id: z.string() }).parse(req.params);
     const { studentId, answers, score } = submitSchema.parse(req.body);
-    const response = await appService.submitExam(studentId, answers, score, id);
+    const effectiveStudentId = req.auth?.role === UserRole.STUDENT ? req.auth.userId : studentId;
+    if (!effectiveStudentId) {
+      res.status(400).json({ ok: false, data: null, message: 'studentId required' });
+      return;
+    }
+    const response = await appService.submitExam(effectiveStudentId, answers, score, id);
     res.json(response);
   }),
 );
@@ -120,6 +139,7 @@ const resetSchema = z.object({ studentId: z.string() });
 
 router.post(
   '/:id/sessions/reset',
+  requireRole(UserRole.ADMIN, UserRole.SUPER_ADMIN),
   asyncHandler(async (req, res) => {
     const { id } = z.object({ id: z.string() }).parse(req.params);
     const { studentId } = resetSchema.parse(req.body);
