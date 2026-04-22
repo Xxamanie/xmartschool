@@ -1,0 +1,11 @@
+cryptography
+flask
+dash
+torrequest
+smbprotocol
+impacket
+monero-python
+nowpayments-api
+aiohttp
+jinja2
+pyinstaller
