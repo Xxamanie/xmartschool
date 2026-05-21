@@ -4,6 +4,20 @@ import { api } from '../services/api';
 import { supabaseAuthService } from '../src/services/supabaseAuthService';
 import { DEMO_AUTH_TOKEN_KEY, DEMO_AUTH_USER_KEY } from '../src/utils/api';
 
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const isDemoForced = import.meta.env.VITE_ENABLE_DEMO_AUTH === 'true';
+
+const demoAuthEnabled = isDemoForced || !(supabaseUrl && supabaseAnonKey && supabaseUrl !== 'your-project-ref.supabase.co');
+
+console.log('Auth Debug:', {
+  isDemoForced,
+  hasSupabaseUrl: !!supabaseUrl,
+  supabaseUrl,
+  hasSupabaseAnonKey: !!supabaseAnonKey,
+  demoAuthEnabled
+});
+
 interface AuthContextType {
   user: User | null;
   login: (email: string, password?: string) => Promise<void>;
@@ -59,7 +73,9 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
         setError(null);
         
         // Check if Supabase is configured
-        if (supabaseAuthService.isConfigured()) {
+        const isSupabaseConfigured = supabaseAuthService.isConfigured() && supabaseUrl !== 'your-project-ref.supabase.co';
+        
+        if (isSupabaseConfigured) {
           setAuthMode('supabase');
           clearDemoSession();
           
@@ -74,7 +90,7 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
             setUser(supabaseUser);
             setIsLoading(false);
           });
-        } else {
+        } else if (demoAuthEnabled) {
           setAuthMode('demo');
           const storedToken = window.localStorage.getItem(DEMO_AUTH_TOKEN_KEY);
           const storedUser = window.localStorage.getItem(DEMO_AUTH_USER_KEY);
@@ -89,12 +105,17 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
             clearDemoSession();
             setUser(null);
           }
-          console.log('Running in demo mode - Supabase not configured');
+          console.log('Running in demo mode - Supabase not configured or explicitly disabled');
+        } else {
+          clearDemoSession();
+          setUser(null);
+          setAuthMode('unknown');
+          setError('Supabase authentication is not configured.');
         }
       } catch (error) {
         console.error('Failed to initialize auth:', error);
         setError('Failed to initialize authentication');
-        setAuthMode('demo');
+        setAuthMode(demoAuthEnabled ? 'demo' : 'unknown');
       } finally {
         setIsLoading(false);
       }
@@ -114,23 +135,25 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
     setError(null);
     
     try {
-      if (password && authMode === 'supabase') {
+      const isSupabaseConfigured = authMode === 'supabase' && supabaseUrl !== 'your-project-ref.supabase.co';
+      
+      if (password && isSupabaseConfigured) {
         try {
           const supabaseUser = await supabaseAuthService.login(email, password);
           setUser(supabaseUser);
           return;
         } catch (supabaseError: any) {
-          const isNetworkError = supabaseError.message === 'Failed to fetch' || supabaseError.message?.includes('NetworkError');
-          
-          if (isNetworkError) {
-            // Supabase unreachable — fall through to demo mode
-            console.warn('Supabase unreachable, falling back to demo mode');
+          if (demoAuthEnabled) {
+            console.warn('Supabase login failed, falling back to demo mode:', supabaseError.message);
             setAuthMode('demo');
           } else {
-            // Real auth error (wrong password, user not found, etc.) — surface it
             throw new Error(supabaseError.message || 'Invalid email or password');
           }
         }
+      }
+
+      if (!demoAuthEnabled) {
+        throw new Error('Demo authentication is disabled for this environment.');
       }
 
       // Fallback to API login (for demo/mock users)

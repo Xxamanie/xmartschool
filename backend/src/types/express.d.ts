@@ -7,6 +7,8 @@ declare global {
         userId: string;
         role: UserRole;
         schoolId?: string;
+        email?: string;
+        provider: 'legacy-session' | 'supabase';
       };
     }
   }

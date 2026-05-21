@@ -37,6 +37,8 @@ export interface School {
 export interface Student {
   id: string;
   name: string;
+  email?: string;
+  avatar?: string;
   gender: 'Male' | 'Female';
   grade: string;
   enrollmentDate: string;
@@ -46,6 +48,7 @@ export interface Student {
   schoolId: string;
   accessCode: string; // Unique Student Access Code
   enrolledSubjects?: string[];
+  field?: 'science' | 'arts' | 'business' | 'general';
 }
 
 export interface Subject {
@@ -120,10 +123,35 @@ export interface LiveClass {
   id: string;
   subjectId?: string;
   teacherId?: string;
+  schoolClassId?: string;
   scheduledTime: string;
   meetingLink: string;
   status: string;
   recording?: LiveClassRecording;
+}
+
+export interface SchoolClassItem {
+  id: string;
+  name: string;
+}
+
+export interface TeacherAssignment {
+  id: string;
+  teacherId: string;
+  subjectId: string;
+  schoolClassId: string;
+  subjectName?: string;
+  className?: string;
+}
+
+export interface StaffMessage {
+  id: string;
+  schoolId: string;
+  userId: string;
+  type: 'text' | 'image' | 'video' | 'audio';
+  content: string;
+  mediaUrl?: string;
+  createdAt: string;
 }
 
 export interface LiveClassParticipant {

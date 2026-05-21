@@ -71,6 +71,17 @@ async function main() {
     },
   });
 
+  // Create demo school class (audience)
+  const schoolClass1 = await prisma.schoolClass.upsert({
+    where: { id: 'class_10' },
+    update: {},
+    create: {
+      id: 'class_10',
+      schoolId: school1.id,
+      name: '10th',
+    },
+  });
+
   // Create demo students
   const student1 = await prisma.student.upsert({
     where: { accessCode: 'STU-2024-001' },
@@ -85,10 +96,12 @@ async function main() {
       gpa: 3.8,
       attendance: 98,
       schoolId: school1.id,
+      schoolClassId: schoolClass1.id,
       accessCode: 'STU-2024-001',
       enrolledSubjects: ['sub1', 'sub2'],
     },
   });
+
 
   // Create demo subjects
   const subject1 = await prisma.subject.upsert({

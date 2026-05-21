@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { appService } from '../../services/appService';
-import { requireAuth, requireRole } from '../../middleware/auth';
+import { requireAuth, requireRole, requireSchoolContext } from '../../middleware/auth';
 import { UserRole } from '../../types';
 
 const router = Router();
@@ -24,21 +24,33 @@ router.get(
 
 const updateSchema = z
   .object({
+    name: z.string().trim().min(1).max(120).optional(),
+    gender: z.enum(['Male', 'Female']).optional(),
     grade: z.string().optional(),
     status: z.enum(['Active', 'Inactive', 'Suspended']).optional(),
+    enrollmentDate: z.string().optional(),
+    gpa: z.number().min(0).max(5).optional(),
+    attendance: z.number().min(0).max(100).optional(),
+    accessCode: z.string().trim().min(1).max(100).optional(),
+    enrolledSubjects: z.array(z.string().min(1)).optional(),
   })
-  .passthrough();
+  .strict();
 
 const idParam = z.object({ id: z.string().min(1) });
 
 router.put(
   '/:id',
   requireAuth,
+  requireSchoolContext,
   requireRole(UserRole.ADMIN, UserRole.TEACHER, UserRole.SUPER_ADMIN),
   asyncHandler(async (req, res) => {
     const { id } = idParam.parse(req.params);
     const updates = updateSchema.parse(req.body);
-    const response = await appService.updateStudent(id, updates);
+    const response = await appService.updateStudentForSchool(
+      id,
+      updates,
+      req.auth?.role === UserRole.SUPER_ADMIN ? undefined : req.auth?.schoolId,
+    );
     res.json(response);
   }),
 );

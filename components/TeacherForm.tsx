@@ -9,9 +9,19 @@ interface TeacherFormProps {
   onCancel: () => void;
 }
 
+type TeacherFormState = {
+  name: string;
+  email: string;
+  phone: string;
+  role: UserRole;
+  gender: User['gender'] | '';
+  bio: string;
+  schoolId: string;
+};
+
 export const TeacherForm: React.FC<TeacherFormProps> = ({ teacher, onSubmit, onCancel }) => {
   const { playSound } = useClickSound();
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<TeacherFormState>({
     name: teacher?.name || '',
     email: teacher?.email || '',
     phone: teacher?.phone || '',
@@ -48,7 +58,10 @@ export const TeacherForm: React.FC<TeacherFormProps> = ({ teacher, onSubmit, onC
     e.preventDefault();
     
     if (validateForm()) {
-      onSubmit(formData);
+      onSubmit({
+        ...formData,
+        gender: formData.gender || undefined,
+      });
     }
   };
 

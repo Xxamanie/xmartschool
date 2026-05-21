@@ -23,6 +23,7 @@ const Settings = React.lazy(() => import('./pages/Settings').then((module) => ({
 const SchoolDetail = React.lazy(() => import('./pages/SchoolDetail').then((module) => ({ default: module.SchoolDetail })));
 const LiveClasses = React.lazy(() => import('./pages/LiveClasses').then((module) => ({ default: module.LiveClasses })));
 const LiveClassRoom = React.lazy(() => import('./pages/LiveClassRoom').then((module) => ({ default: module.LiveClassRoom })));
+const StaffRoom = React.lazy(() => import('./pages/StaffRoom').then((module) => ({ default: module.StaffRoom })));
 
 const RouteFallback = () => <LoadingScreen message="Loading page..." />;
 
@@ -114,6 +115,7 @@ const AppContent: React.FC = () => {
             <Route path="results" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Results /></ProtectedRoute>} />
             <Route path="live-classes" element={<ProtectedRoute><LiveClasses /></ProtectedRoute>} />
             <Route path="live-classes/:classId" element={<ProtectedRoute><LiveClassRoom /></ProtectedRoute>} />
+            <Route path="staff-room" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><StaffRoom /></ProtectedRoute>} />
             
             <Route path="settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
           </Route>

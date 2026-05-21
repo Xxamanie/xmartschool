@@ -10,7 +10,13 @@ const router = Router();
 router.get(
   '/',
   asyncHandler(async (req, res) => {
-    const response = await appService.getLiveClasses(req.auth?.schoolId);
+    const auth = req.auth;
+    const response = await appService.getLiveClasses(
+      auth?.schoolId,
+      auth?.userId,
+      auth?.role,
+      auth?.role === UserRole.STUDENT ? auth.userId : undefined,
+    );
     res.json(response);
   }),
 );
@@ -18,17 +24,21 @@ router.get(
 const createSchema = z.object({
   subjectId: z.string().optional(),
   teacherId: z.string().optional(),
+  schoolClassId: z.string().min(1),
   scheduledTime: z.string().min(1),
   meetingLink: z.string().min(1),
 });
+
+
 
 router.post(
   '/',
   requireRole(UserRole.ADMIN, UserRole.TEACHER, UserRole.SUPER_ADMIN),
   asyncHandler(async (req, res) => {
-    const { subjectId, teacherId, scheduledTime, meetingLink } = createSchema.parse(req.body);
+    const { subjectId, teacherId, schoolClassId, scheduledTime, meetingLink } = createSchema.parse(req.body);
     const preferredTeacherId = req.auth?.role === UserRole.TEACHER ? req.auth.userId : teacherId;
-    const response = await appService.createLiveClass(subjectId, preferredTeacherId, scheduledTime, meetingLink);
+    const response = await appService.createLiveClass(subjectId, preferredTeacherId, schoolClassId, scheduledTime, meetingLink);
+
     res.json(response);
   }),
 );
@@ -37,7 +47,7 @@ router.post(
   '/:liveClassId/join',
   asyncHandler(async (req, res) => {
     const { liveClassId } = req.params;
-    const response = await appService.joinLiveClass(liveClassId, req.auth!.userId);
+    const response = await appService.joinLiveClass(liveClassId, req.auth!.userId, req.auth!.role);
     res.json(response);
   }),
 );
@@ -56,7 +66,7 @@ router.post(
   asyncHandler(async (req, res) => {
     const { liveClassId } = req.params;
     const { cameraOn, microphoneOn } = req.body;
-    const response = await appService.updateParticipantStatus(liveClassId, req.auth!.userId, cameraOn, microphoneOn);
+    const response = await appService.updateParticipantStatus(liveClassId, req.auth!.userId, req.auth!.role, cameraOn, microphoneOn);
     res.json(response);
   }),
 );
@@ -66,7 +76,7 @@ router.post(
   asyncHandler(async (req, res) => {
     const { liveClassId } = req.params;
     const { raised } = req.body;
-    const response = await appService.raiseHand(liveClassId, req.auth!.userId, raised);
+    const response = await appService.raiseHand(liveClassId, req.auth!.userId, req.auth!.role, raised);
     res.json(response);
   }),
 );
@@ -80,7 +90,7 @@ router.post(
       res.status(400).json({ ok: false, message: 'message required' });
       return;
     }
-    const response = await appService.sendLiveClassMessage(liveClassId, req.auth!.userId, message);
+    const response = await appService.sendLiveClassMessage(liveClassId, req.auth!.userId, req.auth!.role, message);
     res.json(response);
   }),
 );

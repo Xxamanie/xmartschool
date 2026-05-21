@@ -2,7 +2,7 @@ export enum UserRole {
   SUPER_ADMIN = 'SUPER_ADMIN',
   ADMIN = 'ADMIN',
   TEACHER = 'TEACHER',
-  STUDENT = 'STUDENT'
+  STUDENT = 'STUDENT',
 }
 
 export interface User {
@@ -138,13 +138,76 @@ export interface Announcement {
   createdAt: string;
 }
 
+export type NotificationAudience =
+  | 'all'
+  | 'school'
+  | 'admins'
+  | 'teachers'
+  | 'staff'
+  | 'students'
+  | 'teacher_students'
+  | 'specific_users';
+
+export interface Notification {
+  id: string;
+  title: string;
+  message: string;
+  audience: NotificationAudience;
+  sourceRole: UserRole;
+  schoolId?: string;
+  createdAt: string;
+}
+
+export interface PrivateConversation {
+  id: string;
+  schoolId: string;
+  studentId: string;
+  teacherId: string;
+  subjectId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PrivateConversationMessage {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  content: string;
+  createdAt: string;
+}
+
 export interface LiveClass {
   id: string;
   subjectId?: string;
   teacherId?: string;
+  schoolClassId?: string;
   scheduledTime: string;
   meetingLink: string;
   status: string;
+}
+
+export interface SchoolClassItem {
+  id: string;
+  name: string;
+}
+
+export interface TeacherAssignment {
+  id: string;
+  teacherId: string;
+  subjectId: string;
+  schoolClassId: string;
+  subjectName?: string;
+  className?: string;
+}
+
+export interface StaffMessage {
+  id: string;
+  schoolId: string;
+  userId: string;
+  type: 'text' | 'image' | 'video' | 'audio';
+  content: string;
+  mediaUrl?: string;
+  createdAt: string;
 }
 
 export interface ApiResponse<T> {

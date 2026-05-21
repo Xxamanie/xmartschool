@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { api } from '../services/api';
-import { Assessment, Student, Subject, ResultData, ExamQuestion, ActiveExam, UserRole } from '../types';
+import { Assessment, Student, Subject, ResultData, ExamQuestion, ActiveExam, UserRole, SchoolClassItem } from '../types';
 import { GoogleGenAI, Type } from "@google/genai";
 import { useAuth } from '../context/AuthContext';
 import { ToastContainer } from '../components/Toast';
@@ -37,7 +37,11 @@ import {
   ArrowRight,
   CheckSquare,
   Search,
-  Filter
+  Filter,
+  BookOpen,
+  Layers,
+  CalendarDays,
+  ChevronRight,
 } from 'lucide-react';
 
 interface ExamSection {
@@ -93,6 +97,10 @@ export const Assessments: React.FC = () => {
   
   const [selectedSubject, setSelectedSubject] = useState('');
   const [selectedTerm, setSelectedTerm] = useState('Term 1');
+  const [selectedClass, setSelectedClass] = useState('');
+  const [schoolClasses, setSchoolClasses] = useState<SchoolClassItem[]>([]);
+  // Which accordion step is open: 'term' | 'class' | 'subject' | null (all collapsed once all chosen)
+  const [openAccordion, setOpenAccordion] = useState<'term' | 'class' | 'subject'>('term');
   
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -120,8 +128,10 @@ export const Assessments: React.FC = () => {
   const [gradingScale, setGradingScale] = useState<GradeThreshold[]>(DEFAULT_GRADING_SCALE);
   const [showSettings, setShowSettings] = useState(false);
 
-  // Modes: Manual Entry, Online Exam Proctoring, Exam Builder
-  const [mode, setMode] = useState<'manual' | 'online' | 'builder'>('manual');
+  // Modes: Gradebook | Exams
+  const [mode, setMode] = useState<'manual' | 'builder'>('manual');
+  // Sub-mode inside Exams tab: builder | proctor
+  const [examSubMode, setExamSubMode] = useState<'builder' | 'proctor'>('builder');
   
   // Exam Management State
   const [allExams, setAllExams] = useState<ActiveExam[]>([]);
@@ -212,6 +222,13 @@ export const Assessments: React.FC = () => {
              setSelectedSubject('');
           }
         }
+
+        // Load school classes for the class accordion
+        const schoolId = user?.schoolId;
+        if (schoolId) {
+          const classRes = await api.getSchoolClasses(schoolId);
+          if (classRes.ok) setSchoolClasses(classRes.data);
+        }
         
         if (examRes.ok && examRes.data.length > 0) {
            let exams = examRes.data;
@@ -237,24 +254,16 @@ export const Assessments: React.FC = () => {
     fetchData();
   }, [user]);
 
-  // Poll for exam stats updates when in Online mode and an exam is selected
+  // Poll for exam stats when in Exams > Proctoring sub-mode
   useEffect(() => {
-    if (mode === 'online' && selectedExamId) {
-        // Initial load
+    if (mode === 'builder' && examSubMode === 'proctor' && selectedExamId) {
         updateStats();
-        
-        // Set interval
-        intervalRef.current = setInterval(() => {
-           updateStats();
-        }, 3000); // Update every 3 seconds
+        intervalRef.current = setInterval(updateStats, 3000);
     } else {
         if (intervalRef.current) clearInterval(intervalRef.current);
     }
-
-    return () => {
-        if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [mode, selectedExamId]);
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [mode, examSubMode, selectedExamId]);
 
   const updateStats = async () => {
       if (!selectedExamId) return;
@@ -323,36 +332,32 @@ export const Assessments: React.FC = () => {
 
   // Load assessments when selection changes
   useEffect(() => {
-    if (!selectedSubject) return;
+    if (!selectedSubject || !selectedTerm) return;
     
-    setModifiedRows(new Set()); // Clear modifications on context switch
+    setModifiedRows(new Set());
 
     const fetchAssessments = async () => {
       setLoading(true);
       try {
         const res = await api.getAssessments(selectedSubject, selectedTerm);
         if (res.ok) {
-          // Merge with students to ensure every student has a row
+          // Filter students by selected class (if any) and subject enrollment
           const eligibleStudents = students.filter(s => {
-            if (!s.enrolledSubjects || s.enrolledSubjects.length === 0) return true;
-            return s.enrolledSubjects.includes(selectedSubject);
+            const inClass = !selectedClass || s.grade === schoolClasses.find(c => c.id === selectedClass)?.name;
+            const offersSubject = !s.enrolledSubjects?.length || s.enrolledSubjects.includes(selectedSubject);
+            return inClass && offersSubject;
           });
 
           const mergedData: Assessment[] = eligibleStudents.map(student => {
             const existing = res.data.find(a => a.studentId === student.id);
             if (existing) return existing;
-            
-            // Create empty record for student
             return {
               id: `temp-${student.id}`,
               studentId: student.id,
               studentName: student.name,
               subjectId: selectedSubject,
               term: selectedTerm,
-              ca1: 0,
-              ca2: 0,
-              ca3: 0,
-              exam: 0
+              ca1: 0, ca2: 0, ca3: 0, exam: 0
             };
           });
           setAssessments(mergedData);
@@ -364,10 +369,8 @@ export const Assessments: React.FC = () => {
       }
     };
 
-    if (students.length > 0) {
-      fetchAssessments();
-    }
-  }, [selectedSubject, selectedTerm, students]);
+    if (students.length > 0) fetchAssessments();
+  }, [selectedSubject, selectedTerm, selectedClass, students]);
 
   // NEW: Handle safe navigation for dropdowns
   const handleSubjectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -867,8 +870,9 @@ export const Assessments: React.FC = () => {
           <h1 className="text-2xl font-bold text-gray-900">Assessments</h1>
           <p className="text-gray-500">Manage continuous assessments, examinations, and question banks.</p>
         </div>
-        
+
         <div className="flex flex-col sm:flex-row gap-3 w-full xl:w-auto">
+          {/* Mode tabs */}
           <div className="bg-gray-100 p-1 rounded-lg flex items-center self-start sm:self-auto">
             <button
               onClick={() => setMode('manual')}
@@ -878,97 +882,78 @@ export const Assessments: React.FC = () => {
               Gradebook
             </button>
             <button
-              onClick={() => setMode('online')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all flex items-center gap-2 ${mode === 'online' ? 'bg-white shadow text-primary-600' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              <Monitor size={16} />
-              Proctoring
-            </button>
-            <button
               onClick={() => setMode('builder')}
               className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all flex items-center gap-2 ${mode === 'builder' ? 'bg-white shadow text-purple-600' : 'text-gray-500 hover:text-gray-700'}`}
             >
               <BrainCircuit size={16} />
-              Exam Builder
+              Exams
             </button>
           </div>
-          
-          {/* Mode specific actions */}
-          {(mode === 'online' || mode === 'builder') && (
-              <div className="flex items-center gap-2">
-                  <select 
-                    value={selectedExamId}
-                    onChange={handleExamSelectionChange}
-                    className="block pl-3 pr-8 py-1.5 text-sm border border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 rounded-lg max-w-[200px]"
-                  >
-                      <option value="" disabled>Select Exam</option>
-                      {mode === 'builder' && <option value="new">+ Create New Exam</option>}
-                      {allExams.map(e => (
-                          <option key={e.id} value={e.id}>{e.title} ({e.status})</option>
-                      ))}
-                  </select>
-              </div>
-          )}
 
-          <div className="h-8 w-px bg-gray-200 hidden sm:block"></div>
-          
-          <div className="flex gap-2 overflow-x-auto pb-1 sm:pb-0 items-center">
-             {mode === 'manual' && (
-               <button
-                  onClick={handleAddCA}
-                  className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm font-medium text-blue-700 hover:bg-blue-100 transition-colors whitespace-nowrap"
-               >
-                  <Plus size={16} />
-                  Add CA
-               </button>
-             )}
-             {mode !== 'builder' && (
-               <button 
+          <div className="h-8 w-px bg-gray-200 hidden sm:block" />
+
+          {/* Gradebook toolbar actions */}
+          {mode === 'manual' && (
+            <div className="flex gap-2 flex-wrap items-center">
+              <button
+                onClick={handleAddCA}
+                className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm font-medium text-blue-700 hover:bg-blue-100 transition-colors whitespace-nowrap"
+              >
+                <Plus size={16} /> Add CA
+              </button>
+              <button
                 onClick={() => setShowSettings(true)}
                 className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors whitespace-nowrap"
               >
-                <Settings size={16} className="text-gray-600" />
-                Settings
+                <Settings size={16} className="text-gray-600" /> Settings
               </button>
-             )}
-            {mode === 'manual' && (
-              <>
-                <button 
-                  onClick={exportToCSV}
-                  className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors whitespace-nowrap"
-                >
-                  <FileSpreadsheet size={16} className="text-green-600" />
-                  Export Excel
-                </button>
-                <button 
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-70 whitespace-nowrap"
-                >
-                  {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                  Save
-                </button>
-                <button 
-                  onClick={handlePublish}
-                  disabled={publishing}
-                  className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors disabled:opacity-70 whitespace-nowrap"
-                  title="Publish grades to the Results page"
-                >
-                  {publishing ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                  Publish Results
-                </button>
-              </>
-            )}
-             {mode === 'online' && (
-               <button 
+              <button
+                onClick={exportToCSV}
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors whitespace-nowrap"
+              >
+                <FileSpreadsheet size={16} className="text-green-600" /> Export
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-70 whitespace-nowrap"
+              >
+                {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Save
+              </button>
+              <button
+                onClick={handlePublish}
+                disabled={publishing}
+                className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors disabled:opacity-70 whitespace-nowrap"
+              >
+                {publishing ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />} Publish Results
+              </button>
+            </div>
+          )}
+
+          {/* Exams toolbar: exam selector + sync */}
+          {mode === 'builder' && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <select
+                value={selectedExamId}
+                onChange={handleExamSelectionChange}
+                className="block pl-3 pr-8 py-1.5 text-sm border border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 rounded-lg max-w-[200px]"
+              >
+                <option value="" disabled>Select Exam</option>
+                <option value="new">+ Create New Exam</option>
+                {allExams.map(e => (
+                  <option key={e.id} value={e.id}>{e.title} ({e.status})</option>
+                ))}
+              </select>
+              {examSubMode === 'proctor' && (
+                <button
                   onClick={handleSyncScores}
                   className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors whitespace-nowrap"
                 >
-                  <RefreshCw size={16} />
-                  Sync Scores
+                  <RefreshCw size={16} /> Sync Scores
                 </button>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -1099,117 +1084,323 @@ export const Assessments: React.FC = () => {
       )}
 
       {mode === 'manual' && (
-        /* Spreadsheet Table */
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/4">
-                    Student Name
-                  </th>
-                  {caColumns.map(col => (
-                    <th key={col.id} className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
-                      {col.label} <span className="text-gray-400">({col.maxScore})</span>
-                    </th>
+        <div className="space-y-4">
+          {/* ── Context Accordion: Term → Class → Subject ── */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+
+            {/* Step 1 — Term */}
+            <div className="border-b border-gray-100">
+              <button
+                onClick={() => setOpenAccordion(openAccordion === 'term' ? 'term' : 'term')}
+                className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
+                    selectedTerm ? 'bg-primary-600 text-white' : 'bg-gray-200 text-gray-500'
+                  }`}>1</div>
+                  <div className="text-left">
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Step 1 — Term</p>
+                    <p className="text-sm font-bold text-gray-800">{selectedTerm || 'Select a term'}</p>
+                  </div>
+                </div>
+                <ChevronDown size={16} className={`text-gray-400 transition-transform ${openAccordion === 'term' ? 'rotate-180' : ''}`} />
+              </button>
+              {openAccordion === 'term' && (
+                <div className="px-5 pb-4 flex flex-wrap gap-2">
+                  {['Term 1', 'Term 2', 'Term 3'].map(t => (
+                    <button
+                      key={t}
+                      onClick={() => {
+                        if (modifiedRows.size > 0) {
+                          setConfirmDialog({ message: 'You have unsaved changes. Switching term will discard them.', onConfirm: () => { setSelectedTerm(t); setOpenAccordion('class'); } });
+                        } else {
+                          setSelectedTerm(t);
+                          setOpenAccordion('class');
+                        }
+                      }}
+                      className={`px-5 py-2.5 rounded-lg text-sm font-semibold border transition-all ${
+                        selectedTerm === t
+                          ? 'bg-primary-600 text-white border-primary-600'
+                          : 'bg-white text-gray-700 border-gray-300 hover:border-primary-400'
+                      }`}
+                    >
+                      {t}
+                    </button>
                   ))}
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
-                    Exam <span className="text-gray-400">({config.examMax})</span>
-                  </th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-24 bg-gray-100">
-                    Total <span className="text-gray-400">({maxTotal})</span>
-                  </th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-24 bg-gray-100">
-                    Pass/Fail
-                  </th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-24 bg-gray-100" title="Grade based on total score percentage">
-                    Grade
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {loading ? (
-                  [...Array(5)].map((_, i) => (
-                    <tr key={i}>
-                      <td colSpan={caColumns.length + 5} className="px-6 py-4">
-                        <div className="h-4 bg-gray-100 rounded animate-pulse"></div>
-                      </td>
-                    </tr>
-                  ))
-                ) : filteredAssessments.length > 0 ? (
-                  filteredAssessments.map((assessment) => {
-                    const total = calculateTotal(assessment);
-                    const grade = calculateGrade(total);
-                    const isPassing = total >= config.passMark;
-                    const isModified = modifiedRows.has(assessment.id);
-                    
-                    return (
-                      <tr key={assessment.id} className={`transition-colors ${isModified ? 'bg-amber-50/50' : 'hover:bg-gray-50'}`}>
-                        <td className="px-6 py-3 whitespace-nowrap text-sm font-medium text-gray-900 relative">
-                          {isModified && (
-                              <div className="absolute left-1 top-1/2 -translate-y-1/2 w-1 h-8 bg-amber-400 rounded-r"></div>
-                          )}
-                          <div className="flex flex-col">
-                             <span>{assessment.studentName}</span>
-                             <span className="text-xs text-gray-400 font-normal">{studentMap[assessment.studentId]?.grade || 'Unknown Grade'}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Step 2 — Class */}
+            <div className="border-b border-gray-100">
+              <button
+                onClick={() => setOpenAccordion('class')}
+                className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
+                    selectedClass ? 'bg-primary-600 text-white' : 'bg-gray-200 text-gray-500'
+                  }`}>2</div>
+                  <div className="text-left">
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Step 2 — Class</p>
+                    <p className="text-sm font-bold text-gray-800">
+                      {selectedClass ? schoolClasses.find(c => c.id === selectedClass)?.name : 'Select a class'}
+                    </p>
+                  </div>
+                </div>
+                <ChevronDown size={16} className={`text-gray-400 transition-transform ${openAccordion === 'class' ? 'rotate-180' : ''}`} />
+              </button>
+              {openAccordion === 'class' && (
+                <div className="px-5 pb-4">
+                  {schoolClasses.length === 0 ? (
+                    <p className="text-sm text-gray-400">No classes created yet. Go to Classes to add some.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => { setSelectedClass(''); setOpenAccordion('subject'); }}
+                        className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-all ${
+                          selectedClass === ''
+                            ? 'bg-primary-600 text-white border-primary-600'
+                            : 'bg-white text-gray-700 border-gray-300 hover:border-primary-400'
+                        }`}
+                      >
+                        All Classes
+                      </button>
+                      {schoolClasses.map(cls => (
+                        <button
+                          key={cls.id}
+                          onClick={() => { setSelectedClass(cls.id); setOpenAccordion('subject'); }}
+                          className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-all ${
+                            selectedClass === cls.id
+                              ? 'bg-primary-600 text-white border-primary-600'
+                              : 'bg-white text-gray-700 border-gray-300 hover:border-primary-400'
+                          }`}
+                        >
+                          {cls.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Step 3 — Subject */}
+            <div>
+              <button
+                onClick={() => setOpenAccordion('subject')}
+                className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
+                    selectedSubject ? 'bg-primary-600 text-white' : 'bg-gray-200 text-gray-500'
+                  }`}>3</div>
+                  <div className="text-left">
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Step 3 — Subject</p>
+                    <p className="text-sm font-bold text-gray-800">
+                      {selectedSubject ? subjects.find(s => s.id === selectedSubject)?.name : 'Select a subject'}
+                    </p>
+                  </div>
+                </div>
+                <ChevronDown size={16} className={`text-gray-400 transition-transform ${openAccordion === 'subject' ? 'rotate-180' : ''}`} />
+              </button>
+              {openAccordion === 'subject' && (
+                <div className="px-5 pb-4">
+                  {subjects.length === 0 ? (
+                    <p className="text-sm text-gray-400">No subjects enrolled. Go to Subjects to enroll some first.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {subjects.map(sub => (
+                        <button
+                          key={sub.id}
+                          onClick={() => {
+                            const change = () => { setSelectedSubject(sub.id); setOpenAccordion('subject'); };
+                            if (modifiedRows.size > 0) {
+                              setConfirmDialog({ message: 'You have unsaved changes. Switching subject will discard them.', onConfirm: change });
+                            } else {
+                              change();
+                            }
+                          }}
+                          className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-all ${
+                            selectedSubject === sub.id
+                              ? 'bg-primary-600 text-white border-primary-600'
+                              : 'bg-white text-gray-700 border-gray-300 hover:border-primary-400'
+                          }`}
+                        >
+                          {sub.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Context summary bar + actions */}
+          {selectedSubject && (
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-primary-50 border border-primary-200 rounded-xl px-5 py-3">
+              <div className="flex items-center gap-2 text-sm text-primary-800 font-medium flex-wrap">
+                <CalendarDays size={15} />
+                <span>{selectedTerm}</span>
+                <ChevronRight size={14} className="text-primary-400" />
+                <Layers size={15} />
+                <span>{selectedClass ? schoolClasses.find(c => c.id === selectedClass)?.name : 'All Classes'}</span>
+                <ChevronRight size={14} className="text-primary-400" />
+                <BookOpen size={15} />
+                <span>{subjects.find(s => s.id === selectedSubject)?.name}</span>
+                <span className="ml-2 text-xs text-primary-600 bg-primary-100 px-2 py-0.5 rounded-full">
+                  {filteredAssessments.length} student{filteredAssessments.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleAddCA}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-primary-300 text-primary-700 rounded-lg text-xs font-semibold hover:bg-primary-50"
+                >
+                  <Plus size={13} /> Add CA
+                </button>
+                <button
+                  onClick={exportToCSV}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-primary-300 text-primary-700 rounded-lg text-xs font-semibold hover:bg-primary-50"
+                >
+                  <FileSpreadsheet size={13} /> Export
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={saving || modifiedRows.size === 0}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-primary-300 text-primary-700 rounded-lg text-xs font-semibold hover:bg-primary-50 disabled:opacity-40"
+                >
+                  {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                  {modifiedRows.size > 0 ? `Save (${modifiedRows.size})` : 'Saved'}
+                </button>
+                <button
+                  onClick={handlePublish}
+                  disabled={publishing}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-600 text-white rounded-lg text-xs font-semibold hover:bg-primary-700 disabled:opacity-50"
+                >
+                  {publishing ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                  Publish
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Gradebook table */}
+          {selectedSubject ? (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-48">Student</th>
+                      {caColumns.map(col => (
+                        <th key={col.id} className="px-3 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span>{col.label}</span>
+                            <span className="text-gray-400 font-normal normal-case">/{col.maxScore}</span>
                           </div>
-                        </td>
-                        {caColumns.map(col => (
-                          <td key={col.id} className="px-2 py-2">
-                            <input
-                              type="number"
-                              min="0"
-                              max={col.maxScore}
-                              value={(assessment as any)[col.id] ?? ''}
-                              onChange={(e) => handleScoreChange(assessment.id, col.id, e.target.value)}
-                              className="w-full text-center p-1 border border-gray-200 rounded focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all"
-                            />
+                        </th>
+                      ))}
+                      <th className="px-3 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                        <div className="flex flex-col items-center gap-0.5">
+                          <span>Exam</span>
+                          <span className="text-gray-400 font-normal normal-case">/{config.examMax}</span>
+                        </div>
+                      </th>
+                      <th className="px-3 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider bg-primary-50 text-primary-700">
+                        Total/{maxTotal}
+                      </th>
+                      <th className="px-3 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider bg-gray-100">Grade</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-100">
+                    {loading ? (
+                      [...Array(5)].map((_, i) => (
+                        <tr key={i}>
+                          <td colSpan={caColumns.length + 4} className="px-5 py-3">
+                            <div className="h-4 bg-gray-100 rounded animate-pulse" />
                           </td>
-                        ))}
-                        <td className="px-2 py-2">
-                          <input
-                            type="number"
-                            min="0"
-                            max={config.examMax}
-                            value={assessment.exam || ''}
-                            onChange={(e) => handleScoreChange(assessment.id, 'exam', e.target.value)}
-                            className="w-full text-center p-1 border border-gray-200 rounded focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all font-medium"
-                          />
-                        </td>
-                        <td className={`px-4 py-3 text-center text-sm font-bold bg-gray-50 ${!isPassing ? 'text-red-600' : 'text-gray-900'}`}>
-                          {total}
-                        </td>
-                        <td className="px-4 py-3 text-center bg-gray-50">
-                          <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded text-xs font-medium ${
-                            isPassing ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                          }`}>
-                            {isPassing ? 'Pass' : 'Fail'}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-center bg-gray-50">
-                          <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold ${
-                            grade === 'F' ? 'bg-red-100 text-red-800' :
-                            grade.startsWith('A') ? 'bg-green-100 text-green-800' :
-                            grade === 'B' ? 'bg-blue-100 text-blue-800' :
-                            grade === 'C' ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-gray-200 text-gray-800'
-                          }`}>
-                            {grade}
-                          </span>
+                        </tr>
+                      ))
+                    ) : filteredAssessments.length > 0 ? (
+                      filteredAssessments.map((assessment) => {
+                        const total = calculateTotal(assessment);
+                        const grade = calculateGrade(total);
+                        const isPassing = total >= config.passMark;
+                        const isModified = modifiedRows.has(assessment.id);
+                        const pct = maxTotal > 0 ? Math.round((total / maxTotal) * 100) : 0;
+
+                        return (
+                          <tr key={assessment.id} className={`transition-colors ${isModified ? 'bg-amber-50' : 'hover:bg-gray-50'}`}>
+                            <td className="px-5 py-2.5 whitespace-nowrap relative">
+                              {isModified && <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-400 rounded-r" />}
+                              <div className="flex flex-col">
+                                <span className="text-sm font-semibold text-gray-900">{assessment.studentName}</span>
+                                <span className="text-xs text-gray-400">{studentMap[assessment.studentId]?.grade || ''}</span>
+                              </div>
+                            </td>
+                            {caColumns.map(col => (
+                              <td key={col.id} className="px-2 py-2">
+                                <input
+                                  type="number" min="0" max={col.maxScore}
+                                  value={(assessment as any)[col.id] ?? ''}
+                                  onChange={(e) => handleScoreChange(assessment.id, col.id, e.target.value)}
+                                  className="w-16 text-center py-1.5 px-1 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-400 focus:border-primary-400 outline-none transition-all"
+                                />
+                              </td>
+                            ))}
+                            <td className="px-2 py-2">
+                              <input
+                                type="number" min="0" max={config.examMax}
+                                value={assessment.exam || ''}
+                                onChange={(e) => handleScoreChange(assessment.id, 'exam', e.target.value)}
+                                className="w-16 text-center py-1.5 px-1 border border-gray-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-primary-400 focus:border-primary-400 outline-none transition-all"
+                              />
+                            </td>
+                            {/* Live total with mini progress bar */}
+                            <td className="px-3 py-2 bg-primary-50">
+                              <div className="flex flex-col items-center gap-1">
+                                <span className={`text-sm font-bold ${isPassing ? 'text-primary-700' : 'text-red-600'}`}>{total}</span>
+                                <div className="w-14 bg-gray-200 rounded-full h-1.5">
+                                  <div
+                                    className={`h-1.5 rounded-full transition-all duration-300 ${isPassing ? 'bg-primary-500' : 'bg-red-400'}`}
+                                    style={{ width: `${pct}%` }}
+                                  />
+                                </div>
+                                <span className="text-[10px] text-gray-400">{pct}%</span>
+                              </div>
+                            </td>
+                            <td className="px-3 py-2 text-center bg-gray-50">
+                              <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold ${
+                                grade === 'F' ? 'bg-red-100 text-red-700' :
+                                grade.startsWith('A') ? 'bg-green-100 text-green-700' :
+                                grade === 'B' ? 'bg-blue-100 text-blue-700' :
+                                grade === 'C' ? 'bg-yellow-100 text-yellow-700' :
+                                'bg-gray-200 text-gray-700'
+                              }`}>{grade}</span>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr>
+                        <td colSpan={caColumns.length + 4} className="px-5 py-12 text-center text-gray-400 text-sm">
+                          No students found for this class and subject combination.
                         </td>
                       </tr>
-                    );
-                  })
-                ) : (
-                  <tr>
-                    <td colSpan={caColumns.length + 5} className="px-6 py-12 text-center text-gray-500">
-                      {selectedSubject ? 'No students found matching criteria.' : 'Select a subject and term to view assessments.'}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-16 bg-white border border-dashed border-gray-300 rounded-xl text-gray-400">
+              <FileSpreadsheet size={40} className="mb-3 text-gray-300" />
+              <p className="font-medium text-gray-600">Complete the steps above to load the gradebook</p>
+              <p className="text-sm mt-1">Select a term, class, and subject to begin entering scores.</p>
+            </div>
+          )}
         </div>
       )}
       {/* Online and Builder modes are handled below... */}

@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Student } from '../types';
-import { X, Save } from 'lucide-react';
+import { Student, SchoolClassItem } from '../types';
+import { X, Save, Plus } from 'lucide-react';
 import { useClickSound } from '../src/utils/useClickSound';
+import { api } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 interface StudentFormProps {
   student?: Student | null;
@@ -11,6 +13,11 @@ interface StudentFormProps {
 
 export const StudentForm: React.FC<StudentFormProps> = ({ student, onSubmit, onCancel }) => {
   const { playSound } = useClickSound();
+  const { user } = useAuth();
+  const [schoolClasses, setSchoolClasses] = useState<SchoolClassItem[]>([]);
+  const [addingClass, setAddingClass] = useState(false);
+  const [newClassName, setNewClassName] = useState('');
+  const [classAdding, setClassAdding] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     gender: 'Male' as 'Male' | 'Female',
@@ -21,6 +28,33 @@ export const StudentForm: React.FC<StudentFormProps> = ({ student, onSubmit, onC
     schoolId: '',
   });
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (user?.schoolId) {
+      api.getSchoolClasses(user.schoolId).then(res => {
+        if (res.ok) setSchoolClasses(res.data);
+      });
+    }
+  }, [user?.schoolId]);
+
+  const handleAddClass = async () => {
+    if (!newClassName.trim() || !user?.schoolId) return;
+    setClassAdding(true);
+    try {
+      const res = await api.addClassToSchool(user.schoolId, newClassName.trim());
+      if (res.ok) {
+        const updated = await api.getSchoolClasses(user.schoolId);
+        if (updated.ok) {
+          setSchoolClasses(updated.data);
+          setFormData(prev => ({ ...prev, grade: newClassName.trim() }));
+        }
+        setNewClassName('');
+        setAddingClass(false);
+      }
+    } finally {
+      setClassAdding(false);
+    }
+  };
 
   useEffect(() => {
     if (student) {
@@ -85,14 +119,50 @@ export const StudentForm: React.FC<StudentFormProps> = ({ student, onSubmit, onC
         <label className="block text-sm font-medium text-gray-700 mb-1">
           Grade/Class *
         </label>
-        <input
-          type="text"
-          required
-          value={formData.grade}
-          onChange={(e) => handleChange('grade', e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-          placeholder="e.g., 10th Grade, Class A"
-        />
+        {addingClass ? (
+          <div className="flex gap-2">
+            <input
+              autoFocus
+              type="text"
+              value={newClassName}
+              onChange={(e) => setNewClassName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddClass(); } if (e.key === 'Escape') setAddingClass(false); }}
+              placeholder="e.g. JSS 1A"
+              className="flex-1 px-3 py-2 border border-primary-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
+            />
+            <button type="button" onClick={handleAddClass} disabled={classAdding || !newClassName.trim()} className="px-3 py-2 bg-primary-600 text-white rounded-lg text-sm font-semibold hover:bg-primary-700 disabled:opacity-50">
+              {classAdding ? '...' : 'Save'}
+            </button>
+            <button type="button" onClick={() => setAddingClass(false)} className="px-3 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm hover:bg-gray-200">
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            <select
+              required
+              value={formData.grade}
+              onChange={(e) => handleChange('grade', e.target.value)}
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            >
+              <option value="" disabled>Select class/grade</option>
+              {schoolClasses.map(c => (
+                <option key={c.id} value={c.name}>{c.name}</option>
+              ))}
+              {formData.grade && !schoolClasses.some(c => c.name === formData.grade) && (
+                <option value={formData.grade}>{formData.grade}</option>
+              )}
+            </select>
+            <button
+              type="button"
+              onClick={() => setAddingClass(true)}
+              className="flex-shrink-0 flex items-center gap-1 px-3 py-2 bg-gray-100 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200"
+              title="Add new class"
+            >
+              <Plus size={15} /> New
+            </button>
+          </div>
+        )}
       </div>
 
       <div>

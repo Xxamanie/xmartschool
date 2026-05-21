@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { appService } from '../../services/appService';
 import { requireAuth } from '../../middleware/auth';
+import { authRateLimiter, bruteForceRateLimiter } from '../../middleware/rateLimit';
 import { UserRole } from '../../types';
 
 const router = Router();
@@ -14,6 +15,8 @@ const loginSchema = z.object({
 
 router.post(
   '/login',
+  authRateLimiter,
+  bruteForceRateLimiter,
   asyncHandler(async (req, res) => {
     const { email, password } = loginSchema.parse(req.body);
     const response = await appService.login(email, password);
@@ -28,6 +31,7 @@ const studentSchema = z.object({
 
 router.post(
   '/verify-student',
+  authRateLimiter,
   asyncHandler(async (req, res) => {
     const { schoolCode, studentCode } = studentSchema.parse(req.body);
     const response = await appService.verifyStudent(schoolCode, studentCode);
@@ -37,6 +41,7 @@ router.post(
 
 router.post(
   '/student',
+  authRateLimiter,
   asyncHandler(async (req, res) => {
     const { schoolCode, studentCode } = studentSchema.parse(req.body);
     const response = await appService.verifyStudent(schoolCode, studentCode);

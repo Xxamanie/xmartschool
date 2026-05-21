@@ -42,5 +42,5 @@ const initializeSupabase = (): SupabaseClient | null => {
 export const getSupabaseClient = () => initializeSupabase();
 
 export const isSupabaseConfigured = (): boolean => {
-  return !!(supabaseUrl && supabaseAnonKey);
+  return !!(supabaseUrl && supabaseAnonKey && supabaseUrl !== 'your-project-ref.supabase.co');
 };

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { appService } from '../../services/appService';
-import { requireAuth, requireRole } from '../../middleware/auth';
+import { requireAuth, requireRole, requireSchoolContext } from '../../middleware/auth';
 import { UserRole } from '../../types';
 
 const router = Router();
@@ -30,13 +30,41 @@ const markSchema = z.array(
   }),
 );
 
+const parseAttendancePayload = (body: unknown) => {
+  if (Array.isArray(body)) {
+    return markSchema.parse(body);
+  }
+
+  const payload = z.object({ updates: markSchema }).parse(body);
+  return payload.updates;
+};
+
 router.post(
   '/',
   requireAuth,
+  requireSchoolContext,
   requireRole(UserRole.ADMIN, UserRole.TEACHER, UserRole.SUPER_ADMIN),
   asyncHandler(async (req, res) => {
-    const payload = markSchema.parse(req.body);
-    const response = await appService.markAttendance(payload);
+    const payload = parseAttendancePayload(req.body);
+    const response = await appService.markAttendance(
+      payload,
+      req.auth?.role === UserRole.SUPER_ADMIN ? undefined : req.auth?.schoolId,
+    );
+    res.json(response);
+  }),
+);
+
+router.post(
+  '/batch',
+  requireAuth,
+  requireSchoolContext,
+  requireRole(UserRole.ADMIN, UserRole.TEACHER, UserRole.SUPER_ADMIN),
+  asyncHandler(async (req, res) => {
+    const payload = parseAttendancePayload(req.body);
+    const response = await appService.markAttendance(
+      payload,
+      req.auth?.role === UserRole.SUPER_ADMIN ? undefined : req.auth?.schoolId,
+    );
     res.json(response);
   }),
 );

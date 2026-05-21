@@ -8,19 +8,13 @@ The app currently uses mock data and localStorage, which means:
 
 ## Solution Options
 
-### Option 1: Firebase (Recommended - Easy Setup)
-1. Set up Firebase project
-2. Configure Firestore database
-3. Update API calls to use Firebase
-4. Real-time synchronization across devices
-
-### Option 2: Supabase (Alternative)
+### Option 1: Supabase (Recommended)
 1. Set up Supabase project
 2. Configure PostgreSQL database
 3. Update API calls to use Supabase
 4. Real-time subscriptions
 
-### Option 3: Custom Backend (Advanced)
+### Option 2: Custom Backend (Advanced)
 1. Node.js/Express server
 2. MongoDB/PostgreSQL database
 3. REST API endpoints

@@ -22,14 +22,45 @@ router.get(
   }),
 );
 
-const publishSchema = z.array(z.any());
+const resultDetailsSchema = z.record(z.number().optional());
+
+const resultSchema = z.object({
+  id: z.string().optional(),
+  studentId: z.string().min(1),
+  studentName: z.string().trim().optional().default(''),
+  subjectName: z.string().trim().min(1),
+  average: z.number().min(0).max(100),
+  grade: z.string().trim().min(1).max(10),
+  status: z.enum(['Published', 'Draft', 'withheld']),
+  remarks: z.string().trim().max(1000).optional(),
+  details: resultDetailsSchema.optional(),
+});
+
+const publishSchema = z.union([
+  z.array(resultSchema),
+  z.object({
+    results: z.array(resultSchema),
+  }),
+]);
+
+router.post(
+  '/',
+  requireRole(UserRole.ADMIN, UserRole.TEACHER, UserRole.SUPER_ADMIN),
+  asyncHandler(async (req, res) => {
+    const payload = publishSchema.parse(req.body);
+    const results = Array.isArray(payload) ? payload : payload.results;
+    const response = await appService.publishResults(req.auth?.schoolId, results as any);
+    res.json(response);
+  }),
+);
 
 router.post(
   '/publish',
   requireRole(UserRole.ADMIN, UserRole.TEACHER, UserRole.SUPER_ADMIN),
   asyncHandler(async (req, res) => {
     const payload = publishSchema.parse(req.body);
-    const response = await appService.publishResults(req.auth?.schoolId, payload as any);
+    const results = Array.isArray(payload) ? payload : payload.results;
+    const response = await appService.publishResults(req.auth?.schoolId, results as any);
     res.json(response);
   }),
 );

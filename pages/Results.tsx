@@ -230,7 +230,7 @@ export const Results: React.FC = () => {
             width: 100%;
             height: 100%;
             z-index: 9999;
-            background: white;
+            background: #FFF8E7;
             padding: 0;
             margin: 0;
             overflow: visible;

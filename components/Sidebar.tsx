@@ -20,6 +20,7 @@ import {
   CalendarCheck,
   ArrowLeft,
   Video,
+  MessageSquare,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useClickSound } from '../src/utils/useClickSound';
@@ -73,6 +74,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     { to: '/assessments', icon: ClipboardCheck, label: 'Assessments' },
     { to: '/results', icon: TrendingUp, label: 'Results' },
     { to: '/live-classes', icon: Video, label: 'Live Classes' },
+    { to: '/staff-room', icon: MessageSquare, label: 'Staff Room' },
   ];
 
   const getNavItems = () => {

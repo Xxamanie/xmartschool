@@ -12,7 +12,10 @@ import {
   ExamSession as PrismaExamSessionModel,
   AttendanceRecord as PrismaAttendanceRecordModel,
   ClassMaster as PrismaClassMasterModel,
+  StaffMessage as PrismaStaffMessageModel,
+  TeacherAssignment as PrismaTeacherAssignmentModel,
 } from '@prisma/client';
+import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
 import { createSessionToken } from '../utils/session';
 import {
@@ -26,12 +29,15 @@ import {
   ResultData,
   SchemeSubmission,
   School,
+  SchoolClassItem,
   Student,
   Subject,
   User,
   UserRole,
   Announcement,
   LiveClass,
+  StaffMessage,
+  TeacherAssignment,
 } from '../types';
 
 const wait = async (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -52,6 +58,7 @@ const toISODate = (date: Date) => date.toISOString().split('T')[0];
 const toDateOnly = (value: string) => new Date(`${value}T00:00:00.000Z`);
 const avatarFromName = (name: string) => `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`;
 const toInputJson = (value: unknown): Prisma.InputJsonValue => value as Prisma.InputJsonValue;
+const generateTemporaryPassword = () => crypto.randomBytes(12).toString('base64url');
 
 const mapUserModel = (user: PrismaUserModel): User => ({
   id: user.id,
@@ -229,16 +236,69 @@ const mapLiveClassModel = (liveClass: any): LiveClass => ({
   id: liveClass.id,
   subjectId: liveClass.subjectId ?? undefined,
   teacherId: liveClass.teacherId ?? undefined,
+  schoolClassId: liveClass.schoolClassId ?? undefined,
   scheduledTime: liveClass.scheduledTime?.toISOString?.() || liveClass.scheduledTime,
   meetingLink: liveClass.meetingLink,
   status: liveClass.status,
 });
+
+
+
 
 const getDateBounds = (value: string) => {
   const start = toDateOnly(value);
   const end = new Date(start);
   end.setUTCDate(start.getUTCDate() + 1);
   return { start, end };
+};
+
+/**
+ * Returns a failure response if the caller is not allowed to interact with the
+ * given live class, or null if access is granted.
+ *
+ * Rules:
+ *   SUPER_ADMIN / ADMIN — always allowed
+ *   TEACHER             — must be the class's assigned teacher
+ *   STUDENT             — student.schoolClassId must match liveClass.schoolClassId
+ */
+const checkLiveClassAccess = async (
+  liveClassId: string,
+  userId: string,
+  role: UserRole,
+): Promise<ApiResponse<null> | null> => {
+  if (role === UserRole.SUPER_ADMIN || role === UserRole.ADMIN) return null;
+
+  const liveClass = await prisma.liveClass.findUnique({
+    where: { id: liveClassId },
+    select: { schoolClassId: true, teacherId: true },
+  });
+
+  if (!liveClass) {
+    return { ok: false, data: null, message: 'Live class not found' };
+  }
+
+  if (role === UserRole.TEACHER) {
+    if (liveClass.teacherId !== userId) {
+      return { ok: false, data: null, message: 'You are not the teacher of this live class' };
+    }
+    return null;
+  }
+
+  // STUDENT
+  const student = await prisma.student.findUnique({
+    where: { id: userId },
+    select: { schoolClassId: true },
+  });
+
+  if (!student) {
+    return { ok: false, data: null, message: 'Student record not found' };
+  }
+
+  if (!student.schoolClassId || student.schoolClassId !== liveClass.schoolClassId) {
+    return { ok: false, data: null, message: 'This live class is not available for your class group' };
+  }
+
+  return null;
 };
 
 export const appService = {
@@ -362,6 +422,36 @@ export const appService = {
     return success(mapSchoolModel(newSchool), 'School created successfully');
   },
 
+  getSchoolClasses: async (schoolId: string): Promise<ApiResponse<SchoolClassItem[]>> => {
+    await wait(100);
+    const classes = await prisma.schoolClass.findMany({
+      where: { schoolId },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true },
+    });
+    return success(classes);
+  },
+
+  addSchoolClass: async (schoolId: string, className: string): Promise<ApiResponse<boolean>> => {
+    await wait(100);
+    const normalizedName = className.trim();
+    if (!normalizedName) {
+      return failure('Class name is required', false as unknown as boolean);
+    }
+
+    try {
+      await prisma.schoolClass.create({
+        data: {
+          schoolId,
+          name: normalizedName,
+        },
+      });
+      return success(true, 'Class added successfully');
+    } catch {
+      return failure('Class already exists for this school', false as unknown as boolean);
+    }
+  },
+
   deleteSchool: async (id: string): Promise<ApiResponse<boolean>> => {
     await wait(100);
     try {
@@ -418,6 +508,137 @@ export const appService = {
     return success([...users.map(mapUserModel), ...studentAsUsers]);
   },
 
+  createUserForSchool: async (
+    payload: Partial<User>,
+    schoolId?: string,
+  ): Promise<ApiResponse<User>> => {
+    await wait(100);
+
+    if (!payload.name?.trim()) {
+      return failure('Name is required', {} as User);
+    }
+
+    if (!payload.email?.trim()) {
+      return failure('Email is required', {} as User);
+    }
+
+    const role = payload.role ?? UserRole.TEACHER;
+    if (![UserRole.ADMIN, UserRole.TEACHER].includes(role)) {
+      return failure('Invalid role for school user', {} as User);
+    }
+
+    const targetSchoolId = schoolId ?? payload.schoolId;
+    if (!targetSchoolId) {
+      return failure('School context is required', {} as User);
+    }
+
+    const existingUser = await prisma.user.findFirst({
+      where: { email: payload.email.toLowerCase() },
+      select: { id: true },
+    });
+    if (existingUser) {
+      return failure('A user with this email already exists', {} as User);
+    }
+
+    const bcrypt = await import('bcryptjs');
+    const passwordHash = await bcrypt.hash(generateTemporaryPassword(), 10);
+
+    const createdUser = await prisma.user.create({
+      data: {
+        name: payload.name.trim(),
+        email: payload.email.toLowerCase(),
+        password: passwordHash,
+        role,
+        schoolId: targetSchoolId,
+        gender: payload.gender,
+        phone: payload.phone?.trim() || undefined,
+        bio: payload.bio?.trim() || undefined,
+        avatar: payload.avatar || avatarFromName(payload.name.trim()),
+      },
+    });
+
+    return success(mapUserModel(createdUser), 'Teacher created successfully');
+  },
+
+  updateUserForSchool: async (
+    userId: string,
+    updates: Partial<User>,
+    schoolId?: string,
+  ): Promise<ApiResponse<User>> => {
+    await wait(100);
+    const existingUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { schoolId: true, role: true, email: true },
+    });
+
+    if (!existingUser) {
+      return failure('User not found', {} as User);
+    }
+
+    if (schoolId && existingUser.schoolId !== schoolId) {
+      return failure('Cannot update a user from another school', {} as User);
+    }
+
+    if (existingUser.role === UserRole.SUPER_ADMIN) {
+      return failure('Cannot modify a super admin from this endpoint', {} as User);
+    }
+
+    if (updates.role && ![UserRole.ADMIN, UserRole.TEACHER].includes(updates.role)) {
+      return failure('Invalid role for school user', {} as User);
+    }
+
+    if (updates.email && updates.email.toLowerCase() !== existingUser.email) {
+      const emailInUse = await prisma.user.findFirst({
+        where: { email: updates.email.toLowerCase(), NOT: { id: userId } },
+        select: { id: true },
+      });
+      if (emailInUse) {
+        return failure('A user with this email already exists', {} as User);
+      }
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(updates.name !== undefined ? { name: updates.name.trim() } : {}),
+        ...(updates.email !== undefined ? { email: updates.email.toLowerCase() } : {}),
+        ...(updates.role !== undefined ? { role: updates.role } : {}),
+        ...(updates.gender !== undefined ? { gender: updates.gender } : {}),
+        ...(updates.phone !== undefined ? { phone: updates.phone?.trim() || null } : {}),
+        ...(updates.bio !== undefined ? { bio: updates.bio?.trim() || null } : {}),
+        ...(updates.avatar !== undefined ? { avatar: updates.avatar || null } : {}),
+      },
+    });
+
+    return success(mapUserModel(updatedUser), 'Teacher updated successfully');
+  },
+
+  deleteUserForSchool: async (
+    userId: string,
+    schoolId?: string,
+  ): Promise<ApiResponse<boolean>> => {
+    await wait(100);
+    const existingUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { schoolId: true, role: true },
+    });
+
+    if (!existingUser) {
+      return failure('User not found', false as unknown as boolean);
+    }
+
+    if (schoolId && existingUser.schoolId !== schoolId) {
+      return failure('Cannot delete a user from another school', false as unknown as boolean);
+    }
+
+    if (existingUser.role === UserRole.SUPER_ADMIN) {
+      return failure('Cannot delete a super admin from this endpoint', false as unknown as boolean);
+    }
+
+    await prisma.user.delete({ where: { id: userId } });
+    return success(true, 'Teacher deleted successfully');
+  },
+
   getStudents: async (schoolId?: string): Promise<ApiResponse<Student[]>> => {
     await wait(100);
     const students = await prisma.student.findMany({
@@ -449,6 +670,28 @@ export const appService = {
     } catch (error) {
       return failure('Student not found', {} as Student);
     }
+  },
+
+  updateStudentForSchool: async (
+    studentId: string,
+    updates: Partial<Student>,
+    schoolId?: string,
+  ): Promise<ApiResponse<Student>> => {
+    await wait(100);
+    const existingStudent = await prisma.student.findUnique({
+      where: { id: studentId },
+      select: { schoolId: true },
+    });
+
+    if (!existingStudent) {
+      return failure('Student not found', {} as Student);
+    }
+
+    if (schoolId && existingStudent.schoolId !== schoolId) {
+      return failure('Cannot update a student from another school', {} as Student);
+    }
+
+    return appService.updateStudent(studentId, updates);
   },
 
   getSubjects: async (schoolId?: string): Promise<ApiResponse<Subject[]>> => {
@@ -508,6 +751,7 @@ export const appService = {
     subjectId?: string,
     term?: string,
     studentId?: string,
+    teacherId?: string,
   ): Promise<ApiResponse<Assessment[]>> => {
     await wait(100);
 
@@ -525,10 +769,33 @@ export const appService = {
       }
     }
 
+    // If a teacher is requesting, restrict to students in their assigned class for this subject
+    let allowedStudentIds: string[] | undefined;
+    if (teacherId && subjectId) {
+      const assignment = await prisma.teacherAssignment.findFirst({
+        where: { teacherId, subjectId },
+        select: { schoolClassId: true },
+      });
+      if (assignment) {
+        const classStudents = await prisma.student.findMany({
+          where: { schoolClassId: assignment.schoolClassId },
+          select: { id: true, enrolledSubjects: true },
+        });
+        // Only students in that class who offer this subject
+        allowedStudentIds = classStudents
+          .filter((s: any) => !s.enrolledSubjects?.length || s.enrolledSubjects.includes(subjectId))
+          .map((s: any) => s.id);
+      } else {
+        // Teacher has no assignment for this subject — return empty
+        return success([], 'No class assignment found for this subject');
+      }
+    }
+
     const where: Prisma.AssessmentWhereInput = {
       ...(term ? { term } : {}),
       ...(studentId ? { studentId } : {}),
       ...(schoolId ? { student: { schoolId } } : {}),
+      ...(allowedStudentIds ? { studentId: { in: allowedStudentIds } } : {}),
     };
 
     if (subjectId) {
@@ -544,8 +811,23 @@ export const appService = {
     return success(assessments.map(mapAssessmentModel));
   },
 
-  saveAssessments: async (assessments: Assessment[]): Promise<ApiResponse<{ success: boolean }>> => {
+  saveAssessments: async (
+    assessments: Assessment[],
+    schoolId?: string,
+  ): Promise<ApiResponse<{ success: boolean }>> => {
     await wait(100);
+    if (schoolId) {
+      const studentIds = [...new Set(assessments.map(assessment => assessment.studentId))];
+      const students = await prisma.student.findMany({
+        where: { id: { in: studentIds } },
+        select: { id: true, schoolId: true },
+      });
+      const invalidStudent = students.find(student => student.schoolId !== schoolId);
+      if (invalidStudent || students.length !== studentIds.length) {
+        return failure('Cannot save assessments for students outside your school', { success: false });
+      }
+    }
+
     await Promise.all(
       assessments.map((assessment) => {
         const data = {
@@ -814,8 +1096,23 @@ export const appService = {
     return success(records.map(mapAttendanceModel));
   },
 
-  markAttendance: async (updates: AppAttendanceRecord[]): Promise<ApiResponse<boolean>> => {
+  markAttendance: async (
+    updates: AppAttendanceRecord[],
+    schoolId?: string,
+  ): Promise<ApiResponse<boolean>> => {
     await wait(100);
+    if (schoolId) {
+      const studentIds = [...new Set(updates.map(update => update.studentId))];
+      const students = await prisma.student.findMany({
+        where: { id: { in: studentIds } },
+        select: { id: true, schoolId: true },
+      });
+      const invalidStudent = students.find(student => student.schoolId !== schoolId);
+      if (invalidStudent || students.length !== studentIds.length) {
+        return failure('Cannot mark attendance for students outside your school', false as unknown as boolean);
+      }
+    }
+
     await Promise.all(
       updates.map((update) =>
         prisma.attendanceRecord.upsert({
@@ -867,6 +1164,151 @@ export const appService = {
     return success(mapAnnouncementModel(created), 'Announcement created');
   },
 
+  // ── Private Notifications ─────────────────────────────────────────────
+
+  listNotifications: async (userId?: string, role?: UserRole): Promise<ApiResponse<any[]>> => {
+    await wait(50);
+
+    if (!userId || !role) return success([] as any[], 'No user context');
+
+    // Return notifications scoped to this user (read/unread can be derived from NotificationRecipient.readAt)
+    const rows = await prisma.notificationRecipient.findMany({
+      where: { userId },
+      include: {
+        notification: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+
+    const mapped = rows.map((r) => ({
+      id: r.notification.id,
+      title: r.notification.title,
+      message: r.notification.message,
+      audience: r.notification.audience,
+      sourceRole: r.notification.sourceRole,
+      schoolId: r.notification.schoolId ?? undefined,
+      createdAt: r.notification.createdAt.toISOString?.() || (r.notification as any).createdAt,
+      readAt: r.readAt ?? null,
+    }));
+
+    return success(mapped, 'Notifications loaded');
+  },
+
+  createNotification: async (params: {
+    title: string;
+    message: string;
+    audience: any; // NotificationAudience (keep loose for now to avoid TS mismatch)
+    userIds?: string[];
+    schoolId?: string;
+    source: string;
+    senderId: string;
+    senderRole: UserRole;
+  }): Promise<ApiResponse<any>> => {
+    await wait(50);
+
+    const { title, message, audience, userIds, schoolId, source, senderId, senderRole } = params;
+
+    // Create notification record
+    const created = await prisma.notification.create({
+      data: {
+        title,
+        message,
+        audience,
+        sourceRole: senderRole,
+        schoolId: schoolId ?? null,
+      },
+    });
+
+    // Resolve recipients based on audience.
+    // NOTE: This is minimal server-side targeting scaffolding. It should be expanded
+    // to follow the exact flow rules once teacher/student mappings are finalized.
+    let recipients: string[] = [];
+
+    if (audience === 'specific_users') {
+      recipients = (userIds ?? []).filter(Boolean);
+    } else if (audience === 'all') {
+      // all admins/teachers/students in the system (for now)
+      const users = await prisma.user.findMany({ select: { id: true, role: true } });
+      const students = await prisma.student.findMany({ select: { id: true } });
+      recipients = [
+        ...users.map((u) => u.id),
+        ...students.map((s) => s.id),
+      ];
+    } else if (audience === 'school' && schoolId) {
+      const users = await prisma.user.findMany({
+        where: { schoolId },
+        select: { id: true, role: true },
+      });
+      const students = await prisma.student.findMany({
+        where: { schoolId },
+        select: { id: true },
+      });
+      recipients = [...users.map((u) => u.id), ...students.map((s) => s.id)];
+    } else if (audience === 'admins' && schoolId) {
+      const users = await prisma.user.findMany({
+        where: { schoolId, role: 'ADMIN' },
+        select: { id: true },
+      });
+      recipients = users.map((u) => u.id);
+    } else if (audience === 'teachers' && schoolId) {
+      const users = await prisma.user.findMany({
+        where: { schoolId, role: 'TEACHER' },
+        select: { id: true },
+      });
+      recipients = users.map((u) => u.id);
+    } else if (audience === 'staff' && schoolId) {
+      // Staff concept not implemented separately in current schema; treat as all school users (admins/teachers)
+      const users = await prisma.user.findMany({
+        where: { schoolId },
+        select: { id: true },
+      });
+      recipients = users.map((u) => u.id);
+    } else if (audience === 'students' && schoolId) {
+      const students = await prisma.student.findMany({
+        where: { schoolId },
+        select: { id: true },
+      });
+      recipients = students.map((s) => s.id);
+    } else if (audience === 'teacher_students' && schoolId) {
+      // Placeholder: return students in school for now.
+      // Later: restrict to students offering the teacher's subjects.
+      const students = await prisma.student.findMany({
+        where: { schoolId },
+        select: { id: true },
+      });
+      recipients = students.map((s) => s.id);
+    }
+
+    recipients = [...new Set(recipients)];
+
+    // Create recipient rows
+    await prisma.notificationRecipient.createMany({
+      data: recipients.map((uid) => ({
+        notificationId: created.id,
+        userId: uid,
+        readAt: null,
+      })),
+      skipDuplicates: true,
+    });
+
+    return success(
+      {
+        id: created.id,
+        title: created.title,
+        message: created.message,
+        audience: created.audience,
+        sourceRole: created.sourceRole,
+        schoolId: created.schoolId ?? undefined,
+        createdAt: created.createdAt?.toISOString?.() || (created as any).createdAt,
+        senderId,
+        source,
+        recipientCount: recipients.length,
+      },
+      'Notification created',
+    );
+  },
+
   recordProctorFrame: async (
     examId: string,
     studentId: string,
@@ -878,18 +1320,42 @@ export const appService = {
     return success({ stored: true });
   },
 
-  getLiveClasses: async (schoolId?: string): Promise<ApiResponse<LiveClass[]>> => {
+  getLiveClasses: async (schoolId?: string, userId?: string, role?: UserRole, studentId?: string): Promise<ApiResponse<LiveClass[]>> => {
     await wait(50);
+
+    let schoolClassIdFilter: string | undefined;
+
+    if (role === UserRole.STUDENT && studentId) {
+      const student = await prisma.student.findUnique({ where: { id: studentId }, select: { schoolClassId: true } });
+      schoolClassIdFilter = student?.schoolClassId ?? undefined;
+    } else if (role === UserRole.TEACHER && userId) {
+      // Teachers see classes they own
+      const classes = await prisma.liveClass.findMany({
+        where: { teacherId: userId, ...(schoolId ? { schoolClass: { schoolId } } : {}) },
+        orderBy: { scheduledTime: 'asc' },
+        include: { schoolClass: true },
+      });
+      return success(classes.map(mapLiveClassModel));
+    }
+
     const classes = await prisma.liveClass.findMany({
-      where: schoolId ? { subject: { schoolId } } : undefined,
+      where: {
+        ...(schoolId ? { schoolClass: { schoolId } } : {}),
+        ...(schoolClassIdFilter ? { schoolClassId: schoolClassIdFilter } : {}),
+      },
       orderBy: { scheduledTime: 'asc' },
+      include: { schoolClass: true },
     });
     return success(classes.map(mapLiveClassModel));
   },
 
+
+
+
   createLiveClass: async (
     subjectId: string | undefined,
     teacherId: string | undefined,
+    schoolClassId: string,
     scheduledTime: string,
     meetingLink: string,
   ): Promise<ApiResponse<LiveClass>> => {
@@ -898,12 +1364,14 @@ export const appService = {
       data: {
         subjectId: subjectId || undefined,
         teacherId: teacherId || undefined,
+        schoolClassId: schoolClassId,
         scheduledTime: toDateOnly(scheduledTime),
         meetingLink,
       },
     });
     return success(mapLiveClassModel(created), 'Live class scheduled');
   },
+
 
   getClassMasters: async (): Promise<ApiResponse<Record<string, string>>> => {
     await wait(100);
@@ -937,8 +1405,10 @@ export const appService = {
     }
   },
 
-  joinLiveClass: async (liveClassId: string, userId: string): Promise<ApiResponse<any>> => {
+  joinLiveClass: async (liveClassId: string, userId: string, role: UserRole): Promise<ApiResponse<any>> => {
     await wait(50);
+    const denied = await checkLiveClassAccess(liveClassId, userId, role);
+    if (denied) return denied;
     try {
       const participant = await prisma.liveClassParticipant.upsert({
         where: { liveClassId_userId: { liveClassId, userId } },
@@ -967,10 +1437,13 @@ export const appService = {
   updateParticipantStatus: async (
     liveClassId: string,
     userId: string,
+    role: UserRole,
     cameraOn: boolean,
     microphoneOn: boolean,
   ): Promise<ApiResponse<any>> => {
     await wait(30);
+    const denied = await checkLiveClassAccess(liveClassId, userId, role);
+    if (denied) return denied;
     try {
       const updated = await prisma.liveClassParticipant.update({
         where: { liveClassId_userId: { liveClassId, userId } },
@@ -982,8 +1455,10 @@ export const appService = {
     }
   },
 
-  raiseHand: async (liveClassId: string, userId: string, raised: boolean): Promise<ApiResponse<any>> => {
+  raiseHand: async (liveClassId: string, userId: string, role: UserRole, raised: boolean): Promise<ApiResponse<any>> => {
     await wait(30);
+    const denied = await checkLiveClassAccess(liveClassId, userId, role);
+    if (denied) return denied;
     try {
       const updated = await prisma.liveClassParticipant.update({
         where: { liveClassId_userId: { liveClassId, userId } },
@@ -995,11 +1470,13 @@ export const appService = {
     }
   },
 
-  sendLiveClassMessage: async (liveClassId: string, userId: string, message: string): Promise<ApiResponse<any>> => {
+  sendLiveClassMessage: async (liveClassId: string, userId: string, role: UserRole, message: string): Promise<ApiResponse<any>> => {
     await wait(30);
     if (!message.trim()) {
       return failure('Message cannot be empty', null);
     }
+    const denied = await checkLiveClassAccess(liveClassId, userId, role);
+    if (denied) return denied;
     try {
       const created = await prisma.liveClassMessage.create({
         data: { liveClassId, userId, message: message.trim() },
@@ -1066,6 +1543,102 @@ export const appService = {
       return success(updated, 'Recording stopped');
     } catch (error) {
       return failure('Failed to stop recording', null);
+    }
+  },
+
+  getStaffMessages: async (schoolId: string): Promise<ApiResponse<StaffMessage[]>> => {
+    await wait(50);
+    const messages = await prisma.staffMessage.findMany({
+      where: { schoolId },
+      orderBy: { createdAt: 'asc' },
+      take: 200,
+    });
+    return success(messages.map((m: PrismaStaffMessageModel) => ({
+      id: m.id,
+      schoolId: m.schoolId,
+      userId: m.userId,
+      type: m.type as StaffMessage['type'],
+      content: m.content,
+      mediaUrl: m.mediaUrl ?? undefined,
+      createdAt: m.createdAt.toISOString(),
+    })));
+  },
+
+  sendStaffMessage: async (
+    schoolId: string,
+    userId: string,
+    type: StaffMessage['type'],
+    content: string,
+    mediaUrl?: string,
+  ): Promise<ApiResponse<StaffMessage>> => {
+    await wait(30);
+    if (!content.trim() && !mediaUrl) {
+      return failure('Message content is required', {} as StaffMessage);
+    }
+    const created = await prisma.staffMessage.create({
+      data: { schoolId, userId, type, content: content.trim(), mediaUrl: mediaUrl || null },
+    });
+    return success({
+      id: created.id,
+      schoolId: created.schoolId,
+      userId: created.userId,
+      type: created.type as StaffMessage['type'],
+      content: created.content,
+      mediaUrl: created.mediaUrl ?? undefined,
+      createdAt: created.createdAt.toISOString(),
+    }, 'Message sent');
+  },
+
+  // ── Teacher Assignments ──────────────────────────────────────────────────
+
+  getTeacherAssignments: async (teacherId: string): Promise<ApiResponse<TeacherAssignment[]>> => {
+    await wait(50);
+    const rows = await prisma.teacherAssignment.findMany({
+      where: { teacherId },
+      include: { subject: { select: { name: true } }, schoolClass: { select: { name: true } } },
+    });
+    return success(rows.map((r: any) => ({
+      id: r.id,
+      teacherId: r.teacherId,
+      subjectId: r.subjectId,
+      schoolClassId: r.schoolClassId,
+      subjectName: r.subject?.name,
+      className: r.schoolClass?.name,
+    })));
+  },
+
+  setTeacherAssignments: async (
+    teacherId: string,
+    assignments: { subjectId: string; schoolClassId: string }[],
+  ): Promise<ApiResponse<TeacherAssignment[]>> => {
+    await wait(50);
+    // Replace all assignments for this teacher
+    await prisma.teacherAssignment.deleteMany({ where: { teacherId } });
+    if (assignments.length > 0) {
+      await prisma.teacherAssignment.createMany({
+        data: assignments.map(a => ({ teacherId, subjectId: a.subjectId, schoolClassId: a.schoolClassId })),
+        skipDuplicates: true,
+      });
+    }
+    return appService.getTeacherAssignments(teacherId);
+  },
+
+  // ── Student field assignment ─────────────────────────────────────────────
+
+  setStudentField: async (
+    studentId: string,
+    field: string,
+    enrolledSubjects: string[],
+  ): Promise<ApiResponse<Student>> => {
+    await wait(50);
+    try {
+      const updated = await prisma.student.update({
+        where: { id: studentId },
+        data: { field, enrolledSubjects },
+      });
+      return success(mapStudentModel(updated), 'Student field updated');
+    } catch {
+      return failure('Student not found', {} as Student);
     }
   },
 };

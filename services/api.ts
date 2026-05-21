@@ -1,8 +1,13 @@
-import { Student, Subject, ApiResponse, SchemeSubmission, Assessment, ResultData, School, User, UserRole, ActiveExam, ExamQuestion, ExamSession, Announcement, LiveClass } from '../types';
+import { Student, Subject, ApiResponse, SchemeSubmission, Assessment, ResultData, School, User, UserRole, ActiveExam, ExamQuestion, ExamSession, Announcement, LiveClass, SchoolClassItem, StaffMessage, TeacherAssignment } from '../types';
 import { MOCK_STUDENTS, MOCK_SUBJECTS, MOCK_SCHEMES, MOCK_ASSESSMENTS, MOCK_RESULTS, MOCK_SCHOOLS, MOCK_USER, MOCK_SUPER_ADMIN } from './mockData';
 import apiClient from '../src/utils/api';
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const isDemoForced = import.meta.env.VITE_ENABLE_DEMO_AUTH === 'true';
+
+const demoAuthEnabled = isDemoForced || !(supabaseUrl && supabaseAnonKey && supabaseUrl !== 'your-project-ref.supabase.co');
 
 interface AttendanceRecord {
     studentId: string;
@@ -100,7 +105,15 @@ export const api = {
     }
   },
 
-  createLiveClass: async (payload: { subjectId?: string; scheduledTime: string; meetingLink: string; teacherId?: string }): Promise<ApiResponse<LiveClass>> => {
+  createLiveClass: async (
+    payload: {
+      subjectId?: string;
+      schoolClassId: string;
+      scheduledTime: string;
+      meetingLink: string;
+      teacherId?: string;
+    },
+  ): Promise<ApiResponse<LiveClass>> => {
     try {
       const response = await apiClient.post('/live-classes', payload);
       const data = extractData(response);
@@ -110,6 +123,7 @@ export const api = {
       return wrapError(error, {} as LiveClass, 'Failed to create live class');
     }
   },
+
 
   joinLiveClass: async (liveClassId: string, userId: string): Promise<ApiResponse<any>> => {
     try {
@@ -222,6 +236,10 @@ export const api = {
       }
       throw new Error(normalized.message || 'Login failed');
     } catch (error) {
+      if (!demoAuthEnabled) {
+        return wrapError(error, {} as User, 'Login failed');
+      }
+
       console.warn('Backend login failed, using demo fallback:', error);
       
       // Demo/fallback authentication with better error handling
@@ -267,6 +285,10 @@ export const api = {
       }
       throw new Error(normalized.message || 'Verification failed');
     } catch (error) {
+      if (!demoAuthEnabled) {
+        return wrapError(error, {} as User, 'Student verification failed');
+      }
+
       console.warn('Backend student verification failed, using demo fallback:', error);
       
       // Demo student verification
@@ -457,7 +479,7 @@ export const api = {
 
   updateSchoolStatus: async (schoolId: string, status: 'Active' | 'Inactive'): Promise<ApiResponse<School>> => {
     try {
-      const response = await apiClient.put(`/schools/${schoolId}`, { status });
+      const response = await apiClient.patch(`/schools/${schoolId}/status`, { status });
       const data = extractData(response);
       return wrapResponse(data, 'School updated successfully');
     } catch (error) {
@@ -735,7 +757,7 @@ export const api = {
     }
   },
 
-  getSchoolClasses: async (schoolId: string): Promise<ApiResponse<string[]>> => {
+  getSchoolClasses: async (schoolId: string): Promise<ApiResponse<SchoolClassItem[]>> => {
     try {
       const response = await apiClient.get(`/schools/${schoolId}/classes`);
       const data = extractData(response);
@@ -756,5 +778,60 @@ export const api = {
       await delay(500);
       return wrapError(error, false, 'Failed to add class');
     }
-  }
+  },
+
+  getStaffMessages: async (): Promise<ApiResponse<StaffMessage[]>> => {
+    try {
+      const response = await apiClient.get('/staff-room');
+      const data = extractData(response) || [];
+      return wrapResponse(data);
+    } catch (error) {
+      console.error('Failed to get staff messages:', error);
+      return wrapError(error, [], 'Failed to load staff messages');
+    }
+  },
+
+  sendStaffMessage: async (payload: { type: StaffMessage['type']; content: string; mediaUrl?: string }): Promise<ApiResponse<StaffMessage>> => {
+    try {
+      const response = await apiClient.post('/staff-room', payload);
+      const data = extractData(response);
+      return wrapResponse(data, 'Message sent');
+    } catch (error) {
+      console.error('Failed to send staff message:', error);
+      return wrapError(error, {} as StaffMessage, 'Failed to send message');
+    }
+  },
+
+  getTeacherAssignments: async (teacherId: string): Promise<ApiResponse<TeacherAssignment[]>> => {
+    try {
+      const response = await apiClient.get(`/teacher-assignments?teacherId=${teacherId}`);
+      const data = extractData(response) || [];
+      return wrapResponse(data);
+    } catch (error) {
+      console.error('Failed to get teacher assignments:', error);
+      return wrapError(error, [], 'Failed to load assignments');
+    }
+  },
+
+  setTeacherAssignments: async (teacherId: string, assignments: { subjectId: string; schoolClassId: string }[]): Promise<ApiResponse<TeacherAssignment[]>> => {
+    try {
+      const response = await apiClient.put('/teacher-assignments', { teacherId, assignments });
+      const data = extractData(response) || [];
+      return wrapResponse(data, 'Assignments saved');
+    } catch (error) {
+      console.error('Failed to set teacher assignments:', error);
+      return wrapError(error, [], 'Failed to save assignments');
+    }
+  },
+
+  setStudentField: async (studentId: string, field: string, enrolledSubjects: string[]): Promise<ApiResponse<Student>> => {
+    try {
+      const response = await apiClient.put(`/students/${studentId}/field`, { field, enrolledSubjects });
+      const data = extractData(response);
+      return wrapResponse(data, 'Student field updated');
+    } catch (error) {
+      console.error('Failed to set student field:', error);
+      return wrapError(error, {} as Student, 'Failed to update student field');
+    }
+  },
 };

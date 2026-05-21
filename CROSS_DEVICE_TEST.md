@@ -95,10 +95,10 @@ Open browser console and watch for:
 ## 🚀 Next Steps (Optional)
 
 For production deployment:
-1. **Set up Firebase** following `FIREBASE_SETUP.md`
-2. **Replace cloud API** with Firebase implementation
-3. **Add proper authentication** with Firebase Auth
-4. **Deploy to cloud hosting** (Vercel, Netlify, etc.)
+1. **Set up Supabase** for Auth, PostgreSQL, Realtime, and Storage
+2. **Point the frontend** to the backend API with `VITE_API_BASE_URL`
+3. **Deploy the backend** to Render or another container host
+4. **Deploy the frontend** to static hosting with the Supabase browser keys
 
 ## 📱 Testing Checklist
 

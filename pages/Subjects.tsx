@@ -1,71 +1,146 @@
 import React, { useEffect, useState } from 'react';
-import { BookOpen, Clock, MapPin, Users, MoreVertical, Plus, X, Check, Search, LayoutGrid, CheckCircle2, Tag, UserCheck } from 'lucide-react';
+import { BookOpen, Clock, MapPin, Users, MoreVertical, Plus, X, Check, Search, LayoutGrid, CheckCircle2, Tag, UserCheck, ChevronDown } from 'lucide-react';
 import { api } from '../services/api';
 import { Subject, UserRole, User } from '../types';
 import { useAuth } from '../context/AuthContext';
 
-// Nigerian Secondary School Curriculum
+// Full Nigerian National Curriculum (Primary–SSS)
 const NIGERIAN_SUBJECTS: Record<string, string[]> = {
-    "General Core (Compulsory)": [
-        "Mathematics",
-        "English Language",
-        "Civic Education",
-        "Trade / Entrepreneurship Subject"
+  "Primary 1–3 (Core)": [
+    "English Studies",
+    "Mathematics",
+    "Basic Science",
+    "Physical & Health Education",
+    "Nigerian History",
+    "Social & Citizenship Studies",
+    "Cultural & Creative Arts (CCA)",
+    "Pre-vocational Studies",
+  ],
+  "Primary 1–3 (Nigerian Language — Choose One)": ["Hausa", "Yoruba", "Igbo"],
+  "Primary 1–3 (Religious — Choose One)": ["Christian Religious Studies (CRS)", "Islamic Studies (IS)"],
+  "Primary 1–3 (Optional)": ["Arabic Language", "French"],
+  "Primary 4–6 (Core)": [
+    "English Studies",
+    "Mathematics",
+    "Basic Science & Technology",
+    "Physical & Health Education",
+    "Basic Digital Literacy",
+    "Nigerian History",
+    "Social & Citizenship Studies",
+    "Cultural & Creative Arts (CCA)",
+  ],
+  "Primary 4–6 (Nigerian Language — Choose One)": ["Hausa", "Yoruba", "Igbo"],
+  "Primary 4–6 (Religious — Choose One)": ["Christian Religious Studies (CRS)", "Islamic Studies (IS)"],
+  "Primary 4–6 (Trade — Choose One)": [
+    "Solar Photovoltaic Installation and Maintenance",
+    "Fashion Design and Garment Making",
+    "Livestock Farming",
+    "Beauty and Cosmetology",
+    "Computer Hardware and GSM Repairs",
+    "Horticulture and Crop Production",
+  ],
+  "Primary 4–6 (Optional)": ["French", "Arabic Language"],
+  "Junior Secondary — Core": [
+    "English Studies",
+    "Mathematics",
+    "Intermediate Science",
+    "Physical & Health Education",
+    "Digital Technologies",
+    "Nigerian History",
+    "Social & Citizenship Studies",
+    "Cultural & Creative Arts (CCA)",
+  ],
+  "Junior Secondary — Nigerian Language (Choose One)": ["Hausa", "Yoruba", "Igbo"],
+  "Junior Secondary — Religious (Choose One)": ["Christian Religious Studies (CRS)", "Islamic Studies (IS)"],
+  "Junior Secondary — Trade (Choose One)": [
+    "Solar Photovoltaic Installation and Maintenance",
+    "Fashion Design and Garment Making",
+    "Livestock Farming",
+    "Beauty and Cosmetology",
+    "Computer Hardware and GSM Repairs",
+    "Horticulture and Crop Production",
+  ],
+  "Junior Secondary — Optional": ["French", "Arabic Language"],
+  "Senior Secondary — Core & Compulsory": [
+    "English Language",
+    "General Mathematics",
+    "Citizenship and Heritage Studies",
+    "Digital Technologies",
+  ],
+  "Senior Secondary — Science": [
+    "Biology", "Chemistry", "Physics", "Agriculture", "Further Mathematics",
+    "Physical Education", "Health Education", "Food & Nutrition", "Geography", "Technical Drawing",
+  ],
+  "Senior Secondary — Humanities": [
+    "Nigerian History", "Government", "Christian Religious Studies (CRS)", "Islamic Studies (IS)",
+    "Hausa", "Igbo", "Yoruba", "French", "Arabic", "Visual Arts", "Music",
+    "English Literature", "Home Management", "Catering Craft",
+  ],
+  "Senior Secondary — Business": ["Accounting", "Commerce", "Marketing", "Economics"],
+  "Senior Secondary — Core Trade (Choose One)": [
+    "Solar PV Installation and Maintenance",
+    "Fashion Design and Garment Making",
+    "Livestock Farming",
+    "Beauty and Cosmetology",
+    "Computer Hardware and GSM Repairs",
+    "Horticulture and Crop Production",
+  ],
+};
+
+// Accordion groups for the sidebar
+const SIDEBAR_GROUPS: { label: string; color: string; categories: string[] }[] = [
+  {
+    label: 'Primary 1–3',
+    color: 'text-emerald-700',
+    categories: [
+      'Primary 1–3 (Core)',
+      'Primary 1–3 (Nigerian Language — Choose One)',
+      'Primary 1–3 (Religious — Choose One)',
+      'Primary 1–3 (Optional)',
     ],
-    "Senior Secondary - Science": [
-        "Physics",
-        "Chemistry",
-        "Biology",
-        "Further Mathematics",
-        "Health Science",
-        "Agricultural Science",
-        "Physical Education",
-        "Computer Studies (ICT)"
+  },
+  {
+    label: 'Primary 4–6',
+    color: 'text-blue-700',
+    categories: [
+      'Primary 4–6 (Core)',
+      'Primary 4–6 (Nigerian Language — Choose One)',
+      'Primary 4–6 (Religious — Choose One)',
+      'Primary 4–6 (Trade — Choose One)',
+      'Primary 4–6 (Optional)',
     ],
-    "Senior Secondary - Humanities (Arts)": [
-        "Literature-in-English",
-        "Government",
-        "Christian Religious Studies (CRS)",
-        "Islamic Religious Studies (IRS)",
-        "History",
-        "Visual Arts",
-        "Music",
-        "French",
-        "Hausa",
-        "Igbo",
-        "Yoruba"
+  },
+  {
+    label: 'Junior Secondary',
+    color: 'text-orange-700',
+    categories: [
+      'Junior Secondary — Core',
+      'Junior Secondary — Nigerian Language (Choose One)',
+      'Junior Secondary — Religious (Choose One)',
+      'Junior Secondary — Trade (Choose One)',
+      'Junior Secondary — Optional',
     ],
-    "Senior Secondary - Commercial": [
-        "Economics",
-        "Commerce",
-        "Financial Accounting",
-        "Insurance",
-        "Office Practice",
-        "Book Keeping",
-        "Store Management"
+  },
+  {
+    label: 'Senior Secondary',
+    color: 'text-purple-700',
+    categories: [
+      'Senior Secondary — Core & Compulsory',
+      'Senior Secondary — Science',
+      'Senior Secondary — Humanities',
+      'Senior Secondary — Business',
+      'Senior Secondary — Core Trade (Choose One)',
     ],
-    "Senior Secondary - Technology": [
-        "Technical Drawing",
-        "Basic Electricity",
-        "Electronics",
-        "Auto Mechanics",
-        "Building Construction",
-        "Woodwork",
-        "Home Management",
-        "Food and Nutrition",
-        "Clothing and Textiles"
-    ],
-    "Junior Secondary (JSS 1-3)": [
-        "Basic Science",
-        "Basic Technology",
-        "Social Studies",
-        "Business Studies",
-        "Cultural and Creative Arts (CCA)",
-        "French Language",
-        "Home Economics",
-        "Computer Studies",
-        "Physical and Health Education"
-    ]
+  },
+];
+
+// Strip the level prefix to get a short label for the sidebar item
+const shortLabel = (category: string): string => {
+  return category
+    .replace(/^Primary 1[–-]3\s*/i, '')
+    .replace(/^Primary 4[–-]6\s*/i, '')
+    .replace(/^Junior Secondary\s*[—-]\s*/i, '')
+    .replace(/^Senior Secondary\s*[—-]\s*/i, '');
 };
 
 export const Subjects: React.FC = () => {
@@ -75,11 +150,20 @@ export const Subjects: React.FC = () => {
   const [teacherMap, setTeacherMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [showEnrollModal, setShowEnrollModal] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState<string>("General Core (Compulsory)");
+  const [selectedCategory, setSelectedCategory] = useState<string>("Primary 1–3 (Core)");
   const [selectedForEnrollment, setSelectedForEnrollment] = useState<Set<string>>(new Set());
   const [selectedTeacherId, setSelectedTeacherId] = useState<string>("");
   const [enrollLoading, setEnrollLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(SIDEBAR_GROUPS.map(g => g.label)));
+
+  const toggleGroup = (label: string) => {
+    setOpenGroups(prev => {
+      const next = new Set(prev);
+      next.has(label) ? next.delete(label) : next.add(label);
+      return next;
+    });
+  };
 
   const isAdmin = user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN;
 
@@ -329,19 +413,50 @@ export const Subjects: React.FC = () => {
                  </div>
 
                  <div className="flex flex-1 overflow-hidden">
-                     {/* Sidebar Categories */}
-                     <div className="w-64 bg-gray-50 border-r border-gray-200 overflow-y-auto">
-                         <div className="p-4 space-y-1">
-                             {Object.keys(NIGERIAN_SUBJECTS).map((category) => (
-                                 <button
-                                    key={category}
-                                    onClick={() => setSelectedCategory(category)}
-                                    className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-colors ${selectedCategory === category ? 'bg-primary-100 text-primary-700' : 'text-gray-600 hover:bg-gray-100'}`}
-                                 >
-                                     {category}
-                                 </button>
-                             ))}
-                         </div>
+                     {/* Accordion Sidebar */}
+                     <div className="w-72 bg-gray-50 border-r border-gray-200 overflow-y-auto flex-shrink-0">
+                       <div className="p-3 space-y-1">
+                         {SIDEBAR_GROUPS.map((group) => (
+                           <div key={group.label}>
+                             <button
+                               onClick={() => toggleGroup(group.label)}
+                               className="w-full flex items-center justify-between px-3 py-2 rounded-lg font-bold text-xs uppercase tracking-wider text-gray-500 hover:bg-gray-100 transition-colors"
+                             >
+                               <span className={group.color}>{group.label}</span>
+                               <ChevronDown
+                                 size={14}
+                                 className={`transition-transform text-gray-400 ${openGroups.has(group.label) ? 'rotate-180' : ''}`}
+                               />
+                             </button>
+                             {openGroups.has(group.label) && (
+                               <div className="ml-2 mt-0.5 space-y-0.5">
+                                 {group.categories.map((category) => {
+                                   const enrolledCount = NIGERIAN_SUBJECTS[category].filter(isEnrolled).length;
+                                   const total = NIGERIAN_SUBJECTS[category].length;
+                                   return (
+                                     <button
+                                       key={category}
+                                       onClick={() => setSelectedCategory(category)}
+                                       className={`w-full text-left px-3 py-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-between gap-2 ${
+                                         selectedCategory === category
+                                           ? 'bg-primary-100 text-primary-700'
+                                           : 'text-gray-600 hover:bg-gray-100'
+                                       }`}
+                                     >
+                                       <span className="leading-snug">{shortLabel(category)}</span>
+                                       {enrolledCount > 0 && (
+                                         <span className="flex-shrink-0 text-[10px] font-bold bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">
+                                           {enrolledCount}/{total}
+                                         </span>
+                                       )}
+                                     </button>
+                                   );
+                                 })}
+                               </div>
+                             )}
+                           </div>
+                         ))}
+                       </div>
                      </div>
 
                      {/* Main Content Area */}

@@ -1,7 +1,7 @@
 import { Express } from 'express';
 import { healthRouter } from './health';
 import { authRouter } from './modules/auth';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, requireSchoolContext } from '../middleware/auth';
 import { schoolsRouter } from './modules/schools';
 import { studentsRouter } from './modules/students';
 import { subjectsRouter } from './modules/subjects';
@@ -14,11 +14,17 @@ import { schemesRouter } from './modules/schemes';
 import { announcementsRouter } from './modules/announcements';
 import { proctoringRouter } from './modules/proctoring';
 import { liveClassesRouter } from './modules/liveClasses';
+import { classMastersRouter } from './modules/classMasters';
+import { examSessionsRouter } from './modules/examSessions';
+import { staffRoomRouter } from './modules/staffRoom';
+import { teacherAssignmentsRouter } from './modules/teacherAssignments';
+import { studentFieldRouter } from './modules/studentField';
 
 export const registerRoutes = (app: Express) => {
   app.use('/api/health', healthRouter);
   app.use('/api/auth', authRouter);
   app.use('/api', requireAuth);
+  app.use('/api', requireSchoolContext);
   app.use('/api/schools', schoolsRouter);
   app.use('/api/users', usersRouter);
   app.use('/api/students', studentsRouter);
@@ -27,8 +33,13 @@ export const registerRoutes = (app: Express) => {
   app.use('/api/results', resultsRouter);
   app.use('/api/exams', examsRouter);
   app.use('/api/attendance', attendanceRouter);
+  app.use('/api/class-masters', classMastersRouter);
   app.use('/api/schemes', schemesRouter);
   app.use('/api/announcements', announcementsRouter);
   app.use('/api/proctoring', proctoringRouter);
   app.use('/api/live-classes', liveClassesRouter);
+  app.use('/api/exam-sessions', examSessionsRouter);
+  app.use('/api/staff-room', staffRoomRouter);
+  app.use('/api/teacher-assignments', teacherAssignmentsRouter);
+  app.use('/api/students', studentFieldRouter);
 };

@@ -8,7 +8,7 @@ type SessionPayload = {
   exp: number;
 };
 
-const SESSION_SECRET = process.env.SESSION_SECRET || process.env.JWT_SECRET || 'smart-school-dev-session-secret';
+const SESSION_SECRET = process.env.SESSION_SECRET as string;
 const SESSION_TTL_MS = 1000 * 60 * 60 * 12;
 
 const encode = (value: string) => Buffer.from(value, 'utf8').toString('base64url');

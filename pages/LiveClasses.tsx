@@ -1,16 +1,33 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
-import { LiveClass, Subject, UserRole } from '../types';
+import { LiveClass, Subject, UserRole, SchoolClassItem } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { Calendar, Video, Plus, Clock, LogIn } from 'lucide-react';
+
+// All curriculum subject names grouped by level for the dropdown
+const CURRICULUM_SUBJECTS: { group: string; names: string[] }[] = [
+  { group: 'Primary 1–3', names: ['English Studies', 'Mathematics', 'Basic Science', 'Physical & Health Education', 'Nigerian History', 'Social & Citizenship Studies', 'Cultural & Creative Arts (CCA)', 'Pre-vocational Studies', 'Hausa', 'Yoruba', 'Igbo', 'Christian Religious Studies (CRS)', 'Islamic Studies (IS)', 'Arabic Language', 'French'] },
+  { group: 'Primary 4–6', names: ['English Studies', 'Mathematics', 'Basic Science & Technology', 'Physical & Health Education', 'Basic Digital Literacy', 'Nigerian History', 'Social & Citizenship Studies', 'Cultural & Creative Arts (CCA)', 'Hausa', 'Yoruba', 'Igbo', 'Christian Religious Studies (CRS)', 'Islamic Studies (IS)', 'Solar Photovoltaic Installation and Maintenance', 'Fashion Design and Garment Making', 'Livestock Farming', 'Beauty and Cosmetology', 'Computer Hardware and GSM Repairs', 'Horticulture and Crop Production', 'French', 'Arabic Language'] },
+  { group: 'Junior Secondary', names: ['English Studies', 'Mathematics', 'Intermediate Science', 'Physical & Health Education', 'Digital Technologies', 'Nigerian History', 'Social & Citizenship Studies', 'Cultural & Creative Arts (CCA)', 'Hausa', 'Yoruba', 'Igbo', 'Christian Religious Studies (CRS)', 'Islamic Studies (IS)', 'Solar Photovoltaic Installation and Maintenance', 'Fashion Design and Garment Making', 'Livestock Farming', 'Beauty and Cosmetology', 'Computer Hardware and GSM Repairs', 'Horticulture and Crop Production', 'French', 'Arabic Language'] },
+  { group: 'Senior Secondary — Core', names: ['English Language', 'General Mathematics', 'Citizenship and Heritage Studies', 'Digital Technologies'] },
+  { group: 'Senior Secondary — Science', names: ['Biology', 'Chemistry', 'Physics', 'Agriculture', 'Further Mathematics', 'Physical Education', 'Health Education', 'Food & Nutrition', 'Geography', 'Technical Drawing'] },
+  { group: 'Senior Secondary — Humanities', names: ['Nigerian History', 'Government', 'Christian Religious Studies (CRS)', 'Islamic Studies (IS)', 'Hausa', 'Igbo', 'Yoruba', 'French', 'Arabic', 'Visual Arts', 'Music', 'English Literature', 'Home Management', 'Catering Craft'] },
+  { group: 'Senior Secondary — Business', names: ['Accounting', 'Commerce', 'Marketing', 'Economics'] },
+  { group: 'Senior Secondary — Trade', names: ['Solar PV Installation and Maintenance', 'Fashion Design and Garment Making', 'Livestock Farming', 'Beauty and Cosmetology', 'Computer Hardware and GSM Repairs', 'Horticulture and Crop Production'] },
+];
 
 export const LiveClasses: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [classes, setClasses] = useState<LiveClass[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [form, setForm] = useState({ subjectId: '', scheduledTime: '', meetingLink: '' });
+  const [schoolClasses, setSchoolClasses] = useState<SchoolClassItem[]>([]);
+  const [form, setForm] = useState({ subjectName: '', schoolClassId: '', scheduledTime: '', meetingLink: '' });
+  const [newClassName, setNewClassName] = useState('');
+  const [addingClass, setAddingClass] = useState(false);
+  const [classAdding, setClassAdding] = useState(false);
+
   const [saving, setSaving] = useState(false);
 
   const canCreate = user?.role === UserRole.ADMIN || user?.role === UserRole.TEACHER;
@@ -20,9 +37,15 @@ export const LiveClasses: React.FC = () => {
       const [cls, subs] = await Promise.all([api.getLiveClasses(), api.getSubjects()]);
       if (cls.ok) setClasses(cls.data);
       if (subs.ok) setSubjects(subs.data);
+
+      if (user?.schoolId) {
+        const classesRes = await api.getSchoolClasses(user.schoolId);
+        if (classesRes.ok) setSchoolClasses(classesRes.data);
+      }
     };
     load();
-  }, []);
+  }, [user?.schoolId]);
+
 
   const visibleClasses = useMemo(() => {
     return classes.sort((a, b) => new Date(a.scheduledTime).getTime() - new Date(b.scheduledTime).getTime());
@@ -35,22 +58,46 @@ export const LiveClasses: React.FC = () => {
     return now >= classTime && now <= endTime;
   };
 
+  const handleAddClass = async () => {
+    if (!newClassName.trim() || !user?.schoolId) return;
+    setClassAdding(true);
+    try {
+      const res = await api.addClassToSchool(user.schoolId, newClassName.trim());
+      if (res.ok) {
+        const updated = await api.getSchoolClasses(user.schoolId);
+        if (updated.ok) {
+          setSchoolClasses(updated.data);
+          const created = updated.data.find(c => c.name === newClassName.trim());
+          if (created) setForm(s => ({ ...s, schoolClassId: created.id }));
+        }
+        setNewClassName('');
+        setAddingClass(false);
+      }
+    } finally {
+      setClassAdding(false);
+    }
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.scheduledTime) return;
     setSaving(true);
     try {
-      const link = form.meetingLink || `https://meet.jit.si/class-${form.subjectId || 'general'}-${Date.now()}`;
+      const enrolledSubject = subjects.find(s => s.name === form.subjectName);
+      const link = form.meetingLink || `https://meet.jit.si/class-${form.subjectName.replace(/\s+/g, '-').toLowerCase() || 'general'}-${Date.now()}`;
       const res = await api.createLiveClass({
-        subjectId: form.subjectId || undefined,
+        subjectId: enrolledSubject?.id,
+        schoolClassId: form.schoolClassId,
         scheduledTime: form.scheduledTime,
         meetingLink: link,
         teacherId: user?.id,
       });
+
       if (res.ok) {
         setClasses((prev) => [...prev, res.data]);
-        setForm({ subjectId: '', scheduledTime: '', meetingLink: '' });
+        setForm({ subjectName: '', schoolClassId: '', scheduledTime: '', meetingLink: '' });
       }
+
     } finally {
       setSaving(false);
     }
@@ -71,16 +118,75 @@ export const LiveClasses: React.FC = () => {
             <div>
               <label className="text-sm font-medium text-gray-700">Subject</label>
               <select
-                value={form.subjectId}
-                onChange={(e) => setForm((s) => ({ ...s, subjectId: e.target.value }))}
+                value={form.subjectName}
+                onChange={(e) => setForm((s) => ({ ...s, subjectName: e.target.value }))}
                 className="mt-1 w-full border border-gray-300 rounded-lg p-2"
               >
-                <option value="">General</option>
-                {subjects.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
+                <option value="">General (no subject)</option>
+                {subjects.length > 0 && (
+                  <optgroup label="— Enrolled Subjects">
+                    {subjects.map((s) => (
+                      <option key={s.id} value={s.name}>{s.name}</option>
+                    ))}
+                  </optgroup>
+                )}
+                {CURRICULUM_SUBJECTS.map((group) => (
+                  <optgroup key={group.group} label={`— ${group.group}`}>
+                    {group.names
+                      .filter(name => !subjects.some(s => s.name === name))
+                      .map(name => (
+                        <option key={name} value={name}>{name}</option>
+                      ))}
+                  </optgroup>
                 ))}
               </select>
             </div>
+
+            <div>
+              <label className="text-sm font-medium text-gray-700">Class/Group to Notify</label>
+              {addingClass ? (
+                <div className="mt-1 flex gap-2">
+                  <input
+                    autoFocus
+                    type="text"
+                    value={newClassName}
+                    onChange={(e) => setNewClassName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddClass(); } if (e.key === 'Escape') setAddingClass(false); }}
+                    placeholder="e.g. JSS 1A"
+                    className="flex-1 border border-primary-400 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                  <button type="button" onClick={handleAddClass} disabled={classAdding || !newClassName.trim()} className="px-3 py-2 bg-primary-600 text-white rounded-lg text-sm font-semibold hover:bg-primary-700 disabled:opacity-50">
+                    {classAdding ? '...' : 'Save'}
+                  </button>
+                  <button type="button" onClick={() => setAddingClass(false)} className="px-3 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm hover:bg-gray-200">
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-1 flex gap-2">
+                  <select
+                    value={form.schoolClassId}
+                    onChange={(e) => setForm((s) => ({ ...s, schoolClassId: e.target.value }))}
+                    className="flex-1 border border-gray-300 rounded-lg p-2"
+                    required
+                  >
+                    <option value="" disabled>Select class/group</option>
+                    {schoolClasses.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setAddingClass(true)}
+                    className="flex-shrink-0 flex items-center gap-1 px-3 py-2 bg-gray-100 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200"
+                    title="Add new class"
+                  >
+                    <Plus size={15} /> New
+                  </button>
+                </div>
+              )}
+            </div>
+
             <div>
               <label className="text-sm font-medium text-gray-700">Start Time</label>
               <input
@@ -91,6 +197,7 @@ export const LiveClasses: React.FC = () => {
                 required
               />
             </div>
+
             <div>
               <label className="text-sm font-medium text-gray-700">Meeting Link (optional)</label>
               <input
@@ -102,6 +209,7 @@ export const LiveClasses: React.FC = () => {
               />
             </div>
           </div>
+
           <button
             type="submit"
             disabled={saving}
@@ -111,6 +219,7 @@ export const LiveClasses: React.FC = () => {
           </button>
         </form>
       )}
+
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {visibleClasses.map((cls) => {

@@ -90,7 +90,7 @@ export const Classes: React.FC = () => {
             for (const school of schoolsRes.data) {
                 const classRes = await api.getSchoolClasses(school.id);
                 if (classRes.ok) {
-                    customData[school.id] = classRes.data;
+                    customData[school.id] = classRes.data.map((c) => c.name);
                 }
             }
             setCustomClasses(customData);
@@ -125,7 +125,7 @@ export const Classes: React.FC = () => {
   const handleCreateClass = async (className: string) => {
       if (!user?.schoolId || !className.trim()) return;
       try {
-          const res = await api.createSchoolClass(user.schoolId, className.trim());
+          const res = await api.addClassToSchool(user.schoolId, className.trim());
           if (res.ok) {
               setCustomClasses(prev => ({
                   ...prev,

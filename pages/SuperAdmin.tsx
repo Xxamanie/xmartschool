@@ -36,7 +36,7 @@ export const SuperAdmin: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'schools' | 'users'>('schools');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-  
+
   // School Actions State
   const [isCreating, setIsCreating] = useState(false);
   const [newSchoolName, setNewSchoolName] = useState('');
@@ -44,9 +44,15 @@ export const SuperAdmin: React.FC = () => {
   const [newSchoolRegion, setNewSchoolRegion] = useState('');
   const [newSchoolAdminName, setNewSchoolAdminName] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Active' | 'Inactive'>('All');
-  
-  // User Actions State
+
+  // Announcement Actions State (Admin-only)
+  const [makeAnnouncementOpen, setMakeAnnouncementOpen] = useState(false);
+  const [announcementTitle, setAnnouncementTitle] = useState('');
+  const [announcementMessage, setAnnouncementMessage] = useState('');
+  const [announcementSaving, setAnnouncementSaving] = useState(false);
+
   const [userSearch, setUserSearch] = useState('');
+
 
   useEffect(() => {
     const fetchData = async () => {
@@ -111,6 +117,42 @@ export const SuperAdmin: React.FC = () => {
       }
   };
 
+  // Admin announcement publisher (targets all staff + students)
+  const handlePublishAnnouncement = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!announcementTitle.trim() || !announcementMessage.trim()) {
+      toast.warning('Title and message are required');
+      return;
+    }
+
+    setAnnouncementSaving(true);
+    try {
+      const res = await api.createAnnouncement({
+        title: announcementTitle.trim(),
+        message: announcementMessage.trim(),
+        // Backend supports: all | teachers | students
+        // “All staff + students” => use `all` so both audiences are included.
+        targetAudience: 'all',
+        source: UserRole.SUPER_ADMIN,
+      });
+
+      if (res.ok) {
+        toast.success('Announcement published');
+        setMakeAnnouncementOpen(false);
+        setAnnouncementTitle('');
+        setAnnouncementMessage('');
+      } else {
+        toast.error(res.message || 'Failed to publish announcement');
+      }
+    } catch (err: any) {
+      console.error('Failed to publish announcement', err);
+      toast.error(err?.message || 'Failed to publish announcement');
+    } finally {
+      setAnnouncementSaving(false);
+    }
+  };
+
+
   const handleViewSchool = (schoolId: string) => {
     navigate(`/schools/${schoolId}`);
   };
@@ -174,8 +216,11 @@ export const SuperAdmin: React.FC = () => {
          {/* Decorative ambient lights */}
          <div className="absolute top-0 right-0 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl -mr-32 -mt-32 pointer-events-none"></div>
          <div className="absolute bottom-0 left-0 w-64 h-64 bg-blue-500/5 rounded-full blur-3xl -ml-20 -mb-20 pointer-events-none"></div>
+
+         <div className="absolute top-24 left-1/2 -translate-x-1/2 w-[520px] h-[220px] bg-indigo-500/10 blur-3xl rounded-full pointer-events-none" />
          
          <div className="relative z-10">
+
             <div className="flex items-center gap-3 mb-2">
                 <Crown className="text-amber-400" size={32} fill="currentColor" fillOpacity={0.2} />
                 <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-400 to-amber-500">
@@ -259,7 +304,7 @@ export const SuperAdmin: React.FC = () => {
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-slate-200 flex gap-6">
+      <div className="border-b border-slate-200 flex gap-6 items-center">
           <button 
             onClick={() => setActiveTab('schools')}
             className={`pb-3 px-1 text-sm font-bold transition-colors border-b-2 ${activeTab === 'schools' ? 'border-amber-500 text-slate-900' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
@@ -283,7 +328,7 @@ export const SuperAdmin: React.FC = () => {
                 Registered Institutions
             </h2>
             
-            <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3">
                 {/* Filter Dropdown */}
                 <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
@@ -299,6 +344,15 @@ export const SuperAdmin: React.FC = () => {
                         <option value="Inactive">Inactive</option>
                     </select>
                 </div>
+
+                <button 
+                  type="button"
+                  onClick={() => setMakeAnnouncementOpen(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-all shadow-lg shadow-amber-500/20 hover:shadow-amber-500/40 hover:-translate-y-0.5"
+                >
+                   <Plus size={16} className="text-white" />
+                   Make an announcement
+                </button>
 
                 <button 
                   onClick={() => setIsCreating(true)}
@@ -484,9 +538,72 @@ export const SuperAdmin: React.FC = () => {
       </div>
       )}
 
+      {/* Make Announcement Modal */}
+      {makeAnnouncementOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-lg rounded-xl shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-gray-200 bg-amber-50 rounded-t-xl">
+              <h2 className="text-lg font-bold text-amber-900 flex items-center gap-2">
+                <Plus size={20} className="text-amber-600" />
+                Make an announcement (General)
+              </h2>
+              <p className="text-sm text-amber-800 mt-1">
+                This will be posted to <span className="font-semibold">all</span> staff and students.
+              </p>
+            </div>
+
+            <form onSubmit={handlePublishAnnouncement} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Title</label>
+                <input
+                  value={announcementTitle}
+                  onChange={(e) => setAnnouncementTitle(e.target.value)}
+                  className="block w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-amber-500 focus:border-transparent shadow-sm"
+                  placeholder="e.g. Term break schedule"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Message</label>
+                <textarea
+                  value={announcementMessage}
+                  onChange={(e) => setAnnouncementMessage(e.target.value)}
+                  rows={6}
+                  className="block w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-amber-500 focus:border-transparent shadow-sm"
+                  placeholder="Share the key details staff and students need to act on."
+                />
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMakeAnnouncementOpen(false);
+                    setAnnouncementTitle('');
+                    setAnnouncementMessage('');
+                  }}
+                  className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={announcementSaving}
+                  className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-bold hover:bg-amber-700 transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
+                >
+                  {announcementSaving ? 'Publishing...' : 'Publish'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Delete School Confirm Modal */}
       {deleteConfirmId && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 animate-in fade-in duration-200">
+
           <div className="bg-white w-full max-w-sm rounded-xl shadow-2xl">
             <div className="p-6 border-b border-gray-200 bg-red-50 rounded-t-xl">
               <h2 className="text-lg font-bold text-red-900 flex items-center gap-2">
@@ -508,7 +625,10 @@ export const SuperAdmin: React.FC = () => {
                 Cancel
               </button>
               <button
-                onClick={() => handleDeleteSchool(deleteConfirmId)}
+                onClick={() => {
+                  if (!deleteConfirmId) return;
+                  handleDeleteSchool(deleteConfirmId);
+                }}
                 className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700 transition-colors"
               >
                 Yes, Delete

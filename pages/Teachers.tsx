@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { api } from '../services/api';
-import { User, UserRole } from '../types';
+import { User, UserRole, Subject, SchoolClassItem, TeacherAssignment } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { ToastContainer } from '../components/Toast';
 import { useToast } from '../src/utils/useToast';
-import { Search, Filter, MoreHorizontal, Plus, ArrowUp, ArrowDown, ArrowUpDown, X, UserCheck, CheckCircle2, Trash2, Edit, Mail, Phone, Save, Briefcase, User as UserIcon } from 'lucide-react';
+import { Search, Filter, MoreHorizontal, Plus, ArrowUp, ArrowDown, ArrowUpDown, X, UserCheck, CheckCircle2, Trash2, Edit, Mail, Phone, Save, Briefcase, User as UserIcon, BookOpen, Layers } from 'lucide-react';
 
 // Inline TeacherForm component to resolve module resolution issues
 interface InlineTeacherFormProps {
@@ -13,8 +13,18 @@ interface InlineTeacherFormProps {
   onCancel: () => void;
 }
 
+type TeacherFormState = {
+  name: string;
+  email: string;
+  phone: string;
+  role: UserRole;
+  gender: User['gender'] | '';
+  bio: string;
+  schoolId: string;
+};
+
 const InlineTeacherForm: React.FC<InlineTeacherFormProps> = ({ teacher, onSubmit, onCancel }) => {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<TeacherFormState>({
     name: teacher?.name || '',
     email: teacher?.email || '',
     phone: teacher?.phone || '',
@@ -51,7 +61,10 @@ const InlineTeacherForm: React.FC<InlineTeacherFormProps> = ({ teacher, onSubmit
     e.preventDefault();
     
     if (validateForm()) {
-      onSubmit(formData);
+      onSubmit({
+        ...formData,
+        gender: formData.gender || undefined,
+      });
     }
   };
 
@@ -197,6 +210,11 @@ export const Teachers: React.FC = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingTeacher, setEditingTeacher] = useState<User | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<User | null>(null);
+  const [assigningTeacher, setAssigningTeacher] = useState<User | null>(null);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [schoolClasses, setSchoolClasses] = useState<SchoolClassItem[]>([]);
+  const [assignments, setAssignments] = useState<{ subjectId: string; schoolClassId: string }[]>([]);
+  const [assignSaving, setAssignSaving] = useState(false);
   
   const [sortConfig, setSortConfig] = useState<{ key: keyof User; direction: 'asc' | 'desc' }>({
     key: 'name',
@@ -206,16 +224,21 @@ export const Teachers: React.FC = () => {
   useEffect(() => {
     const fetchTeachers = async () => {
       try {
-        const response = await api.getAllUsers();
+        const [response, subsRes] = await Promise.all([
+          api.getAllUsers(),
+          api.getSubjects(),
+        ]);
         if (response.ok) {
           let filteredTeachers = response.data.filter(u => u.role === UserRole.TEACHER || u.role === UserRole.ADMIN);
-          
-          // If the user is a teacher, only show themselves (prevent seeing other teachers)
           if (user?.role === UserRole.TEACHER) {
             filteredTeachers = filteredTeachers.filter(t => t.id === user.id);
           }
-          
           setTeachers(filteredTeachers);
+        }
+        if (subsRes.ok) setSubjects(subsRes.data);
+        if (user?.schoolId) {
+          const classRes = await api.getSchoolClasses(user.schoolId);
+          if (classRes.ok) setSchoolClasses(classRes.data);
         }
       } catch (error) {
         console.error('Failed to fetch teachers', error);
@@ -302,6 +325,37 @@ export const Teachers: React.FC = () => {
       console.error("Failed to delete teacher", e);
       toast.error(`Error deleting teacher: ${(e as any)?.message || 'Unknown error'}`);
     }
+  };
+
+  const handleOpenAssign = async (teacher: User) => {
+    setAssigningTeacher(teacher);
+    const res = await api.getTeacherAssignments(teacher.id);
+    setAssignments(res.ok ? res.data.map(a => ({ subjectId: a.subjectId, schoolClassId: a.schoolClassId })) : []);
+  };
+
+  const handleSaveAssignments = async () => {
+    if (!assigningTeacher) return;
+    setAssignSaving(true);
+    try {
+      const res = await api.setTeacherAssignments(assigningTeacher.id, assignments);
+      if (res.ok) {
+        toast.success('Assignments saved successfully!');
+        setAssigningTeacher(null);
+      }
+    } catch {
+      toast.error('Failed to save assignments');
+    } finally {
+      setAssignSaving(false);
+    }
+  };
+
+  const toggleAssignment = (subjectId: string, schoolClassId: string) => {
+    setAssignments(prev => {
+      const exists = prev.some(a => a.subjectId === subjectId && a.schoolClassId === schoolClassId);
+      return exists
+        ? prev.filter(a => !(a.subjectId === subjectId && a.schoolClassId === schoolClassId))
+        : [...prev, { subjectId, schoolClassId }];
+    });
   };
 
   const getRoleColor = (role: UserRole) => {
@@ -450,6 +504,13 @@ export const Teachers: React.FC = () => {
                         {isAdmin && (
                           <>
                             <button 
+                              onClick={() => handleOpenAssign(teacher)}
+                              className="text-green-600 hover:text-green-800"
+                              title="Assign subjects & classes"
+                            >
+                              <BookOpen size={16} />
+                            </button>
+                            <button 
                               onClick={() => setEditingTeacher(teacher)}
                               className="text-blue-600 hover:text-blue-800"
                               title="Edit teacher"
@@ -517,6 +578,82 @@ export const Teachers: React.FC = () => {
                   setEditingTeacher(null);
                 }}
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Assign Subjects & Classes Modal */}
+      {assigningTeacher && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-2xl rounded-xl shadow-2xl flex flex-col max-h-[85vh]">
+            <div className="p-5 border-b border-gray-200 flex justify-between items-center bg-gray-50 rounded-t-xl">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                  <BookOpen size={18} className="text-green-600" />
+                  Assign Subjects & Classes
+                </h2>
+                <p className="text-sm text-gray-500">Teacher: <span className="font-semibold text-gray-700">{assigningTeacher.name}</span></p>
+              </div>
+              <button onClick={() => setAssigningTeacher(null)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5">
+              {subjects.length === 0 || schoolClasses.length === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-8">
+                  {subjects.length === 0 ? 'No subjects enrolled yet. Go to Subjects to enroll some first.' : 'No classes created yet. Go to Classes to create some first.'}
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-xs text-gray-500 mb-4">Select which subject this teacher teaches in each class. Each row is one assignment (subject + class).</p>
+                  {subjects.map(subject => (
+                    <div key={subject.id} className="border border-gray-200 rounded-lg p-3">
+                      <p className="text-sm font-semibold text-gray-800 mb-2 flex items-center gap-2">
+                        <BookOpen size={14} className="text-primary-500" />
+                        {subject.name}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {schoolClasses.map(cls => {
+                          const active = assignments.some(a => a.subjectId === subject.id && a.schoolClassId === cls.id);
+                          return (
+                            <button
+                              key={cls.id}
+                              type="button"
+                              onClick={() => toggleAssignment(subject.id, cls.id)}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                                active
+                                  ? 'bg-green-600 text-white border-green-600'
+                                  : 'bg-white text-gray-600 border-gray-300 hover:border-green-400'
+                              }`}
+                            >
+                              <Layers size={12} />
+                              {cls.name}
+                              {active && <CheckCircle2 size={12} />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-gray-200 bg-gray-50 rounded-b-xl flex justify-between items-center">
+              <span className="text-sm text-gray-500">{assignments.length} assignment{assignments.length !== 1 ? 's' : ''} selected</span>
+              <div className="flex gap-2">
+                <button onClick={() => setAssigningTeacher(null)} className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100">
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveAssignments}
+                  disabled={assignSaving}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+                >
+                  <Save size={14} />
+                  {assignSaving ? 'Saving...' : 'Save Assignments'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

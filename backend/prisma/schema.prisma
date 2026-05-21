@@ -1,6 +1,5 @@
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 generator client {
@@ -50,6 +49,18 @@ enum TargetAudience {
   students
 }
 
+enum NotificationAudience {
+  all
+  school
+  admins
+  teachers
+  staff
+  students
+  teacher_students
+  specific_users
+}
+
+
 model School {
   id           String        @id @default(cuid())
   name         String
@@ -65,6 +76,7 @@ model School {
   users        User[]
   students     Student[]
   subjects     Subject[]
+  classes      SchoolClass[]
 }
 
 model User {
@@ -83,6 +95,9 @@ subjects    Subject[] @relation("SubjectTeacher")
 exams       Exam[]    @relation("ExamTeacher")
 classMasters ClassMaster[]
 liveClasses LiveClass[] @relation("LiveClassTeacher")
+teacherAssignments TeacherAssignment[]
+
+notificationRecipients NotificationRecipient[]
 }
 
 model Student {
@@ -98,11 +113,20 @@ model Student {
   enrolledSubjects String[]        @default([])
   schoolId       String
   school         School           @relation(fields: [schoolId], references: [id])
+
+  /// Audience mapping (Plan A): which school class/group this student belongs to
+  schoolClassId String?
+  schoolClass   SchoolClass?     @relation(fields: [schoolClassId], references: [id])
+
+  /// Academic field: science | arts | business | general
+  field         String           @default("general")
+
   assessments    Assessment[]
   results        Result[]
   examSessions   ExamSession[]
   attendanceLogs AttendanceRecord[]
 }
+
 
 model Subject {
   id          String            @id @default(cuid())
@@ -118,6 +142,7 @@ model Subject {
   exams       Exam[]
   schemes     SchemeSubmission[]
   liveClasses LiveClass[]
+  teacherAssignments TeacherAssignment[]
 }
 
 model Assessment {
@@ -169,22 +194,110 @@ model Announcement {
   createdAt      DateTime        @default(now())
 }
 
-model LiveClass {
-  id            String                    @id @default(cuid())
-  subjectId     String?
-  teacherId     String?
-  scheduledTime DateTime
-  meetingLink   String
-  status        String                    @default("scheduled")
-  recording     LiveClassRecording?
-  createdAt     DateTime                  @default(now())
-  updatedAt     DateTime                  @updatedAt
+/**
+ * Private, recipient-scoped notifications.
+ * Author sends; backend assigns recipients via NotificationRecipient rows.
+ * This avoids exposing sensitive info to users outside their allowed scope.
+ */
+model Notification {
+  id          String   @id @default(cuid())
+  title       String
+  message     String
 
-  subject       Subject?                  @relation(fields: [subjectId], references: [id])
-  teacher       User?                     @relation("LiveClassTeacher", fields: [teacherId], references: [id])
-  participants  LiveClassParticipant[]
-  messages      LiveClassMessage[]
+  /**
+   * Who the sender *intends* to reach (backend enforces exact recipients via NotificationRecipient).
+   * Kept flexible to match your multi-level flow.
+   */
+  audience    NotificationAudience
+
+  sourceRole  UserRole
+  schoolId    String?  // used when audience is "school" or school-scoped audiences
+  createdAt   DateTime  @default(now())
+
+  recipients  NotificationRecipient[]
+
+  @@index([schoolId])
 }
+
+/**
+ * Join-table: which user(s) can see a notification.
+ */
+model NotificationRecipient {
+  id              String        @id @default(cuid())
+  notificationId  String
+  notification    Notification  @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  userId          String
+  user            User?         @relation(fields: [userId], references: [id])
+
+  readAt          DateTime?
+  createdAt       DateTime     @default(now())
+
+  @@unique([notificationId, userId])
+  @@index([userId])
+}
+
+/**
+ * Student <-> Teacher private questions (1 thread per student+teacher per subject assignment).
+ * Your rule: teacher to only students offering their subjects.
+ */
+model PrivateConversation {
+  id          String   @id @default(cuid())
+  schoolId    String
+  studentId   String
+  teacherId   String
+  subjectId   String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  messages    PrivateConversationMessage[]
+
+  @@unique([studentId, teacherId, subjectId])
+  @@index([schoolId])
+  @@index([studentId])
+  @@index([teacherId])
+}
+
+/**
+ * Messages inside a private conversation.
+ */
+model PrivateConversationMessage {
+  id            String   @id @default(cuid())
+  conversationId String
+  conversation  PrivateConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  senderId      String
+  content       String
+  createdAt     DateTime @default(now())
+
+  @@index([conversationId])
+  @@index([senderId])
+}
+
+model LiveClass {
+  id             String       @id @default(cuid())
+  subjectId      String?
+  teacherId      String?
+  schoolClassId  String
+
+  scheduledTime  DateTime
+  meetingLink    String
+  status         String       @default("scheduled")
+  recording      LiveClassRecording?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  subject        Subject?     @relation(fields: [subjectId], references: [id])
+  teacher        User?        @relation("LiveClassTeacher", fields: [teacherId], references: [id])
+  schoolClass    SchoolClass @relation(fields: [schoolClassId], references: [id])
+
+  participants   LiveClassParticipant[]
+  messages       LiveClassMessage[]
+}
+
+
+
 
 model LiveClassParticipant {
   id            String       @id @default(cuid())
@@ -273,4 +386,46 @@ model ClassMaster {
   grade     String @unique
   teacherId String
   teacher   User   @relation(fields: [teacherId], references: [id])
+}
+
+model SchoolClass {
+  id              String             @id @default(cuid())
+  schoolId        String
+  school          School             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  name            String
+  createdAt       DateTime           @default(now())
+  students        Student[]
+  liveClasses     LiveClass[]
+  teacherAssignments TeacherAssignment[]
+
+  @@unique([schoolId, name])
+}
+
+model TeacherAssignment {
+  id            String      @id @default(cuid())
+  teacherId     String
+  teacher       User        @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  subjectId     String
+  subject       Subject     @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  schoolClassId String
+  schoolClass   SchoolClass @relation(fields: [schoolClassId], references: [id], onDelete: Cascade)
+
+  @@unique([teacherId, subjectId, schoolClassId])
+}
+
+enum StaffMessageType {
+  text
+  image
+  video
+  audio
+}
+
+model StaffMessage {
+  id        String           @id @default(cuid())
+  schoolId  String
+  userId    String
+  type      StaffMessageType @default(text)
+  content   String
+  mediaUrl  String?
+  createdAt DateTime         @default(now())
 }

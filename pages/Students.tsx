@@ -1,12 +1,12 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { api } from '../services/api';
-import { Student, UserRole, User } from '../types';
+import { Student, UserRole, User, Subject } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { StudentForm } from '../components/StudentForm';
 import { ToastContainer } from '../components/Toast';
 import { useToast } from '../src/utils/useToast';
-import { Search, Filter, MoreHorizontal, Plus, ArrowUp, ArrowDown, ArrowUpDown, Calendar, Crown, X, UserCheck, CheckCircle2, Trash2, Edit } from 'lucide-react';
+import { Search, Filter, MoreHorizontal, Plus, ArrowUp, ArrowDown, ArrowUpDown, Calendar, Crown, X, UserCheck, CheckCircle2, Trash2, Edit, BookOpen } from 'lucide-react';
 
 export const Students: React.FC = () => {
   const { user, isCreator, effectiveSchoolId } = useAuth();
@@ -24,11 +24,26 @@ export const Students: React.FC = () => {
   const [deleteConfirm, setDeleteConfirm] = useState<Student | null>(null);
   const [bulkDeleteMode, setBulkDeleteMode] = useState(false);
   const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
+  const [fieldStudent, setFieldStudent] = useState<Student | null>(null);
+  const [allSubjects, setAllSubjects] = useState<Subject[]>([]);
+  const [fieldForm, setFieldForm] = useState<{ field: string; enrolledSubjects: string[] }>({ field: 'general', enrolledSubjects: [] });
+  const [fieldSaving, setFieldSaving] = useState(false);
   
   const [sortConfig, setSortConfig] = useState<{ key: keyof Student; direction: 'asc' | 'desc' }>({
     key: 'name',
     direction: 'asc'
   });
+
+  const compareStudentValues = (left: Student[keyof Student], right: Student[keyof Student]) => {
+    if (typeof left === 'number' && typeof right === 'number') {
+      return left - right;
+    }
+
+    return String(left ?? '').localeCompare(String(right ?? ''), undefined, {
+      numeric: true,
+      sensitivity: 'base',
+    });
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -56,6 +71,8 @@ export const Students: React.FC = () => {
         if (mastersRes.ok) {
             setFormMasters(mastersRes.data);
         }
+        const subsRes = await api.getSubjects();
+        if (subsRes.ok) setAllSubjects(subsRes.data);
       } catch (error) {
         console.error('Failed to fetch students', error);
       } finally {
@@ -92,10 +109,9 @@ export const Students: React.FC = () => {
         result.sort((a, b) => {
             const aVal = a[sortConfig.key];
             const bVal = b[sortConfig.key];
-            
-            if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
-            if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
-            return 0;
+
+            const comparison = compareStudentValues(aVal, bVal);
+            return sortConfig.direction === 'asc' ? comparison : -comparison;
         });
     } else {
         // Default sort for teachers (Name ASC)
@@ -182,6 +198,28 @@ export const Students: React.FC = () => {
           }
           return newSet;
       });
+  };
+
+  const handleOpenField = (student: Student) => {
+    setFieldStudent(student);
+    setFieldForm({ field: student.field || 'general', enrolledSubjects: student.enrolledSubjects || [] });
+  };
+
+  const handleSaveField = async () => {
+    if (!fieldStudent) return;
+    setFieldSaving(true);
+    try {
+      const res = await api.setStudentField(fieldStudent.id, fieldForm.field, fieldForm.enrolledSubjects);
+      if (res.ok) {
+        setStudents(prev => prev.map(s => s.id === fieldStudent.id ? { ...s, field: res.data.field, enrolledSubjects: res.data.enrolledSubjects } : s));
+        toast.success('Student field updated!');
+        setFieldStudent(null);
+      }
+    } catch {
+      toast.error('Failed to update student field');
+    } finally {
+      setFieldSaving(false);
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -436,6 +474,13 @@ export const Students: React.FC = () => {
                         {isAdmin && (
                           <>
                             <button 
+                              onClick={() => handleOpenField(student)}
+                              className="text-green-600 hover:text-green-800"
+                              title="Assign field & subjects"
+                            >
+                              <BookOpen size={16} />
+                            </button>
+                            <button 
                               onClick={() => setEditingStudent(student)}
                               className="text-blue-600 hover:text-blue-800"
                               title="Edit student"
@@ -472,6 +517,94 @@ export const Students: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* Field & Subject Assignment Modal */}
+      {fieldStudent && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-lg rounded-xl shadow-2xl flex flex-col max-h-[85vh]">
+            <div className="p-5 border-b border-gray-200 flex justify-between items-center bg-gray-50 rounded-t-xl">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                  <BookOpen size={18} className="text-green-600" />
+                  Assign Field & Subjects
+                </h2>
+                <p className="text-sm text-gray-500">Student: <span className="font-semibold text-gray-700">{fieldStudent.name}</span></p>
+              </div>
+              <button onClick={() => setFieldStudent(null)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5 space-y-5">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Academic Field</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['science', 'arts', 'business', 'general'] as const).map(f => (
+                    <button
+                      key={f}
+                      type="button"
+                      onClick={() => setFieldForm(prev => ({ ...prev, field: f }))}
+                      className={`py-2.5 rounded-lg text-sm font-medium border capitalize transition-all ${
+                        fieldForm.field === f
+                          ? 'bg-primary-600 text-white border-primary-600'
+                          : 'bg-white text-gray-600 border-gray-300 hover:border-primary-400'
+                      }`}
+                    >
+                      {f}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Enrolled Subjects</label>
+                {allSubjects.length === 0 ? (
+                  <p className="text-sm text-gray-400">No subjects enrolled in this school yet.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {allSubjects.map(sub => {
+                      const active = fieldForm.enrolledSubjects.includes(sub.id);
+                      return (
+                        <button
+                          key={sub.id}
+                          type="button"
+                          onClick={() => setFieldForm(prev => ({
+                            ...prev,
+                            enrolledSubjects: active
+                              ? prev.enrolledSubjects.filter(id => id !== sub.id)
+                              : [...prev.enrolledSubjects, sub.id]
+                          }))}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                            active
+                              ? 'bg-green-600 text-white border-green-600'
+                              : 'bg-white text-gray-600 border-gray-300 hover:border-green-400'
+                          }`}
+                        >
+                          {sub.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-gray-200 bg-gray-50 rounded-b-xl flex justify-between items-center">
+              <span className="text-sm text-gray-500">{fieldForm.enrolledSubjects.length} subject{fieldForm.enrolledSubjects.length !== 1 ? 's' : ''} selected</span>
+              <div className="flex gap-2">
+                <button onClick={() => setFieldStudent(null)} className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100">
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveField}
+                  disabled={fieldSaving}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+                >
+                  {fieldSaving ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Form Masters Modal */}
       {showMasterModal && (
