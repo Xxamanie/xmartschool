@@ -1251,6 +1251,13 @@ export const appService = {
         select: { id: true },
       });
       recipients = users.map((u) => u.id);
+    } else if (audience === 'admins' && !schoolId) {
+      // SUPER_ADMIN broadcasting to all admins across all schools
+      const users = await prisma.user.findMany({
+        where: { role: 'ADMIN' },
+        select: { id: true },
+      });
+      recipients = users.map((u) => u.id);
     } else if (audience === 'teachers' && schoolId) {
       const users = await prisma.user.findMany({
         where: { schoolId, role: 'TEACHER' },
@@ -1270,14 +1277,41 @@ export const appService = {
         select: { id: true },
       });
       recipients = students.map((s) => s.id);
+    } else if (audience === 'class_students' && schoolId) {
+      // Target students in a specific class (schoolClassId passed via userIds[0] as a workaround,
+      // or via a dedicated classId param stored in schoolId field when audience=class_students)
+      const classId = (userIds ?? [])[0];
+      if (classId) {
+        const students = await prisma.student.findMany({
+          where: { schoolClassId: classId },
+          select: { id: true },
+        });
+        recipients = students.map((s) => s.id);
+      }
     } else if (audience === 'teacher_students' && schoolId) {
-      // Placeholder: return students in school for now.
-      // Later: restrict to students offering the teacher's subjects.
-      const students = await prisma.student.findMany({
-        where: { schoolId },
-        select: { id: true },
+      // Restrict to students enrolled in subjects taught by this teacher (via TeacherAssignment + enrolledSubjects)
+      const assignments = await prisma.teacherAssignment.findMany({
+        where: { teacherId: senderId },
+        select: { subjectId: true },
       });
-      recipients = students.map((s) => s.id);
+      const subjectIds = assignments.map((a) => a.subjectId);
+      if (subjectIds.length > 0) {
+        const students = await prisma.student.findMany({
+          where: {
+            schoolId,
+            enrolledSubjects: { hasSome: subjectIds },
+          },
+          select: { id: true },
+        });
+        recipients = students.map((s) => s.id);
+      } else {
+        // Teacher has no assignments yet — fall back to all school students
+        const students = await prisma.student.findMany({
+          where: { schoolId },
+          select: { id: true },
+        });
+        recipients = students.map((s) => s.id);
+      }
     }
 
     recipients = [...new Set(recipients)];
@@ -1309,13 +1343,173 @@ export const appService = {
     );
   },
 
+  previewNotificationRecipients: async (params: {
+    audience: string;
+    schoolId?: string;
+    senderId: string;
+  }): Promise<ApiResponse<{ count: number; breakdown: Record<string, number> }>> => {
+    await wait(30);
+    const { audience, schoolId, senderId } = params;
+
+    const breakdown: Record<string, number> = {};
+    let total = 0;
+
+    if (audience === 'admins' && schoolId) {
+      const n = await prisma.user.count({ where: { schoolId, role: 'ADMIN' } });
+      breakdown['Admins'] = n; total = n;
+    } else if (audience === 'admins' && !schoolId) {
+      const n = await prisma.user.count({ where: { role: 'ADMIN' } });
+      breakdown['All Admins (system-wide)'] = n; total = n;
+    } else if (audience === 'school' && schoolId) {
+      const [u, s] = await Promise.all([
+        prisma.user.count({ where: { schoolId } }),
+        prisma.student.count({ where: { schoolId } }),
+      ]);
+      breakdown['Staff & Teachers'] = u; breakdown['Students'] = s; total = u + s;
+    } else if (audience === 'teachers' && schoolId) {
+      const n = await prisma.user.count({ where: { schoolId, role: 'TEACHER' } });
+      breakdown['Teachers'] = n; total = n;
+    } else if (audience === 'staff' && schoolId) {
+      const n = await prisma.user.count({ where: { schoolId } });
+      breakdown['Staff'] = n; total = n;
+    } else if (audience === 'students' && schoolId) {
+      const n = await prisma.student.count({ where: { schoolId } });
+      breakdown['Students'] = n; total = n;
+    } else if (audience === 'class_students' && schoolId) {
+      // schoolId here is actually the classId for preview purposes
+      const n = await prisma.student.count({ where: { schoolClassId: schoolId } });
+      const cls = await prisma.schoolClass.findUnique({ where: { id: schoolId }, select: { name: true } });
+      breakdown[`${cls?.name ?? 'Class'} Students`] = n; total = n;
+    } else if (audience === 'teacher_students' && schoolId) {
+      const assignments = await prisma.teacherAssignment.findMany({
+        where: { teacherId: senderId }, select: { subjectId: true },
+      });
+      const subjectIds = assignments.map((a) => a.subjectId);
+      const n = subjectIds.length > 0
+        ? await prisma.student.count({ where: { schoolId, enrolledSubjects: { hasSome: subjectIds } } })
+        : await prisma.student.count({ where: { schoolId } });
+      breakdown['My Students'] = n; total = n;
+    } else if (audience === 'all') {
+      const [u, s] = await Promise.all([
+        prisma.user.count(),
+        prisma.student.count(),
+      ]);
+      breakdown['All Users'] = u; breakdown['All Students'] = s; total = u + s;
+    }
+
+    return success({ count: total, breakdown });
+  },
+
+  markNotificationRead: async (notificationId: string, userId: string): Promise<ApiResponse<boolean>> => {
+    await wait(30);
+    await prisma.notificationRecipient.updateMany({
+      where: { notificationId, userId },
+      data: { readAt: new Date() },
+    });
+    return success(true, 'Marked as read');
+  },
+
+  // ── Private Conversations (student ↔ teacher) ────────────────────────────
+
+  listConversations: async (userId: string, role: UserRole, schoolId?: string): Promise<ApiResponse<any[]>> => {
+    await wait(50);
+    const where = role === UserRole.TEACHER
+      ? { teacherId: userId, ...(schoolId ? { schoolId } : {}) }
+      : role === UserRole.STUDENT
+      ? { studentId: userId }
+      : {};
+    const rows = await prisma.privateConversation.findMany({
+      where,
+      include: {
+        messages: { orderBy: { createdAt: 'desc' }, take: 1 },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    // Resolve names for display
+    const teacherIds = [...new Set(rows.map((r: any) => r.teacherId))];
+    const studentIds = [...new Set(rows.map((r: any) => r.studentId))];
+    const [teacherUsers, studentRecords] = await Promise.all([
+      prisma.user.findMany({ where: { id: { in: teacherIds } }, select: { id: true, name: true } }),
+      prisma.student.findMany({ where: { id: { in: studentIds } }, select: { id: true, name: true } }),
+    ]);
+    const teacherMap = Object.fromEntries(teacherUsers.map((u) => [u.id, u.name]));
+    const studentMap = Object.fromEntries(studentRecords.map((s) => [s.id, s.name]));
+
+    return success(rows.map((r: any) => ({
+      id: r.id,
+      schoolId: r.schoolId,
+      studentId: r.studentId,
+      studentName: studentMap[r.studentId] ?? 'Student',
+      teacherId: r.teacherId,
+      teacherName: teacherMap[r.teacherId] ?? 'Teacher',
+      subjectId: r.subjectId ?? undefined,
+      createdAt: r.createdAt.toISOString(),
+      updatedAt: r.updatedAt.toISOString(),
+      lastMessage: r.messages[0]
+        ? { content: r.messages[0].content, createdAt: r.messages[0].createdAt.toISOString() }
+        : null,
+    })));
+  },
+
+  getOrCreateConversation: async (params: {
+    schoolId: string;
+    studentId: string;
+    teacherId: string;
+    subjectId?: string;
+  }): Promise<ApiResponse<any>> => {
+    await wait(50);
+    const { schoolId, studentId, teacherId, subjectId } = params;
+    const existing = await prisma.privateConversation.findFirst({
+      where: { studentId, teacherId, subjectId: subjectId ?? null },
+    });
+    if (existing) return success({ id: existing.id, schoolId: existing.schoolId, studentId: existing.studentId, teacherId: existing.teacherId, subjectId: existing.subjectId ?? undefined, createdAt: existing.createdAt.toISOString(), updatedAt: existing.updatedAt.toISOString() });
+    const created = await prisma.privateConversation.create({
+      data: { schoolId, studentId, teacherId, subjectId: subjectId ?? null },
+    });
+    return success({ id: created.id, schoolId: created.schoolId, studentId: created.studentId, teacherId: created.teacherId, subjectId: created.subjectId ?? undefined, createdAt: created.createdAt.toISOString(), updatedAt: created.updatedAt.toISOString() }, 'Conversation started');
+  },
+
+  getConversationMessages: async (conversationId: string, requesterId: string, role: UserRole): Promise<ApiResponse<any[]>> => {
+    await wait(50);
+    const conv = await prisma.privateConversation.findUnique({ where: { id: conversationId } });
+    if (!conv) return failure('Conversation not found', []);
+    const allowed = role === UserRole.SUPER_ADMIN || role === UserRole.ADMIN || conv.studentId === requesterId || conv.teacherId === requesterId;
+    if (!allowed) return failure('Access denied', []);
+    const messages = await prisma.privateConversationMessage.findMany({
+      where: { conversationId },
+      orderBy: { createdAt: 'asc' },
+      take: 200,
+    });
+    return success(messages.map((m: any) => ({
+      id: m.id,
+      conversationId: m.conversationId,
+      senderId: m.senderId,
+      content: m.content,
+      createdAt: m.createdAt.toISOString(),
+    })));
+  },
+
+  sendConversationMessage: async (conversationId: string, senderId: string, role: UserRole, content: string): Promise<ApiResponse<any>> => {
+    await wait(30);
+    if (!content.trim()) return failure('Message cannot be empty', null);
+    const conv = await prisma.privateConversation.findUnique({ where: { id: conversationId } });
+    if (!conv) return failure('Conversation not found', null);
+    const allowed = conv.studentId === senderId || conv.teacherId === senderId;
+    if (!allowed) return failure('Access denied', null);
+    const msg = await prisma.privateConversationMessage.create({
+      data: { conversationId, senderId, content: content.trim() },
+    });
+    await prisma.privateConversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
+    return success({ id: msg.id, conversationId: msg.conversationId, senderId: msg.senderId, content: msg.content, createdAt: msg.createdAt.toISOString() }, 'Message sent');
+  },
+
   recordProctorFrame: async (
     examId: string,
     studentId: string,
     frameData: string,
   ): Promise<ApiResponse<{ stored: boolean }>> => {
     await wait(20);
-    // For now we acknowledge receipt; storage/analysis can be added later
     console.log('[proctor-frame]', examId, studentId, frameData.slice(0, 64));
     return success({ stored: true });
   },

@@ -1404,7 +1404,7 @@ export const Assessments: React.FC = () => {
         </div>
       )}
       {/* Online and Builder modes are handled below... */}
-      {mode === 'online' && (
+      {mode === 'builder' && examSubMode === 'proctor' && (
         /* Online Exam Mode */
         <div className="space-y-6 animate-in fade-in duration-300">
           {currentExam ? (

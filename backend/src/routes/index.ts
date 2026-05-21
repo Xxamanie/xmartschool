@@ -19,6 +19,8 @@ import { examSessionsRouter } from './modules/examSessions';
 import { staffRoomRouter } from './modules/staffRoom';
 import { teacherAssignmentsRouter } from './modules/teacherAssignments';
 import { studentFieldRouter } from './modules/studentField';
+import { notificationsRouter } from './modules/notifications';
+import { conversationsRouter } from './modules/conversations';
 
 export const registerRoutes = (app: Express) => {
   app.use('/api/health', healthRouter);
@@ -42,4 +44,6 @@ export const registerRoutes = (app: Express) => {
   app.use('/api/staff-room', staffRoomRouter);
   app.use('/api/teacher-assignments', teacherAssignmentsRouter);
   app.use('/api/students', studentFieldRouter);
+  app.use('/api/notifications', notificationsRouter);
+  app.use('/api/conversations', conversationsRouter);
 };

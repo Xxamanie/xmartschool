@@ -1,5 +1,6 @@
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 generator client {
@@ -56,6 +57,7 @@ enum NotificationAudience {
   teachers
   staff
   students
+  class_students
   teacher_students
   specific_users
 }
@@ -194,20 +196,15 @@ model Announcement {
   createdAt      DateTime        @default(now())
 }
 
-/**
- * Private, recipient-scoped notifications.
- * Author sends; backend assigns recipients via NotificationRecipient rows.
- * This avoids exposing sensitive info to users outside their allowed scope.
- */
+// Private, recipient-scoped notifications.
+// Author sends; backend assigns recipients via NotificationRecipient rows.
+// This avoids exposing sensitive info to users outside their allowed scope.
 model Notification {
   id          String   @id @default(cuid())
   title       String
   message     String
 
-  /**
-   * Who the sender *intends* to reach (backend enforces exact recipients via NotificationRecipient).
-   * Kept flexible to match your multi-level flow.
-   */
+  // Who the sender intends to reach (backend enforces exact recipients via NotificationRecipient).
   audience    NotificationAudience
 
   sourceRole  UserRole
@@ -219,9 +216,7 @@ model Notification {
   @@index([schoolId])
 }
 
-/**
- * Join-table: which user(s) can see a notification.
- */
+// Join-table: which user(s) can see a notification.
 model NotificationRecipient {
   id              String        @id @default(cuid())
   notificationId  String
@@ -237,10 +232,8 @@ model NotificationRecipient {
   @@index([userId])
 }
 
-/**
- * Student <-> Teacher private questions (1 thread per student+teacher per subject assignment).
- * Your rule: teacher to only students offering their subjects.
- */
+// Student <-> Teacher private questions (1 thread per student+teacher per subject).
+// Rule: teacher can only message students enrolled in their subjects.
 model PrivateConversation {
   id          String   @id @default(cuid())
   schoolId    String
@@ -259,9 +252,7 @@ model PrivateConversation {
   @@index([teacherId])
 }
 
-/**
- * Messages inside a private conversation.
- */
+// Messages inside a private conversation.
 model PrivateConversationMessage {
   id            String   @id @default(cuid())
   conversationId String

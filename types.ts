@@ -216,3 +216,46 @@ export interface ApiResponse<T> {
   message?: string;
   ok: boolean;
 }
+
+export type NotificationAudience =
+  | 'all'
+  | 'school'
+  | 'admins'
+  | 'teachers'
+  | 'staff'
+  | 'students'
+  | 'class_students'
+  | 'teacher_students'
+  | 'specific_users';
+
+export interface Notification {
+  id: string;
+  title: string;
+  message: string;
+  audience: NotificationAudience;
+  sourceRole: UserRole;
+  schoolId?: string;
+  createdAt: string;
+  readAt?: string | null;
+}
+
+export interface PrivateConversation {
+  id: string;
+  schoolId: string;
+  studentId: string;
+  studentName: string;
+  teacherId: string;
+  teacherName: string;
+  subjectId?: string;
+  createdAt: string;
+  updatedAt: string;
+  lastMessage?: { content: string; createdAt: string } | null;
+}
+
+export interface PrivateConversationMessage {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  content: string;
+  createdAt: string;
+}

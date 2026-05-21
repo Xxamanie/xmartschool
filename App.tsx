@@ -2,6 +2,7 @@
 import React, { Suspense } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { NotificationProvider } from './context/NotificationContext';
 import { Layout } from './components/Layout';
 import { LoadingScreen } from './components/LoadingScreen';
 import { UserRole } from './types';
@@ -24,6 +25,8 @@ const SchoolDetail = React.lazy(() => import('./pages/SchoolDetail').then((modul
 const LiveClasses = React.lazy(() => import('./pages/LiveClasses').then((module) => ({ default: module.LiveClasses })));
 const LiveClassRoom = React.lazy(() => import('./pages/LiveClassRoom').then((module) => ({ default: module.LiveClassRoom })));
 const StaffRoom = React.lazy(() => import('./pages/StaffRoom').then((module) => ({ default: module.StaffRoom })));
+const Notifications = React.lazy(() => import('./pages/Notifications').then((module) => ({ default: module.Notifications })));
+const PrivateMessages = React.lazy(() => import('./pages/PrivateMessages').then((module) => ({ default: module.PrivateMessages })));
 
 const RouteFallback = () => <LoadingScreen message="Loading page..." />;
 
@@ -116,6 +119,8 @@ const AppContent: React.FC = () => {
             <Route path="live-classes" element={<ProtectedRoute><LiveClasses /></ProtectedRoute>} />
             <Route path="live-classes/:classId" element={<ProtectedRoute><LiveClassRoom /></ProtectedRoute>} />
             <Route path="staff-room" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><StaffRoom /></ProtectedRoute>} />
+            <Route path="notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
+            <Route path="messages" element={<ProtectedRoute><PrivateMessages /></ProtectedRoute>} />
             
             <Route path="settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
           </Route>
@@ -130,8 +135,10 @@ const AppContent: React.FC = () => {
 const App: React.FC = () => {
   return (
     <AuthProvider>
-      <GlobalClickSound />
-      <AppContent />
+      <NotificationProvider>
+        <GlobalClickSound />
+        <AppContent />
+      </NotificationProvider>
     </AuthProvider>
   );
 };

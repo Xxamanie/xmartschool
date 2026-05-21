@@ -1,4 +1,4 @@
-import { Student, Subject, ApiResponse, SchemeSubmission, Assessment, ResultData, School, User, UserRole, ActiveExam, ExamQuestion, ExamSession, Announcement, LiveClass, SchoolClassItem, StaffMessage, TeacherAssignment } from '../types';
+import { Student, Subject, ApiResponse, SchemeSubmission, Assessment, ResultData, School, User, UserRole, ActiveExam, ExamQuestion, ExamSession, Announcement, LiveClass, SchoolClassItem, StaffMessage, TeacherAssignment, Notification, NotificationAudience, PrivateConversation, PrivateConversationMessage } from '../types';
 import { MOCK_STUDENTS, MOCK_SUBJECTS, MOCK_SCHEMES, MOCK_ASSESSMENTS, MOCK_RESULTS, MOCK_SCHOOLS, MOCK_USER, MOCK_SUPER_ADMIN } from './mockData';
 import apiClient from '../src/utils/api';
 
@@ -832,6 +832,113 @@ export const api = {
     } catch (error) {
       console.error('Failed to set student field:', error);
       return wrapError(error, {} as Student, 'Failed to update student field');
+    }
+  },
+
+  // ── Notifications ────────────────────────────────────────────────────────
+
+  getNotifications: async (): Promise<ApiResponse<Notification[]>> => {
+    try {
+      const response = await apiClient.get('/notifications');
+      const data = extractData(response) || [];
+      return wrapResponse(data);
+    } catch (error) {
+      console.error('Failed to get notifications:', error);
+      return wrapError(error, [], 'Failed to load notifications');
+    }
+  },
+
+  previewNotificationRecipients: async (audience: NotificationAudience, schoolId?: string, classId?: string): Promise<ApiResponse<{ count: number; breakdown: Record<string, number> }>> => {
+    try {
+      const params = new URLSearchParams({ audience });
+      if (schoolId) params.append('schoolId', schoolId);
+      if (classId) params.append('classId', classId);
+      const response = await apiClient.get(`/notifications/preview?${params}`);
+      const data = extractData(response);
+      return wrapResponse(data);
+    } catch (error) {
+      console.error('Failed to preview recipients:', error);
+      return wrapError(error, { count: 0, breakdown: {} }, 'Preview failed');
+    }
+  },
+
+  createNotification: async (payload: {
+    title: string;
+    message: string;
+    audience: NotificationAudience;
+    schoolId?: string;
+    classId?: string;
+    userIds?: string[];
+    source: string;
+  }): Promise<ApiResponse<Notification>> => {
+    try {
+      const response = await apiClient.post('/notifications', payload);
+      const data = extractData(response);
+      return wrapResponse(data, 'Notification sent');
+    } catch (error) {
+      console.error('Failed to create notification:', error);
+      return wrapError(error, {} as Notification, 'Failed to send notification');
+    }
+  },
+
+  markNotificationRead: async (notificationId: string): Promise<ApiResponse<boolean>> => {
+    try {
+      await apiClient.patch(`/notifications/${notificationId}/read`, {});
+      return wrapResponse(true);
+    } catch (error) {
+      console.error('Failed to mark notification read:', error);
+      return wrapError(error, false, 'Failed to mark as read');
+    }
+  },
+
+  // ── Private Conversations ────────────────────────────────────────────────
+
+  getConversations: async (): Promise<ApiResponse<PrivateConversation[]>> => {
+    try {
+      const response = await apiClient.get('/conversations');
+      const data = extractData(response) || [];
+      return wrapResponse(data);
+    } catch (error) {
+      console.error('Failed to get conversations:', error);
+      return wrapError(error, [], 'Failed to load conversations');
+    }
+  },
+
+  getOrCreateConversation: async (payload: {
+    schoolId: string;
+    studentId: string;
+    teacherId: string;
+    subjectId?: string;
+  }): Promise<ApiResponse<PrivateConversation>> => {
+    try {
+      const response = await apiClient.post('/conversations', payload);
+      const data = extractData(response);
+      return wrapResponse(data);
+    } catch (error) {
+      console.error('Failed to get/create conversation:', error);
+      return wrapError(error, {} as PrivateConversation, 'Failed to start conversation');
+    }
+  },
+
+  getConversationMessages: async (conversationId: string): Promise<ApiResponse<PrivateConversationMessage[]>> => {
+    try {
+      const response = await apiClient.get(`/conversations/${conversationId}/messages`);
+      const data = extractData(response) || [];
+      return wrapResponse(data);
+    } catch (error) {
+      console.error('Failed to get messages:', error);
+      return wrapError(error, [], 'Failed to load messages');
+    }
+  },
+
+  sendConversationMessage: async (conversationId: string, content: string): Promise<ApiResponse<PrivateConversationMessage>> => {
+    try {
+      const response = await apiClient.post(`/conversations/${conversationId}/messages`, { content });
+      const data = extractData(response);
+      return wrapResponse(data, 'Message sent');
+    } catch (error) {
+      console.error('Failed to send message:', error);
+      return wrapError(error, {} as PrivateConversationMessage, 'Failed to send message');
     }
   },
 };
