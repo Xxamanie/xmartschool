@@ -40,9 +40,11 @@ Goal: provide an admin/accountant-facing **dynamic** finance/earnings table with
 
 ## Progress
 - [x] Added checklist file `TODO_FINANCE.md`
-- [ ] Add Prisma models for finance
-- [ ] Add migrations
-- [ ] Add backend finance routes + appService
+- [x] Add Prisma models for finance
+- [~] Add migrations (pending DATABASE_URL configuration)
+- [~] Add backend finance routes (in progress) + appService
 - [ ] Add frontend `/finance` page + dynamic table
 - [ ] Run migrations & test end-to-end
+
+
 

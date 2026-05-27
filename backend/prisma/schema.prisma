@@ -80,6 +80,8 @@ model School {
   subjects     Subject[]
   classes      SchoolClass[]
   events       CalendarEvent[]
+  feeTemplates FeeTemplate[]
+  feeLedgers   StudentFeeLedger[]
 }
 
 
@@ -129,6 +131,7 @@ model Student {
   results        Result[]
   examSessions   ExamSession[]
   attendanceLogs AttendanceRecord[]
+  feeLedgers     StudentFeeLedger[]
 }
 
 
@@ -467,6 +470,7 @@ model FeeTemplate {
   updatedAt   DateTime @updatedAt
 
   lines       FeeTemplateLine[]
+  ledgers     StudentFeeLedger[]
 
   @@index([schoolId, term])
 }
@@ -489,6 +493,8 @@ model FeeTemplateLine {
   createdAt    DateTime @default(now())
 
   @@unique([templateId, key])
+  ledgerItems StudentFeeLedgerItem[]
+
   @@index([templateId, order])
 }
 
