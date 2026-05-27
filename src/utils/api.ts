@@ -3,6 +3,7 @@ import { getSupabaseClient } from '../services/supabaseClient';
 
 export const DEMO_AUTH_TOKEN_KEY = 'smartschool_auth_token';
 export const DEMO_AUTH_USER_KEY = 'smartschool_auth_user';
+export const buildSchoolScopedConfig = (schoolId?: string) => schoolId ? { params: { schoolId } } : undefined;
 
 let API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://xmartschool.onrender.com/api';
 if (!API_BASE_URL.startsWith('http://') && !API_BASE_URL.startsWith('https://')) {
@@ -38,7 +39,7 @@ apiClient.interceptors.request.use(async (config) => {
   } catch (error) {
     console.warn('Failed to get auth token:', error);
   }
-  
+
   console.log(`[API] ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
   return config;
 }, (error) => {
@@ -67,3 +68,4 @@ apiClient.interceptors.response.use(
 );
 
 export default apiClient;
+

@@ -1,6 +1,6 @@
-import { Student, Subject, ApiResponse, SchemeSubmission, Assessment, ResultData, School, User, UserRole, ActiveExam, ExamQuestion, ExamSession, Announcement, LiveClass, SchoolClassItem, StaffMessage, TeacherAssignment, Notification, NotificationAudience, PrivateConversation, PrivateConversationMessage } from '../types';
+import { Student, Subject, ApiResponse, SchemeSubmission, Assessment, ResultData, School, User, UserRole, ActiveExam, ExamQuestion, ExamSession, Announcement, LiveClass, SchoolClassItem, StaffMessage, TeacherAssignment, Notification, NotificationAudience, PrivateConversation, PrivateConversationMessage, CalendarEvent } from '../types';
 import { MOCK_STUDENTS, MOCK_SUBJECTS, MOCK_SCHEMES, MOCK_ASSESSMENTS, MOCK_RESULTS, MOCK_SCHOOLS, MOCK_USER, MOCK_SUPER_ADMIN } from './mockData';
-import apiClient from '../src/utils/api';
+import apiClient, { buildSchoolScopedConfig } from '../src/utils/api';
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -80,6 +80,67 @@ export const api = {
     } catch (error) {
       console.error('Failed to create announcement:', error);
       return wrapError(error, {} as Announcement, 'Failed to create announcement');
+    }
+  },
+
+  getCalendarEvents: async (schoolId: string): Promise<ApiResponse<CalendarEvent[]>> => {
+    try {
+      const response = await apiClient.get('/events', buildSchoolScopedConfig(schoolId));
+      const data = extractData(response) || [];
+      return wrapResponse(data);
+    } catch (error) {
+      console.error('Failed to get calendar events:', error);
+      return wrapError(error, [], 'Failed to load calendar events');
+    }
+  },
+
+  createCalendarEvent: async (payload: {
+    schoolId: string;
+    title: string;
+    description?: string;
+    location?: string;
+    startAt: string;
+    endAt?: string;
+  }): Promise<ApiResponse<CalendarEvent>> => {
+    try {
+      const response = await apiClient.post('/events', payload);
+      const data = extractData(response);
+      return wrapResponse(data, 'Event created successfully');
+    } catch (error) {
+      console.error('Failed to create calendar event:', error);
+      return wrapError(error, {} as CalendarEvent, 'Failed to create calendar event');
+    }
+  },
+
+  updateCalendarEvent: async (
+    id: string,
+    payload: {
+      schoolId: string;
+      title?: string;
+      description?: string | null;
+      location?: string | null;
+      startAt?: string;
+      endAt?: string | null;
+    },
+  ): Promise<ApiResponse<CalendarEvent>> => {
+    try {
+      const response = await apiClient.put(`/events/${id}`, payload);
+      const data = extractData(response);
+      return wrapResponse(data, 'Event updated successfully');
+    } catch (error) {
+      console.error('Failed to update calendar event:', error);
+      return wrapError(error, {} as CalendarEvent, 'Failed to update calendar event');
+    }
+  },
+
+  deleteCalendarEvent: async (id: string, schoolId: string): Promise<ApiResponse<boolean>> => {
+    try {
+      const response = await apiClient.delete(`/events/${id}`, buildSchoolScopedConfig(schoolId));
+      const data = extractData(response);
+      return wrapResponse(typeof data === 'boolean' ? data : true, 'Event deleted successfully');
+    } catch (error) {
+      console.error('Failed to delete calendar event:', error);
+      return wrapError(error, false, 'Failed to delete calendar event');
     }
   },
 

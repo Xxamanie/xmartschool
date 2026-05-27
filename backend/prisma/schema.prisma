@@ -79,7 +79,9 @@ model School {
   students     Student[]
   subjects     Subject[]
   classes      SchoolClass[]
+  events       CalendarEvent[]
 }
+
 
 model User {
 id          String   @id @default(cuid())
@@ -195,6 +197,25 @@ model Announcement {
   source         String
   createdAt      DateTime        @default(now())
 }
+
+model CalendarEvent {
+  id          String   @id @default(cuid())
+  schoolId   String
+  school      School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String?
+  location    String?
+
+  startAt     DateTime
+  endAt       DateTime?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([schoolId, startAt])
+}
+
 
 // Private, recipient-scoped notifications.
 // Author sends; backend assigns recipients via NotificationRecipient rows.
@@ -420,3 +441,121 @@ model StaffMessage {
   mediaUrl  String?
   createdAt DateTime         @default(now())
 }
+
+// =====================
+// Finance / Fee Module
+// =====================
+
+// Fee templates are admin-configured lists of fee lines (titles + order).
+// Templates are scoped to a school and a term, and may be applied to either:
+// - a SchoolClass (scopeType = 'schoolClass')
+// - a ClassMaster/grade (scopeType = 'classMaster')
+// The ledger generation endpoint computes payable/payed/outstanding from ledger + payments.
+model FeeTemplate {
+  id          String   @id @default(cuid())
+  schoolId    String
+  school      School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  term        String
+  name        String   // admin-facing template name
+
+  // Optional default scope. If set, ledger generation can default to it.
+  scopeType   String?  // 'schoolClass' | 'classMaster'
+  scopeId     String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  lines       FeeTemplateLine[]
+
+  @@index([schoolId, term])
+}
+
+model FeeTemplateLine {
+  id           String  @id @default(cuid())
+  templateId   String
+  template     FeeTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  // Human title (column header)
+  title        String
+
+  // Stable key used for dynamic column mapping; generated client-side.
+  key          String
+  order        Int     @default(0)
+
+  // Default amount configured by admin; ledger generation will set payable.
+  defaultAmount Float @default(0)
+
+  createdAt    DateTime @default(now())
+
+  @@unique([templateId, key])
+  @@index([templateId, order])
+}
+
+model StudentFeeLedger {
+  id          String   @id @default(cuid())
+  schoolId    String
+  school      School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  studentId   String
+  student     Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  term        String
+
+  // Scope can be either a SchoolClass or a ClassMaster/grade.
+  scopeType   String   // 'schoolClass' | 'classMaster'
+  scopeId     String
+
+  // Template applied when ledger generated.
+  templateId  String
+  template    FeeTemplate @relation(fields: [templateId], references: [id])
+
+  createdAt   DateTime @default(now())
+
+  lineItems   StudentFeeLedgerItem[]
+
+  @@unique([schoolId, term, studentId, scopeType, scopeId])
+  @@index([schoolId, term, scopeType, scopeId])
+}
+
+model StudentFeeLedgerItem {
+  id          String  @id @default(cuid())
+  ledgerId    String
+  ledger      StudentFeeLedger @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
+
+  // Maps to a template line.
+  templateLineId String
+  templateLine   FeeTemplateLine @relation(fields: [templateLineId], references: [id])
+
+  title       String
+  key         String
+
+  // Payable computed at ledger generation.
+  payableAmount Float
+
+  // Derived from payments; can also be computed by aggregations.
+  createdAt   DateTime @default(now())
+
+  payments    StudentFeePayment[]
+
+  @@unique([ledgerId, templateLineId])
+  @@index([ledgerId])
+}
+
+model StudentFeePayment {
+  id          String   @id @default(cuid())
+
+  ledgerItemId String
+  ledgerItem   StudentFeeLedgerItem @relation(fields: [ledgerItemId], references: [id], onDelete: Cascade)
+
+  // Payment amount for this ledger item.
+  amount      Float
+  paymentRef  String? // optional admin reference
+
+  method      String? // 'cash' | 'transfer' etc.
+
+  createdAt   DateTime @default(now())
+
+  @@index([ledgerItemId, createdAt])
+}
+

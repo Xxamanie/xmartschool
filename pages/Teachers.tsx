@@ -463,9 +463,17 @@ export const Teachers: React.FC = () => {
                   <tr key={teacher.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
-                        <div className="h-8 w-8 rounded-full bg-primary-100 text-primary-600 flex items-center justify-center font-bold text-xs mr-3">
-                          {teacher.name.charAt(0)}
-                        </div>
+                        {teacher.avatar ? (
+                          <img
+                            src={teacher.avatar}
+                            alt={teacher.name}
+                            className="h-8 w-8 rounded-full object-cover mr-3 ring-2 ring-primary-100"
+                          />
+                        ) : (
+                          <div className="h-8 w-8 rounded-full bg-primary-100 text-primary-600 flex items-center justify-center font-bold text-xs mr-3">
+                            {teacher.name.charAt(0)}
+                          </div>
+                        )}
                         <div className="text-sm font-medium text-gray-900">
                           {teacher.name}
                         </div>

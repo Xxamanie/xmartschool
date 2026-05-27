@@ -210,8 +210,21 @@ export interface StaffMessage {
   createdAt: string;
 }
 
+export interface CalendarEvent {
+  id: string;
+  schoolId: string;
+  title: string;
+  description?: string;
+  location?: string;
+  startAt: string;
+  endAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ApiResponse<T> {
   ok: boolean;
   data: T;
   message?: string;
 }
+

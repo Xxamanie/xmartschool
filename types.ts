@@ -32,6 +32,11 @@ export interface School {
   logoUrl?: string;
   address?: string;
   contact?: string;
+  principalName?: string;
+  principalSignatureUrl?: string;
+  schoolStampUrl?: string;
+  themeColor?: string;
+  gradingSystem?: 'nigeria' | 'british' | 'american';
 }
 
 export interface Student {
@@ -101,6 +106,10 @@ export interface ResultData {
   status: 'Published' | 'Draft' | 'withheld';
   remarks?: string;
   term?: string;
+  session?: string;
+  verificationToken?: string;
+  position?: number;
+  classPopulation?: number;
   details?: {
     ca1?: number;
     ca2?: number;
@@ -118,6 +127,20 @@ export interface Announcement {
   source: string;
   createdAt: string;
 }
+
+export interface CalendarEvent {
+  id: string;
+  schoolId: string;
+  title: string;
+  description?: string;
+  location?: string;
+  startAt: string;
+  endAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+
 
 export interface LiveClass {
   id: string;

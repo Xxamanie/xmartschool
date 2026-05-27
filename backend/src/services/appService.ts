@@ -35,6 +35,7 @@ import {
   User,
   UserRole,
   Announcement,
+  CalendarEvent,
   LiveClass,
   StaffMessage,
   TeacherAssignment,
@@ -59,6 +60,17 @@ const toDateOnly = (value: string) => new Date(`${value}T00:00:00.000Z`);
 const avatarFromName = (name: string) => `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`;
 const toInputJson = (value: unknown): Prisma.InputJsonValue => value as Prisma.InputJsonValue;
 const generateTemporaryPassword = () => crypto.randomBytes(12).toString('base64url');
+const mapCalendarEventModel = (event: Prisma.CalendarEventGetPayload<object>): CalendarEvent => ({
+  id: event.id,
+  schoolId: event.schoolId,
+  title: event.title,
+  description: event.description ?? undefined,
+  location: event.location ?? undefined,
+  startAt: event.startAt.toISOString(),
+  endAt: event.endAt?.toISOString() ?? undefined,
+  createdAt: event.createdAt.toISOString(),
+  updatedAt: event.updatedAt.toISOString(),
+});
 
 const mapUserModel = (user: PrismaUserModel): User => ({
   id: user.id,
@@ -302,6 +314,7 @@ const checkLiveClassAccess = async (
 };
 
 export const appService = {
+
   health: async (): Promise<ApiResponse<{ status: string }>> => {
     await wait(100);
     return success({ status: 'healthy' });
@@ -1164,7 +1177,93 @@ export const appService = {
     return success(mapAnnouncementModel(created), 'Announcement created');
   },
 
+  // ── Calendar Events (per school) ────────────────────────────────────────
+
+  listCalendarEvents: async (schoolId: string): Promise<ApiResponse<CalendarEvent[]>> => {
+    await wait(50);
+    const events = await prisma.calendarEvent.findMany({
+      where: { schoolId },
+      orderBy: { startAt: 'asc' },
+    });
+
+    return success(events.map(mapCalendarEventModel), 'Events loaded');
+  },
+
+  createCalendarEvent: async (payload: {
+    schoolId: string;
+    title: string;
+    description?: string | null;
+    location?: string | null;
+    startAt: Date;
+    endAt?: Date | null;
+  }): Promise<ApiResponse<CalendarEvent>> => {
+    await wait(50);
+    const created = await prisma.calendarEvent.create({
+      data: {
+        schoolId: payload.schoolId,
+        title: payload.title,
+        description: payload.description ?? null,
+        location: payload.location ?? null,
+        startAt: payload.startAt,
+        endAt: payload.endAt ?? null,
+      },
+    });
+
+    return success(mapCalendarEventModel(created), 'Event created');
+  },
+
+  updateCalendarEvent: async (
+    id: string,
+    payload: {
+      schoolId: string;
+      title?: string;
+      description?: string | null;
+      location?: string | null;
+      startAt?: Date;
+      endAt?: Date | null;
+    },
+  ): Promise<ApiResponse<CalendarEvent>> => {
+    await wait(50);
+
+    const existing = await prisma.calendarEvent.findUnique({ where: { id } });
+    if (!existing) {
+      return failure('Event not found', {} as CalendarEvent);
+    }
+    if (existing.schoolId !== payload.schoolId) {
+      return failure('Cannot update an event from another school', {} as CalendarEvent);
+    }
+
+    const updated = await prisma.calendarEvent.update({
+      where: { id },
+      data: {
+        ...(payload.title !== undefined ? { title: payload.title } : {}),
+        ...(payload.description !== undefined ? { description: payload.description } : {}),
+        ...(payload.location !== undefined ? { location: payload.location } : {}),
+        ...(payload.startAt !== undefined ? { startAt: payload.startAt } : {}),
+        ...(payload.endAt !== undefined ? { endAt: payload.endAt } : {}),
+      },
+    });
+
+    return success(mapCalendarEventModel(updated), 'Event updated');
+  },
+
+  deleteCalendarEvent: async (id: string, schoolId: string): Promise<ApiResponse<boolean>> => {
+    await wait(50);
+
+    const existing = await prisma.calendarEvent.findUnique({ where: { id } });
+    if (!existing) {
+      return failure('Event not found', false);
+    }
+    if (existing.schoolId !== schoolId) {
+      return failure('Cannot delete an event from another school', false);
+    }
+
+    await prisma.calendarEvent.delete({ where: { id } });
+    return success(true, 'Event deleted');
+  },
+
   // ── Private Notifications ─────────────────────────────────────────────
+
 
   listNotifications: async (userId?: string, role?: UserRole): Promise<ApiResponse<any[]>> => {
     await wait(50);
