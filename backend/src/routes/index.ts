@@ -22,6 +22,9 @@ import { studentFieldRouter } from './modules/studentField';
 import { notificationsRouter } from './modules/notifications';
 import { conversationsRouter } from './modules/conversations';
 import { eventsRouter } from './modules/events';
+import { financeRouter } from './modules/finance';
+import { termsRouter } from './modules/terms';
+import { auditRouter } from './modules/audit';
 
 export const registerRoutes = (app: Express) => {
 
@@ -49,5 +52,8 @@ export const registerRoutes = (app: Express) => {
   app.use('/api/notifications', notificationsRouter);
   app.use('/api/conversations', conversationsRouter);
   app.use('/api/events', eventsRouter);
+  app.use('/api/finance', financeRouter);
+  app.use('/api/terms', termsRouter);
+  app.use('/api/audit', auditRouter);
 };
 

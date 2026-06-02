@@ -30,6 +30,59 @@ export interface School {
   logoUrl: string;
   address: string;
   contact: string;
+  gradingSystem?: string;
+  themeColor?: string;
+  principalName?: string;
+  principalSignatureUrl?: string;
+  schoolStampUrl?: string;
+}
+
+export interface SchoolTerm {
+  id: string;
+  schoolId: string;
+  name: string;
+  session: string;
+  term: string;
+  startDate: string;
+  endDate: string;
+  isCurrent: boolean;
+  createdAt: string;
+}
+
+export interface StudentFeeLedgerItem {
+  id: string;
+  ledgerId: string;
+  templateLineId: string;
+  title: string;
+  key: string;
+  payableAmount: number;
+  totalPaid: number;
+  payments: StudentFeePayment[];
+}
+
+export interface StudentFeePayment {
+  id: string;
+  ledgerItemId: string;
+  amount: number;
+  paymentRef?: string;
+  method?: string;
+  createdAt: string;
+}
+
+export interface StudentFeeLedger {
+  id: string;
+  schoolId: string;
+  studentId: string;
+  studentName?: string;
+  term: string;
+  scopeType: string;
+  scopeId: string;
+  templateId: string;
+  createdAt: string;
+  lineItems: StudentFeeLedgerItem[];
+  totalPayable: number;
+  totalPaid: number;
+  outstanding: number;
 }
 
 export interface Student {
@@ -82,6 +135,7 @@ export interface ResultData {
   studentName: string;
   studentId: string;
   subjectName?: string;
+  term?: string;
   average: number;
   grade: string;
   status: 'Published' | 'Draft' | 'withheld';

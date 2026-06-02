@@ -134,6 +134,7 @@ export const Results: React.FC = () => {
   const [allSchools, setAllSchools] = useState<School[]>([]);
   const [allStudents, setAllStudents] = useState<Student[]>([]);
   const [allSubjects, setAllSubjects] = useState<Subject[]>([]);
+  const [attendanceSummaries, setAttendanceSummaries] = useState<Record<string, { present: number; total: number }>>({});
   const [loading, setLoading] = useState(true);
   const [loadingRemarkId, setLoadingRemarkId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -175,7 +176,6 @@ export const Results: React.FC = () => {
         ]);
 
         if (resResults.ok) {
-          // Transform results to include dynamic structure if needed
           const transformedResults = resResults.data.map((result: any) => ({
             ...result,
             admissionNo: result.admissionNo || result.studentId,
@@ -198,10 +198,16 @@ export const Results: React.FC = () => {
               grade: result.grade || 'F',
               remark: result.remarks || 'No remark'
             }],
-            attendance: result.attendance || { present: 65, total: 70 },
             principalRemark: result.principalRemark || 'Result reviewed and approved for official school use.'
           }));
           setResults(transformedResults);
+
+          // Fetch real attendance for all unique students
+          const uniqueStudentIds = [...new Set(resResults.data.map((r: any) => r.studentId as string))];
+          if (uniqueStudentIds.length > 0) {
+            const attRes = await api.getAttendanceSummaries(uniqueStudentIds);
+            if (attRes.ok) setAttendanceSummaries(attRes.data);
+          }
         }
         if (resSchools.ok) setAllSchools(resSchools.data);
         if (resStudents.ok) setAllStudents(resStudents.data);
@@ -396,7 +402,8 @@ export const Results: React.FC = () => {
       ? subjects.reduce((sum, subject) => sum + subject.total, 0) / subjects.length
       : sortedMatches[0].average;
     const overallGrade = GradingSystem.calculateGrade(totalAverage, 100, gradingSystem);
-    const classmates = student
+    // Collect all classmates (same grade, same term, with results)
+    const classmateIds = student
       ? Array.from(new Set(results
           .filter((result) => result.term === term)
           .filter((result) => {
@@ -405,6 +412,23 @@ export const Results: React.FC = () => {
           })
           .map((result) => result.studentId)))
       : [];
+
+    // Compute position by ranking classmates' averages descending
+    const classmateAverages = classmateIds.map((id) => {
+      const classmateResults = results.filter((r) => r.studentId === id && r.term === term);
+      const avg = classmateResults.length > 0
+        ? classmateResults.reduce((sum, r) => sum + (r.average || 0), 0) / classmateResults.length
+        : 0;
+      return { studentId: id, avg };
+    });
+    classmateAverages.sort((a, b) => b.avg - a.avg);
+    const computedPosition = classmateAverages.findIndex((c) => c.studentId === studentId) + 1;
+
+    // Real attendance from fetched summaries
+    const attSummary = attendanceSummaries[studentId];
+    const attendanceData = attSummary && attSummary.total > 0
+      ? { present: attSummary.present, total: attSummary.total }
+      : (sortedMatches.find((r) => r.attendance)?.attendance ?? { present: 0, total: 0 });
 
     return {
       ...sortedMatches[0],
@@ -417,9 +441,9 @@ export const Results: React.FC = () => {
       grade: overallGrade.grade,
       remarks: sortedMatches.find((result) => result.remarks)?.remarks || sortedMatches[0].remarks,
       principalRemark: sortedMatches.find((result) => result.principalRemark)?.principalRemark || sortedMatches[0].principalRemark,
-      attendance: sortedMatches.find((result) => result.attendance)?.attendance || { present: 65, total: 70 },
-      classPopulation: sortedMatches[0].classPopulation || classmates.length || undefined,
-      position: sortedMatches[0].position,
+      attendance: attendanceData,
+      classPopulation: classmateIds.length || sortedMatches[0].classPopulation || undefined,
+      position: computedPosition > 0 ? computedPosition : sortedMatches[0].position,
       verificationToken: sortedMatches[0].verificationToken || `SS-${new Date().getFullYear()}-${sortedMatches[0].id.slice(-6).toUpperCase()}`,
     };
   };

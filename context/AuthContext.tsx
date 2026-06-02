@@ -10,14 +10,6 @@ const isDemoForced = import.meta.env.VITE_ENABLE_DEMO_AUTH === 'true';
 
 const demoAuthEnabled = isDemoForced || !(supabaseUrl && supabaseAnonKey && supabaseUrl !== 'your-project-ref.supabase.co');
 
-console.log('Auth Debug:', {
-  isDemoForced,
-  hasSupabaseUrl: !!supabaseUrl,
-  supabaseUrl,
-  hasSupabaseAnonKey: !!supabaseAnonKey,
-  demoAuthEnabled
-});
-
 interface AuthContextType {
   user: User | null;
   login: (email: string, password?: string) => Promise<void>;

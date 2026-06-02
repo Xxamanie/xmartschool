@@ -9,15 +9,21 @@ const router = Router();
 
 const listQuery = z.object({
   studentId: z.string().optional(),
+  term: z.string().optional(),
 });
 
 router.get(
   '/',
   requireAuth,
   asyncHandler(async (req, res) => {
-    const { studentId } = listQuery.parse(req.query);
-    const effectiveStudentId = req.auth?.role === UserRole.STUDENT ? req.auth.userId : studentId;
-    const response = await appService.getResults(req.auth?.schoolId, effectiveStudentId);
+    const { studentId, term } = listQuery.parse(req.query);
+    const effectiveStudentId =
+      req.auth?.role === UserRole.STUDENT ? req.auth.userId : studentId;
+    const response = await appService.getResults(
+      req.auth?.schoolId,
+      effectiveStudentId,
+      term,
+    );
     res.json(response);
   }),
 );
@@ -29,6 +35,7 @@ const resultSchema = z.object({
   studentId: z.string().min(1),
   studentName: z.string().trim().optional().default(''),
   subjectName: z.string().trim().min(1),
+  term: z.string().trim().max(50).optional(),
   average: z.number().min(0).max(100),
   grade: z.string().trim().min(1).max(10),
   status: z.enum(['Published', 'Draft', 'withheld']),

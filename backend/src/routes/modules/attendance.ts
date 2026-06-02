@@ -22,6 +22,31 @@ router.get(
   }),
 );
 
+// Batch attendance summary for multiple students
+router.get(
+  '/summaries',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const schema = z.object({ ids: z.string().min(1) });
+    const { ids } = schema.parse(req.query);
+    const studentIds = ids.split(',').map((s) => s.trim()).filter(Boolean);
+    const response = await appService.getStudentsAttendanceSummaries(studentIds);
+    res.json(response);
+  }),
+);
+
+// Single student summary
+router.get(
+  '/student-summary',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const schema = z.object({ studentId: z.string().min(1) });
+    const { studentId } = schema.parse(req.query);
+    const response = await appService.getStudentAttendanceSummary(studentId);
+    res.json(response);
+  }),
+);
+
 const markSchema = z.array(
   z.object({
     studentId: z.string().min(1),
@@ -31,10 +56,7 @@ const markSchema = z.array(
 );
 
 const parseAttendancePayload = (body: unknown) => {
-  if (Array.isArray(body)) {
-    return markSchema.parse(body);
-  }
-
+  if (Array.isArray(body)) return markSchema.parse(body);
   const payload = z.object({ updates: markSchema }).parse(body);
   return payload.updates;
 };

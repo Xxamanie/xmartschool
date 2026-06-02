@@ -75,6 +75,11 @@ model School {
   logoUrl      String        @default("")
   address      String        @default("")
   contact      String        @default("")
+  gradingSystem String       @default("nigeria")
+  themeColor   String        @default("#059669")
+  principalName String       @default("")
+  principalSignatureUrl String @default("")
+  schoolStampUrl String      @default("")
   users        User[]
   students     Student[]
   subjects     Subject[]
@@ -82,6 +87,7 @@ model School {
   events       CalendarEvent[]
   feeTemplates FeeTemplate[]
   feeLedgers   StudentFeeLedger[]
+  terms        SchoolTerm[]
 }
 
 
@@ -172,13 +178,14 @@ model Result {
   subjectId   String?
   subject     Subject? @relation(fields: [subjectId], references: [id])
   subjectName String
+  term        String   @default("current")
   average     Float
   grade       String
   status      String
   remarks     String?
   details     Json?
 
-  @@unique([studentId, subjectName])
+  @@unique([studentId, subjectName, term])
 }
 
 model SchemeSubmission {
@@ -563,5 +570,43 @@ model StudentFeePayment {
   createdAt   DateTime @default(now())
 
   @@index([ledgerItemId, createdAt])
+}
+
+// =====================
+// Audit Log
+// =====================
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  schoolId  String?
+  userId    String?
+  action    String   // e.g. CREATE_STUDENT, PUBLISH_RESULTS, MARK_ATTENDANCE
+  entity    String   // e.g. Student, Result, AttendanceRecord
+  entityId  String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([schoolId, createdAt])
+  @@index([userId, createdAt])
+}
+
+// =====================
+// Academic Term / Session
+// =====================
+
+model SchoolTerm {
+  id        String   @id @default(cuid())
+  schoolId  String
+  school    School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  name      String   // display name, e.g. "First Term 2024/2025"
+  session   String   // academic year, e.g. "2024/2025"
+  term      String   // "first" | "second" | "third"
+  startDate DateTime
+  endDate   DateTime
+  isCurrent Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@unique([schoolId, session, term])
+  @@index([schoolId, isCurrent])
 }
 

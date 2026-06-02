@@ -1,4 +1,4 @@
-import { Student, Subject, ApiResponse, SchemeSubmission, Assessment, ResultData, School, User, UserRole, ActiveExam, ExamQuestion, ExamSession, Announcement, LiveClass, SchoolClassItem, StaffMessage, TeacherAssignment, Notification, NotificationAudience, PrivateConversation, PrivateConversationMessage, CalendarEvent } from '../types';
+import { Student, Subject, ApiResponse, SchemeSubmission, Assessment, ResultData, School, User, UserRole, ActiveExam, ExamQuestion, ExamSession, Announcement, LiveClass, SchoolClassItem, StaffMessage, TeacherAssignment, Notification, NotificationAudience, PrivateConversation, PrivateConversationMessage, CalendarEvent, SchoolTerm, StudentFeeLedger, StudentFeePayment, AttendanceSummary } from '../types';
 import { MOCK_STUDENTS, MOCK_SUBJECTS, MOCK_SCHEMES, MOCK_ASSESSMENTS, MOCK_RESULTS, MOCK_SCHOOLS, MOCK_USER, MOCK_SUPER_ADMIN } from './mockData';
 import apiClient, { buildSchoolScopedConfig } from '../src/utils/api';
 
@@ -1000,6 +1000,185 @@ export const api = {
     } catch (error) {
       console.error('Failed to send message:', error);
       return wrapError(error, {} as PrivateConversationMessage, 'Failed to send message');
+    }
+  },
+
+  // ── Attendance Summaries ──────────────────────────────────────────────────
+
+  getAttendanceSummaries: async (studentIds: string[]): Promise<ApiResponse<Record<string, { present: number; total: number }>>> => {
+    try {
+      const response = await apiClient.get(`/attendance/summaries?ids=${studentIds.join(',')}`);
+      const data = extractData(response) ?? {};
+      return wrapResponse(data);
+    } catch (error) {
+      console.error('Failed to get attendance summaries:', error);
+      return wrapError(error, {}, 'Failed to load attendance');
+    }
+  },
+
+  getStudentAttendanceSummary: async (studentId: string): Promise<ApiResponse<AttendanceSummary>> => {
+    try {
+      const response = await apiClient.get(`/attendance/student-summary?studentId=${studentId}`);
+      const data = extractData(response);
+      return wrapResponse(data);
+    } catch (error) {
+      console.error('Failed to get attendance summary:', error);
+      return wrapError(error, { present: 0, absent: 0, late: 0, excused: 0, total: 0 }, 'Failed');
+    }
+  },
+
+  // ── School Terms ──────────────────────────────────────────────────────────
+
+  getTerms: async (schoolId: string): Promise<ApiResponse<SchoolTerm[]>> => {
+    try {
+      const response = await apiClient.get(`/terms?schoolId=${schoolId}`);
+      const data = extractData(response) ?? [];
+      return wrapResponse(data);
+    } catch (error) {
+      console.error('Failed to get terms:', error);
+      return wrapError(error, [], 'Failed to load terms');
+    }
+  },
+
+  getCurrentTerm: async (schoolId: string): Promise<ApiResponse<SchoolTerm | null>> => {
+    try {
+      const response = await apiClient.get(`/terms/current?schoolId=${schoolId}`);
+      const data = extractData(response);
+      return wrapResponse(data ?? null);
+    } catch (error) {
+      console.error('Failed to get current term:', error);
+      return wrapError(error, null, 'Failed to load current term');
+    }
+  },
+
+  createTerm: async (payload: {
+    schoolId: string;
+    name: string;
+    session: string;
+    term: 'first' | 'second' | 'third';
+    startDate: string;
+    endDate: string;
+    isCurrent?: boolean;
+  }): Promise<ApiResponse<SchoolTerm>> => {
+    try {
+      const response = await apiClient.post('/terms', payload);
+      const data = extractData(response);
+      return wrapResponse(data, 'Term created');
+    } catch (error) {
+      console.error('Failed to create term:', error);
+      return wrapError(error, {} as SchoolTerm, 'Failed to create term');
+    }
+  },
+
+  setCurrentTerm: async (termId: string): Promise<ApiResponse<boolean>> => {
+    try {
+      const response = await apiClient.put(`/terms/${termId}/current`, {});
+      const data = extractData(response);
+      return wrapResponse(typeof data === 'boolean' ? data : true, 'Current term updated');
+    } catch (error) {
+      console.error('Failed to set current term:', error);
+      return wrapError(error, false, 'Failed to update term');
+    }
+  },
+
+  deleteTerm: async (termId: string): Promise<ApiResponse<boolean>> => {
+    try {
+      await apiClient.delete(`/terms/${termId}`);
+      return wrapResponse(true, 'Term deleted');
+    } catch (error) {
+      console.error('Failed to delete term:', error);
+      return wrapError(error, false, 'Failed to delete term');
+    }
+  },
+
+  // ── Finance ───────────────────────────────────────────────────────────────
+
+  generateLedger: async (payload: {
+    schoolId: string;
+    templateId: string;
+    studentIds: string[];
+    term: string;
+    scopeType: string;
+    scopeId: string;
+  }): Promise<ApiResponse<{ created: number; skipped: number }>> => {
+    try {
+      const response = await apiClient.post('/finance/ledgers/generate', payload);
+      const data = extractData(response);
+      return wrapResponse(data, 'Ledger generated');
+    } catch (error) {
+      console.error('Failed to generate ledger:', error);
+      return wrapError(error, { created: 0, skipped: 0 }, 'Failed to generate ledger');
+    }
+  },
+
+  getLedgers: async (params: {
+    schoolId: string;
+    term?: string;
+    scopeType?: string;
+    scopeId?: string;
+    studentId?: string;
+  }): Promise<ApiResponse<StudentFeeLedger[]>> => {
+    try {
+      const qs = new URLSearchParams({ schoolId: params.schoolId });
+      if (params.term) qs.set('term', params.term);
+      if (params.scopeType) qs.set('scopeType', params.scopeType);
+      if (params.scopeId) qs.set('scopeId', params.scopeId);
+      if (params.studentId) qs.set('studentId', params.studentId);
+      const response = await apiClient.get(`/finance/ledgers?${qs}`);
+      const data = extractData(response) ?? [];
+      return wrapResponse(data);
+    } catch (error) {
+      console.error('Failed to get ledgers:', error);
+      return wrapError(error, [], 'Failed to load ledgers');
+    }
+  },
+
+  recordPayment: async (payload: {
+    ledgerItemId: string;
+    amount: number;
+    method?: string;
+    paymentRef?: string;
+    schoolId: string;
+  }): Promise<ApiResponse<StudentFeePayment>> => {
+    try {
+      const response = await apiClient.post('/finance/payments', payload);
+      const data = extractData(response);
+      return wrapResponse(data, 'Payment recorded');
+    } catch (error) {
+      console.error('Failed to record payment:', error);
+      return wrapError(error, {} as StudentFeePayment, 'Failed to record payment');
+    }
+  },
+
+  getFinanceSummary: async (schoolId: string, term?: string): Promise<ApiResponse<{
+    totalPayable: number;
+    totalCollected: number;
+    outstanding: number;
+    studentCount: number;
+    fullyPaidCount: number;
+  }>> => {
+    try {
+      const qs = new URLSearchParams({ schoolId });
+      if (term) qs.set('term', term);
+      const response = await apiClient.get(`/finance/summary?${qs}`);
+      const data = extractData(response);
+      return wrapResponse(data);
+    } catch (error) {
+      console.error('Failed to get finance summary:', error);
+      return wrapError(error, { totalPayable: 0, totalCollected: 0, outstanding: 0, studentCount: 0, fullyPaidCount: 0 }, 'Failed');
+    }
+  },
+
+  // ── Audit Logs ────────────────────────────────────────────────────────────
+
+  getAuditLogs: async (schoolId: string, limit = 100): Promise<ApiResponse<any[]>> => {
+    try {
+      const response = await apiClient.get(`/audit?schoolId=${schoolId}&limit=${limit}`);
+      const data = extractData(response) ?? [];
+      return wrapResponse(data);
+    } catch (error) {
+      console.error('Failed to get audit logs:', error);
+      return wrapError(error, [], 'Failed to load audit logs');
     }
   },
 };
