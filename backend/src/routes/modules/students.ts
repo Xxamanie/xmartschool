@@ -90,9 +90,10 @@ router.post(
   requireRole(UserRole.ADMIN, UserRole.SUPER_ADMIN),
   asyncHandler(async (req, res) => {
     const data = createSchema.parse(req.body);
+    // Treat empty string the same as absent — fall back to auth-token schoolId
     const effectiveSchoolId =
       req.auth?.role === UserRole.SUPER_ADMIN
-        ? (data.schoolId ?? req.auth?.schoolId)
+        ? (data.schoolId?.trim() || req.auth?.schoolId)
         : req.auth?.schoolId;
     const response = await appService.createStudent(data as any, effectiveSchoolId);
     res.json(response);

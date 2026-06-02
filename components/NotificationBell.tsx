@@ -1,29 +1,12 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Bell, Check, CheckCheck, X } from 'lucide-react';
-import { api } from '../services/api';
 import { useNotifications } from '../context/NotificationContext';
-import type { Notification } from '../types';
 
 export const NotificationBell: React.FC = () => {
-  const { unreadCount, refresh } = useNotifications();
+  const { notifications, unreadCount, markRead } = useNotifications();
   const [open, setOpen] = useState(false);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [loading, setLoading] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    const res = await api.getNotifications();
-    if (res.ok) setNotifications(res.data);
-    setLoading(false);
-  }, []);
-
-  // Load when dropdown opens
-  useEffect(() => {
-    if (open) load();
-  }, [open, load]);
-
-  // Close on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
@@ -32,19 +15,9 @@ export const NotificationBell: React.FC = () => {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const markRead = async (id: string) => {
-    await api.markNotificationRead(id);
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, readAt: new Date().toISOString() } : n)),
-    );
-    refresh();
-  };
-
   const markAllRead = async () => {
     const unread = notifications.filter((n) => !n.readAt);
-    await Promise.all(unread.map((n) => api.markNotificationRead(n.id)));
-    setNotifications((prev) => prev.map((n) => ({ ...n, readAt: n.readAt ?? new Date().toISOString() })));
-    refresh();
+    await Promise.all(unread.map((n) => markRead(n.id)));
   };
 
   return (
@@ -64,10 +37,9 @@ export const NotificationBell: React.FC = () => {
 
       {open && (
         <div className="absolute right-0 top-10 w-80 bg-white rounded-2xl shadow-xl border border-gray-100 z-50 overflow-hidden">
-          {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
             <span className="text-sm font-semibold text-gray-900">
-              Notifications {unreadCount > 0 && <span className="text-red-500">({unreadCount})</span>}
+              Notifications{unreadCount > 0 && <span className="text-red-500 ml-1">({unreadCount})</span>}
             </span>
             <div className="flex items-center gap-2">
               {unreadCount > 0 && (
@@ -85,15 +57,11 @@ export const NotificationBell: React.FC = () => {
             </div>
           </div>
 
-          {/* List */}
           <div className="max-h-96 overflow-y-auto divide-y divide-gray-50">
-            {loading && notifications.length === 0 && (
-              <div className="py-8 text-center text-sm text-gray-400">Loading…</div>
-            )}
-            {!loading && notifications.length === 0 && (
+            {notifications.length === 0 && (
               <div className="py-8 text-center text-sm text-gray-400">No notifications yet</div>
             )}
-            {notifications.map((n) => (
+            {notifications.slice(0, 20).map((n) => (
               <div
                 key={n.id}
                 className={`px-4 py-3 flex gap-3 items-start hover:bg-gray-50 transition-colors ${!n.readAt ? 'bg-primary-50/40' : ''}`}
@@ -103,7 +71,8 @@ export const NotificationBell: React.FC = () => {
                   <p className="text-sm font-medium text-gray-900 truncate">{n.title}</p>
                   <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{n.message}</p>
                   <p className="text-[10px] text-gray-400 mt-1">
-                    {new Date(n.createdAt).toLocaleDateString()} · {new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {new Date(n.createdAt).toLocaleDateString()} ·{' '}
+                    {new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </p>
                 </div>
                 {!n.readAt && (

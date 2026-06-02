@@ -56,7 +56,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { api } from '../services/api';
-import { Announcement, CalendarEvent, School, Student, User, UserRole } from '../types';
+import { Announcement, CalendarEvent, School, SchoolTerm, Student, User, UserRole } from '../types';
 
 // Some roles may not exist in older type definitions; keep UI functional.
 const ROLE_PARENT = (UserRole as any).PARENT ?? 'PARENT';
@@ -156,6 +156,8 @@ export const Dashboard: React.FC = () => {
   const [eventLocation, setEventLocation] = useState('');
   const [eventStartAt, setEventStartAt] = useState('');
   const [eventEndAt, setEventEndAt] = useState('');
+  const [financeSummary, setFinanceSummary] = useState<{ totalCollected: number; outstanding: number; totalPayable: number } | null>(null);
+  const [currentTerm, setCurrentTerm] = useState<SchoolTerm | null>(null);
   const [selectedGender, setSelectedGender] = useState<'female' | 'male' | 'both'>('both');
   const [showSidebar, setShowSidebar] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<any>(null);
@@ -240,11 +242,13 @@ export const Dashboard: React.FC = () => {
 
     const loadDashboardContext = async () => {
       try {
-        const [studentsRes, usersRes, schoolsRes, classMastersRes] = await Promise.all([
+        const [studentsRes, usersRes, schoolsRes, classMastersRes, financeRes, termRes] = await Promise.all([
           api.getStudents(effectiveSchoolId),
           api.getAllUsers(),
           api.getSchools(),
           api.getClassMasters(),
+          api.getFinanceSummary(effectiveSchoolId),
+          api.getCurrentTerm(effectiveSchoolId),
         ]);
 
         if (studentsRes.ok) {
@@ -259,6 +263,8 @@ export const Dashboard: React.FC = () => {
         if (classMastersRes.ok) {
           setClassMasters(classMastersRes.data || {});
         }
+        if (financeRes.ok) setFinanceSummary(financeRes.data);
+        if (termRes.ok) setCurrentTerm(termRes.data);
       } catch (error) {
         console.error('Failed to load dashboard context', error);
         setSchoolUsers([]);
@@ -334,13 +340,22 @@ export const Dashboard: React.FC = () => {
     const parentCount = schoolUsers.filter((entry) => entry.role === ROLE_PARENT).length;
     const studentCount = schoolStudents.length || currentSchool?.studentCount || 0;
 
+    const collected = financeSummary?.totalCollected ?? 0;
+    const outstanding = financeSummary?.outstanding ?? 0;
+    const earningsLabel = collected > 0
+      ? `₦${collected.toLocaleString()}`
+      : 'No data yet';
+    const earningsChange = outstanding > 0
+      ? `₦${outstanding.toLocaleString()} outstanding`
+      : currentTerm?.name ?? 'View Finance';
+
     return [
-      { label: 'Earnings', value: '$53,000', change: '+12.5%', positive: true, icon: DollarSign, color: 'emerald', gradient: 'from-emerald-500 to-teal-600', path: '/finance' },
+      { label: 'Earnings', value: earningsLabel, change: earningsChange, positive: outstanding === 0, icon: DollarSign, color: 'emerald', gradient: 'from-emerald-500 to-teal-600', path: '/finance' },
       { label: 'Students', value: studentCount.toLocaleString(), change: `${calendarEvents.length} events`, positive: true, icon: GraduationCap, color: 'blue', gradient: 'from-blue-500 to-cyan-600', path: '/students' },
       { label: 'Teachers', value: teachersCount.toLocaleString(), change: currentSchool?.name ? 'School staff' : 'Faculty', positive: true, icon: Users, color: 'purple', gradient: 'from-purple-500 to-pink-600', path: '/teachers' },
       { label: 'Parents', value: parentCount.toLocaleString(), change: parentCount > 0 ? 'Guardian accounts' : 'Not tracked yet', positive: true, icon: UserPlus, color: 'orange', gradient: 'from-orange-500 to-red-600', path: '/parents' },
     ];
-  }, [calendarEvents.length, currentSchool?.name, currentSchool?.studentCount, schoolStudents.length, schoolUsers]);
+  }, [calendarEvents.length, currentSchool?.name, currentSchool?.studentCount, financeSummary, currentTerm, schoolStudents.length, schoolUsers]);
 
   const getChartData = () => {
     return weeklyPerformanceData.map(item => ({

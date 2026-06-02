@@ -637,6 +637,36 @@ export const appService = {
     return success(true);
   },
 
+  updateSchoolBranding: async (
+    id: string,
+    updates: Partial<School>,
+    schoolId?: string,
+  ): Promise<ApiResponse<School>> => {
+    await wait(50);
+    if (schoolId && id !== schoolId) {
+      return failure('Cannot update another school', {} as School);
+    }
+    const exists = await prisma.school.findUnique({ where: { id }, select: { id: true } });
+    if (!exists) return failure('School not found', {} as School);
+
+    const updated = await prisma.school.update({
+      where: { id },
+      data: {
+        ...(updates.gradingSystem !== undefined ? { gradingSystem: updates.gradingSystem } : {}),
+        ...(updates.themeColor !== undefined ? { themeColor: updates.themeColor } : {}),
+        ...(updates.principalName !== undefined ? { principalName: updates.principalName } : {}),
+        ...(updates.principalSignatureUrl !== undefined ? { principalSignatureUrl: updates.principalSignatureUrl } : {}),
+        ...(updates.schoolStampUrl !== undefined ? { schoolStampUrl: updates.schoolStampUrl } : {}),
+        ...(updates.motto !== undefined ? { motto: updates.motto } : {}),
+        ...(updates.logoUrl !== undefined ? { logoUrl: updates.logoUrl } : {}),
+        ...(updates.address !== undefined ? { address: updates.address } : {}),
+        ...(updates.contact !== undefined ? { contact: updates.contact } : {}),
+        ...(updates.adminName !== undefined ? { adminName: updates.adminName } : {}),
+      },
+    });
+    return success(mapSchoolModel(updated), 'School updated successfully');
+  },
+
   getAllUsers: async (): Promise<ApiResponse<User[]>> => {
     await wait(100);
     const [users, students] = await Promise.all([prisma.user.findMany(), prisma.student.findMany()]);

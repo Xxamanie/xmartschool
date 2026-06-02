@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, PropsWithChildren } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, PropsWithChildren } from 'react';
 import { User, UserRole } from '../types';
 import { api } from '../services/api';
 import { supabaseAuthService } from '../src/services/supabaseAuthService';
@@ -23,11 +23,9 @@ interface AuthContextType {
   isImpersonating: boolean;
   authMode: 'supabase' | 'demo' | 'unknown';
   error: string | null;
-  // Creator god-mode: scope to a school without impersonating
   viewingSchoolId: string | null;
   setViewingSchoolId: (schoolId: string | null) => void;
   isCreator: boolean;
-  // Effective schoolId — either the user's own or the one Creator is viewing
   effectiveSchoolId: string | null | undefined;
 }
 
@@ -41,8 +39,11 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
   const [error, setError] = useState<string | null>(null);
   const [viewingSchoolId, setViewingSchoolId] = useState<string | null>(null);
 
+  // Tracks an in-progress explicit logout so the auth listener
+  // does not restore a demo session after Supabase fires SIGNED_OUT.
+  const loggingOutRef = useRef(false);
+
   const isCreator = user?.role === UserRole.SUPER_ADMIN;
-  // Creator viewing a school sees that school's data; everyone else sees their own
   const effectiveSchoolId = isCreator ? viewingSchoolId : user?.schoolId;
 
   const persistDemoSession = (nextUser: User) => {
@@ -57,55 +58,81 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
     window.localStorage.removeItem(DEMO_AUTH_USER_KEY);
   };
 
+  const restoreDemoSession = (): User | null => {
+    const storedToken = window.localStorage.getItem(DEMO_AUTH_TOKEN_KEY);
+    const storedUser = window.localStorage.getItem(DEMO_AUTH_USER_KEY);
+    if (!storedToken || !storedUser) return null;
+    try {
+      return JSON.parse(storedUser) as User;
+    } catch {
+      clearDemoSession();
+      return null;
+    }
+  };
+
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;
 
-    const initAuth = async () => {
-      try {
-        setError(null);
-        
-        // Check if Supabase is configured
-        const isSupabaseConfigured = supabaseAuthService.isConfigured() && supabaseUrl !== 'your-project-ref.supabase.co';
-        
-        if (isSupabaseConfigured) {
-          setAuthMode('supabase');
-          clearDemoSession();
-          
-          // Try to get current user from Supabase
-          const supabaseUser = await supabaseAuthService.getCurrentUser();
-          if (supabaseUser) {
-            setUser(supabaseUser);
-          }
-          
-          // Set up auth state listener
-          unsubscribe = supabaseAuthService.onAuthStateChanged((supabaseUser) => {
-            setUser(supabaseUser);
+    const initAuth = () => {
+      setError(null);
+
+      const isSupabaseConfigured =
+        supabaseAuthService.isConfigured() && supabaseUrl !== 'your-project-ref.supabase.co';
+
+      if (isSupabaseConfigured) {
+        setAuthMode('supabase');
+
+        // Register listener FIRST.
+        // Supabase fires the INITIAL_SESSION event synchronously on the next
+        // microtask — before any await in this function — so isLoading is only
+        // released inside the callback, preventing a flash of unauthenticated state.
+        unsubscribe = supabaseAuthService.onAuthStateChanged((supabaseUser) => {
+          if (loggingOutRef.current) {
+            // Explicit logout in progress — don't restore anything.
+            setUser(null);
             setIsLoading(false);
-          });
-        } else if (demoAuthEnabled) {
-          setAuthMode('demo');
-          const storedToken = window.localStorage.getItem(DEMO_AUTH_TOKEN_KEY);
-          const storedUser = window.localStorage.getItem(DEMO_AUTH_USER_KEY);
-          if (storedToken && storedUser) {
-            try {
-              setUser(JSON.parse(storedUser) as User);
-            } catch {
-              clearDemoSession();
+            return;
+          }
+
+          if (supabaseUser) {
+            // Confirmed Supabase session — discard any stale demo tokens.
+            clearDemoSession();
+            setUser(supabaseUser);
+            setAuthMode('supabase');
+          } else {
+            // No Supabase session — fall back to a stored demo/legacy session
+            // so users who authenticated via the backend (students, demo admins)
+            // survive a page refresh.
+            const demoUser = restoreDemoSession();
+            if (demoUser) {
+              setUser(demoUser);
+              setAuthMode('demo');
+            } else {
               setUser(null);
             }
-          } else {
-            clearDemoSession();
-            setUser(null);
           }
-          console.log('Running in demo mode - Supabase not configured or explicitly disabled');
+          setIsLoading(false);
+        });
+
+        // Return here — setIsLoading(false) is owned by the listener above.
+        // Do NOT fall through to the synchronous finally block below.
+        return;
+      }
+
+      // ── Demo / no-Supabase path ───────────────────────────────────────────
+      try {
+        if (demoAuthEnabled) {
+          setAuthMode('demo');
+          const demoUser = restoreDemoSession();
+          setUser(demoUser);
         } else {
           clearDemoSession();
           setUser(null);
           setAuthMode('unknown');
           setError('Supabase authentication is not configured.');
         }
-      } catch (error) {
-        console.error('Failed to initialize auth:', error);
+      } catch (err) {
+        console.error('Failed to initialize auth:', err);
         setError('Failed to initialize authentication');
         setAuthMode(demoAuthEnabled ? 'demo' : 'unknown');
       } finally {
@@ -116,19 +143,18 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
     initAuth();
 
     return () => {
-      if (unsubscribe) {
-        unsubscribe();
-      }
+      if (unsubscribe) unsubscribe();
     };
   }, []);
 
   const login = async (email: string, password?: string) => {
     setIsLoading(true);
     setError(null);
-    
+
     try {
-      const isSupabaseConfigured = authMode === 'supabase' && supabaseUrl !== 'your-project-ref.supabase.co';
-      
+      const isSupabaseConfigured =
+        authMode === 'supabase' && supabaseUrl !== 'your-project-ref.supabase.co';
+
       if (password && isSupabaseConfigured) {
         try {
           const supabaseUser = await supabaseAuthService.login(email, password);
@@ -148,8 +174,6 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
         throw new Error('Demo authentication is disabled for this environment.');
       }
 
-      // Fallback to API login (for demo/mock users)
-      console.log('Attempting demo login for:', email);
       const response = await api.login(email, password);
       if (response.ok) {
         persistDemoSession(response.data);
@@ -170,7 +194,7 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
   const loginStudent = async (schoolCode: string, studentCode: string) => {
     setIsLoading(true);
     setError(null);
-    
+
     try {
       const response = await api.verifyStudent(schoolCode, studentCode);
       if (response.ok) {
@@ -200,23 +224,21 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
   const impersonateSchool = async (schoolId: string) => {
     setIsLoading(true);
     setError(null);
-    
+
     try {
       const schoolsRes = await api.getSchools();
-      const school = schoolsRes.data.find(s => s.id === schoolId);
-      if (!school) throw new Error("School not found");
+      const school = schoolsRes.data.find((s) => s.id === schoolId);
+      if (!school) throw new Error('School not found');
 
       setOriginalUser(user);
-
-      const impersonatedUser = {
+      setUser({
         id: `imp_${school.id}`,
         name: `${school.adminName} (Impersonated)`,
         email: `admin@${school.code.toLowerCase()}.edu`,
         role: UserRole.ADMIN,
         schoolId: school.id,
-        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(school.adminName)}&background=random`
-      };
-      setUser(impersonatedUser);
+        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(school.adminName)}&background=random`,
+      });
     } catch (error: any) {
       console.error('Impersonation error:', error);
       setError(error.message || 'Failed to impersonate school');
@@ -234,21 +256,25 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
   };
 
   const logout = async () => {
+    // Clear local state and mark the logout as in-progress BEFORE calling
+    // supabase.auth.signOut(). This prevents the SIGNED_OUT listener event
+    // from restoring a demo session between the signOut() call and the
+    // finally block that would otherwise clear the demo session.
+    loggingOutRef.current = true;
+    clearDemoSession();
+    setUser(null);
+    setOriginalUser(null);
     setIsLoading(true);
     setError(null);
-    
+
     try {
       if (authMode === 'supabase') {
         await supabaseAuthService.logout();
       }
     } catch (error: any) {
       console.warn('Logout error:', error);
-      setError('Logout failed, but clearing local session');
     } finally {
-      // Always clear local state
-      clearDemoSession();
-      setUser(null);
-      setOriginalUser(null);
+      loggingOutRef.current = false;
       setIsLoading(false);
     }
   };

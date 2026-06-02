@@ -137,54 +137,56 @@ export const Students: React.FC = () => {
   };
 
   const handleAddStudent = async (studentData: Omit<Student, 'id' | 'enrollmentDate'>) => {
-      try {
-          const response = await api.createStudent(studentData);
-          setStudents(prev => [...prev, response.data]);
-          setShowAddModal(false);
-          toast.success('Student added successfully!');
-      } catch (e) {
-          console.error("Failed to add student", e);
-          toast.error(`Error adding student: ${(e as any)?.message || 'Unknown error'}`);
+      const response = await api.createStudent(studentData);
+      if (!response.ok) {
+          toast.error(response.message || 'Failed to add student');
+          return;
       }
+      setStudents(prev => [...prev, response.data]);
+      setShowAddModal(false);
+      toast.success('Student added successfully!');
   };
 
   const handleEditStudent = async (studentData: Partial<Student>) => {
       if (!editingStudent) return;
-      try {
-          const response = await api.updateStudent(editingStudent.id, studentData);
-          setStudents(prev => prev.map(s => s.id === editingStudent.id ? response.data : s));
-          setEditingStudent(null);
-          toast.success('Student updated successfully!');
-      } catch (e) {
-          console.error("Failed to update student", e);
-          toast.error(`Error updating student: ${(e as any)?.message || 'Unknown error'}`);
+      const response = await api.updateStudent(editingStudent.id, studentData);
+      if (!response.ok) {
+          toast.error(response.message || 'Failed to update student');
+          return;
       }
+      setStudents(prev => prev.map(s => s.id === editingStudent.id ? response.data : s));
+      setEditingStudent(null);
+      toast.success('Student updated successfully!');
   };
 
   const handleDeleteStudent = async () => {
       if (!deleteConfirm) return;
-      try {
-          await api.deleteStudent(deleteConfirm.id);
-          setStudents(prev => prev.filter(s => s.id !== deleteConfirm.id));
-          setDeleteConfirm(null);
-          toast.success('Student deleted successfully!');
-      } catch (e) {
-          console.error("Failed to delete student", e);
-          toast.error(`Error deleting student: ${(e as any)?.message || 'Unknown error'}`);
+      const response = await api.deleteStudent(deleteConfirm.id);
+      if (!response.ok) {
+          toast.error(response.message || 'Failed to delete student');
+          return;
       }
+      setStudents(prev => prev.filter(s => s.id !== deleteConfirm.id));
+      setDeleteConfirm(null);
+      toast.success('Student deleted successfully!');
   };
 
   const handleBulkDelete = async () => {
       if (selectedStudents.size === 0) return;
-      try {
-          await Promise.all(Array.from(selectedStudents).map(id => api.deleteStudent(id)));
-          setStudents(prev => prev.filter(s => !selectedStudents.has(s.id)));
-          setSelectedStudents(new Set());
+      const ids = Array.from(selectedStudents);
+      const results = await Promise.all(ids.map(id => api.deleteStudent(id)));
+      const failed = results.filter(r => !r.ok).length;
+      const succeeded = ids.length - failed;
+      setStudents(prev => prev.filter(s => {
+          const idx = ids.indexOf(s.id);
+          return idx === -1 || !results[idx].ok;
+      }));
+      setSelectedStudents(new Set(ids.filter((_, i) => !results[i].ok)));
+      if (failed === 0) {
           setBulkDeleteMode(false);
-          toast.success('Students deleted successfully!');
-      } catch (e) {
-          console.error("Failed to delete students", e);
-          toast.error(`Error deleting students: ${(e as any)?.message || 'Unknown error'}`);
+          toast.success(`${succeeded} student${succeeded !== 1 ? 's' : ''} deleted.`);
+      } else {
+          toast.error(`${succeeded} deleted, ${failed} failed.`);
       }
   };
 

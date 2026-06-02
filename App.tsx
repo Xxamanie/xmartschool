@@ -27,6 +27,7 @@ const LiveClassRoom = React.lazy(() => import('./pages/LiveClassRoom').then((mod
 const StaffRoom = React.lazy(() => import('./pages/StaffRoom').then((module) => ({ default: module.StaffRoom })));
 const Notifications = React.lazy(() => import('./pages/Notifications').then((module) => ({ default: module.Notifications })));
 const PrivateMessages = React.lazy(() => import('./pages/PrivateMessages').then((module) => ({ default: module.PrivateMessages })));
+const Finance = React.lazy(() => import('./pages/Finance').then((module) => ({ default: module.Finance })));
 
 const RouteFallback = () => <LoadingScreen message="Loading page..." />;
 
@@ -122,6 +123,7 @@ const AppContent: React.FC = () => {
             <Route path="notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
             <Route path="messages" element={<ProtectedRoute><PrivateMessages /></ProtectedRoute>} />
             
+            <Route path="finance" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.SUPER_ADMIN]}><Finance /></ProtectedRoute>} />
             <Route path="settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
           </Route>
 

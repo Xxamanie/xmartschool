@@ -96,4 +96,37 @@ router.patch(
   }),
 );
 
+const brandingSchema = z.object({
+  gradingSystem: z.string().optional(),
+  themeColor: z.string().optional(),
+  principalName: z.string().optional(),
+  principalSignatureUrl: z.string().optional(),
+  schoolStampUrl: z.string().optional(),
+  motto: z.string().optional(),
+  logoUrl: z.string().optional(),
+  address: z.string().optional(),
+  contact: z.string().optional(),
+  adminName: z.string().optional(),
+});
+
+router.patch(
+  '/:id/branding',
+  requireAuth,
+  requireRole(UserRole.ADMIN, UserRole.SUPER_ADMIN),
+  asyncHandler(async (req, res) => {
+    const { id } = idParam.parse(req.params);
+    if (req.auth?.role !== UserRole.SUPER_ADMIN && req.auth?.schoolId !== id) {
+      res.status(403).json({ ok: false, data: null, message: 'Cannot update another school' });
+      return;
+    }
+    const updates = brandingSchema.parse(req.body);
+    const response = await appService.updateSchoolBranding(
+      id,
+      updates,
+      req.auth?.role !== UserRole.SUPER_ADMIN ? req.auth?.schoolId : undefined,
+    );
+    res.json(response);
+  }),
+);
+
 export { router as schoolsRouter };

@@ -538,6 +538,17 @@ export const api = {
     }
   },
 
+  updateSchoolBranding: async (schoolId: string, updates: Partial<School>): Promise<ApiResponse<School>> => {
+    try {
+      const response = await apiClient.patch(`/schools/${schoolId}/branding`, updates);
+      const data = extractData(response);
+      return wrapResponse(data, 'School updated successfully');
+    } catch (error) {
+      console.error('Failed to update school branding:', error);
+      return wrapError(error, {} as School, 'Failed to update school');
+    }
+  },
+
   updateSchoolStatus: async (schoolId: string, status: 'Active' | 'Inactive'): Promise<ApiResponse<School>> => {
     try {
       const response = await apiClient.patch(`/schools/${schoolId}/status`, { status });
@@ -1092,6 +1103,37 @@ export const api = {
   },
 
   // ── Finance ───────────────────────────────────────────────────────────────
+
+  getFeeTemplates: async (schoolId: string, term?: string): Promise<ApiResponse<any[]>> => {
+    try {
+      const qs = new URLSearchParams({ schoolId });
+      if (term) qs.set('term', term);
+      const response = await apiClient.get(`/finance/templates?${qs}`);
+      const data = extractData(response) ?? [];
+      return wrapResponse(data);
+    } catch (error) {
+      console.error('Failed to get fee templates:', error);
+      return wrapError(error, [], 'Failed to load templates');
+    }
+  },
+
+  createFeeTemplate: async (payload: {
+    schoolId: string;
+    term: string;
+    name: string;
+    scopeType?: string;
+    scopeId?: string;
+    lines?: { title: string; key: string; defaultAmount?: number }[];
+  }): Promise<ApiResponse<any>> => {
+    try {
+      const response = await apiClient.post('/finance/templates', payload);
+      const data = extractData(response);
+      return wrapResponse(data, 'Template created');
+    } catch (error) {
+      console.error('Failed to create fee template:', error);
+      return wrapError(error, null, 'Failed to create template');
+    }
+  },
 
   generateLedger: async (payload: {
     schoolId: string;
