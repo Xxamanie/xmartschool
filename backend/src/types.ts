@@ -239,6 +239,8 @@ export interface LiveClass {
   schoolClassId?: string;
   scheduledTime: string;
   meetingLink: string;
+  hostMeetingLink?: string;
+  videoProvider?: 'whereby' | 'jitsi';
   status: string;
 }
 

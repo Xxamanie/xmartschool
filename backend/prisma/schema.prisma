@@ -308,9 +308,11 @@ model LiveClass {
   teacherId      String?
   schoolClassId  String
 
-  scheduledTime  DateTime
-  meetingLink    String
-  status         String       @default("scheduled")
+  scheduledTime    DateTime
+  meetingLink      String           // participant / embed URL (Whereby roomUrl or Jitsi URL)
+  hostMeetingLink  String?          // teacher-only Whereby hostRoomUrl (includes room key)
+  videoProvider    String?          // "whereby" | "jitsi" — for UI adaptation
+  status           String           @default("scheduled")
   recording      LiveClassRecording?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt

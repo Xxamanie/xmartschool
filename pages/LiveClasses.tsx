@@ -201,14 +201,16 @@ export const LiveClasses: React.FC = () => {
             <div>
               <label className="text-sm font-medium text-gray-700">
                 Meeting Link
-                <span className="ml-2 text-xs text-gray-400 font-normal">optional — Jitsi room auto-created if blank</span>
+                <span className="ml-2 text-xs text-gray-400 font-normal">
+                  optional — Whereby room created if <code className="bg-gray-100 px-1 rounded">WHEREBY_API_KEY</code> is set, else Jitsi
+                </span>
               </label>
               <input
                 type="text"
                 value={form.meetingLink}
                 onChange={(e) => setForm((s) => ({ ...s, meetingLink: e.target.value }))}
                 className="mt-1 w-full border border-gray-300 rounded-lg p-2"
-                placeholder="Leave blank for auto-generated Jitsi room"
+                placeholder="Leave blank to auto-create a room (Whereby or Jitsi)"
               />
             </div>
           </div>

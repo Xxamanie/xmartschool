@@ -23,6 +23,7 @@ import {
 import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
 import { createSessionToken } from '../utils/session';
+import { env } from '../config/env';
 import {
   ActiveExam,
   ApiResponse,
@@ -404,6 +405,8 @@ const mapLiveClassModel = (liveClass: any): LiveClass => ({
   schoolClassId: liveClass.schoolClassId ?? undefined,
   scheduledTime: liveClass.scheduledTime?.toISOString?.() || liveClass.scheduledTime,
   meetingLink: liveClass.meetingLink,
+  hostMeetingLink: liveClass.hostMeetingLink ?? undefined,
+  videoProvider: liveClass.videoProvider ?? undefined,
   status: liveClass.status,
 });
 
@@ -2239,19 +2242,67 @@ export const appService = {
   ): Promise<ApiResponse<LiveClass>> => {
     await wait(50);
 
-    // Auto-generate a Jitsi Meet room URL if none provided.
-    // Jitsi is free, open-source and needs no API key — rooms are created on first join.
-    // Format: https://meet.jit.si/xmartschool-{unique-slug}
-    const resolvedLink = meetingLink?.trim()
-      || `https://meet.jit.si/xmartschool-${schoolClassId.slice(-8)}-${Date.now().toString(36)}`;
+    let resolvedLink = meetingLink?.trim() || '';
+    let hostLink: string | undefined;
+    let provider: 'whereby' | 'jitsi' = 'jitsi';
+
+    if (!resolvedLink) {
+      const wherebyKey = env.wherebyApiKey;
+
+      if (wherebyKey) {
+        // ── Whereby: create a room via their REST API ──────────────────────
+        // Rooms last 24 h from scheduled time by default. Free tier = 2 000 participant-min/month.
+        // Whereby docs: https://docs.whereby.com/reference/whereby-rest-api-reference
+        try {
+          const endDate = new Date(scheduledTime);
+          endDate.setHours(endDate.getHours() + 3); // 3-hour window
+
+          const resp = await fetch('https://api.whereby.dev/v1/meetings', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${wherebyKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              endDate: endDate.toISOString(),
+              fields: ['hostRoomUrl'],
+            }),
+          });
+
+          if (resp.ok) {
+            const data = await resp.json() as { roomUrl: string; hostRoomUrl: string };
+            resolvedLink = data.roomUrl;
+            hostLink = data.hostRoomUrl;
+            provider = 'whereby';
+          } else {
+            console.warn('[LiveClass] Whereby API error:', resp.status, await resp.text());
+          }
+        } catch (err) {
+          console.warn('[LiveClass] Whereby fetch failed, falling back to Jitsi:', err);
+        }
+      }
+
+      // ── Jitsi fallback: zero-config, no API key needed ───────────────────
+      if (!resolvedLink) {
+        const slug = `xmartschool-${schoolClassId.slice(-8)}-${Date.now().toString(36)}`;
+        resolvedLink = `https://meet.jit.si/${slug}`;
+        provider = 'jitsi';
+      }
+    } else {
+      // Caller provided a manual link — detect provider for iframe handling
+      if (resolvedLink.includes('whereby.com')) provider = 'whereby';
+      else if (resolvedLink.includes('meet.jit.si')) provider = 'jitsi';
+    }
 
     const created = await prisma.liveClass.create({
       data: {
         subjectId: subjectId || undefined,
         teacherId: teacherId || undefined,
-        schoolClassId: schoolClassId,
+        schoolClassId,
         scheduledTime: toDateOnly(scheduledTime),
         meetingLink: resolvedLink,
+        hostMeetingLink: hostLink || null,
+        videoProvider: provider,
       },
     });
     return success(mapLiveClassModel(created), 'Live class scheduled');

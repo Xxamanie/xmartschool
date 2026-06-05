@@ -168,17 +168,31 @@ export const LiveClassRoom: React.FC = () => {
     );
   }
 
-  // Build the video URL — supports both Jitsi (meet.jit.si) and plain meeting links.
-  // Jitsi lets you pass display name and role via URL hash fragments.
+  // Build the video embed URL, choosing between Whereby and Jitsi based on the provider field.
+  // Teachers get the hostRoomUrl (includes room key = full moderation controls in Whereby).
   const videoSrc = (() => {
-    const base = liveClass.meetingLink ?? '';
-    if (base.includes('meet.jit.si')) {
-      const role = isTeacher ? 'moderator' : 'participant';
-      return `${base}#userInfo.displayName="${encodeURIComponent(user?.name ?? 'User')}"&config.prejoinPageEnabled=false`;
+    const provider = liveClass.videoProvider;
+    const name = encodeURIComponent(user?.name ?? 'User');
+
+    // ── Whereby ────────────────────────────────────────────────────────────
+    // Teachers use hostRoomUrl (has ?roomKey=… giving moderator rights).
+    // Whereby embed params: https://docs.whereby.com/embedding-rooms/in-a-web-page/using-the-embed-element
+    if (provider === 'whereby' || (liveClass.meetingLink ?? '').includes('whereby.com')) {
+      const base = (isTeacher && liveClass.hostMeetingLink) ? liveClass.hostMeetingLink : liveClass.meetingLink;
+      const sep = base.includes('?') ? '&' : '?';
+      return `${base}${sep}displayName=${name}&background=off&screenshare=on&chat=on${isTeacher ? '&locking=on&recording=on' : ''}`;
     }
-    // Generic fallback — append name as query param (works for most SFU embeds)
+
+    // ── Jitsi ──────────────────────────────────────────────────────────────
+    // Display name and no-prejoin via URL hash fragment (no API key needed).
+    if (provider === 'jitsi' || (liveClass.meetingLink ?? '').includes('meet.jit.si')) {
+      return `${liveClass.meetingLink}#userInfo.displayName="${name}"&config.prejoinPageEnabled=false`;
+    }
+
+    // ── Generic fallback ───────────────────────────────────────────────────
+    const base = liveClass.meetingLink ?? '';
     const sep = base.includes('?') ? '&' : '?';
-    return `${base}${sep}name=${encodeURIComponent(user?.name ?? 'User')}`;
+    return `${base}${sep}name=${name}`;
   })();
 
   return (
@@ -195,8 +209,17 @@ export const LiveClassRoom: React.FC = () => {
           />
 
           <div className="bg-gray-800 rounded-lg p-4 flex items-center justify-between gap-4">
-            <div className="text-white text-sm">
-              {liveClass.subjectId ? `${liveClass.subjectId}` : 'Live Class'}
+            <div className="flex items-center gap-3">
+              <span className="text-white text-sm font-medium">
+                {liveClass.subjectId ? liveClass.subjectId : 'Live Class'}
+              </span>
+              <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${
+                liveClass.videoProvider === 'whereby'
+                  ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                  : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+              }`}>
+                {liveClass.videoProvider === 'whereby' ? 'Whereby' : 'Jitsi'}
+              </span>
             </div>
             <div className="flex items-center gap-2">
               <button
