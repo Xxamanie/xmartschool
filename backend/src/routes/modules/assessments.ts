@@ -11,16 +11,24 @@ const listQuery = z.object({
   subjectId: z.string().optional(),
   term: z.string().optional(),
   studentId: z.string().optional(),
+  classId: z.string().optional(),  // SchoolClass.id selected on the frontend
 });
 
 router.get(
   '/',
   requireAuth,
   asyncHandler(async (req, res) => {
-    const { subjectId, term, studentId } = listQuery.parse(req.query);
+    const { subjectId, term, studentId, classId } = listQuery.parse(req.query);
     const effectiveStudentId = req.auth?.role === UserRole.STUDENT ? req.auth.userId : studentId;
     const teacherId = req.auth?.role === UserRole.TEACHER ? req.auth.userId : undefined;
-    const response = await appService.getAssessments(req.auth?.schoolId, subjectId, term, effectiveStudentId, teacherId);
+    const response = await appService.getAssessments(
+      req.auth?.schoolId,
+      subjectId,
+      term,
+      effectiveStudentId,
+      teacherId,
+      classId,
+    );
     res.json(response);
   }),
 );
@@ -58,6 +66,7 @@ router.put(
     const response = await appService.saveAssessments(
       assessments as any,
       req.auth?.role === UserRole.SUPER_ADMIN ? undefined : req.auth?.schoolId,
+      req.auth?.role === UserRole.TEACHER ? req.auth?.userId : undefined,
     );
     res.json(response);
   }),
@@ -73,6 +82,7 @@ router.post(
     const response = await appService.saveAssessments(
       assessments as any,
       req.auth?.role === UserRole.SUPER_ADMIN ? undefined : req.auth?.schoolId,
+      req.auth?.role === UserRole.TEACHER ? req.auth?.userId : undefined,
     );
     res.json(response);
   }),

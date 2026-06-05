@@ -3,6 +3,7 @@ export enum UserRole {
   ADMIN = 'ADMIN',
   TEACHER = 'TEACHER',
   STUDENT = 'STUDENT',
+  PARENT = 'PARENT',
 }
 
 export interface User {
@@ -96,6 +97,7 @@ export interface Student {
   attendance: number;
   schoolId: string;
   accessCode: string;
+  avatar?: string;
   enrolledSubjects?: string[];
 }
 
@@ -258,6 +260,9 @@ export interface StaffMessage {
   id: string;
   schoolId: string;
   userId: string;
+  senderName?: string;
+  senderAvatar?: string;
+  senderRole?: string;
   type: 'text' | 'image' | 'video' | 'audio';
   content: string;
   mediaUrl?: string;

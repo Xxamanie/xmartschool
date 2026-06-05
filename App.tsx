@@ -3,6 +3,7 @@ import React, { Suspense } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { NotificationProvider } from './context/NotificationContext';
+import { StaffRoomProvider } from './context/StaffRoomContext';
 import { Layout } from './components/Layout';
 import { LoadingScreen } from './components/LoadingScreen';
 import { UserRole } from './types';
@@ -28,6 +29,8 @@ const StaffRoom = React.lazy(() => import('./pages/StaffRoom').then((module) => 
 const Notifications = React.lazy(() => import('./pages/Notifications').then((module) => ({ default: module.Notifications })));
 const PrivateMessages = React.lazy(() => import('./pages/PrivateMessages').then((module) => ({ default: module.PrivateMessages })));
 const Finance = React.lazy(() => import('./pages/Finance').then((module) => ({ default: module.Finance })));
+const Timetable = React.lazy(() => import('./pages/Timetable').then((module) => ({ default: module.Timetable })));
+const ParentPortal = React.lazy(() => import('./pages/ParentPortal').then((module) => ({ default: module.ParentPortal })));
 
 const RouteFallback = () => <LoadingScreen message="Loading page..." />;
 
@@ -124,6 +127,8 @@ const AppContent: React.FC = () => {
             <Route path="messages" element={<ProtectedRoute><PrivateMessages /></ProtectedRoute>} />
             
             <Route path="finance" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.SUPER_ADMIN]}><Finance /></ProtectedRoute>} />
+            <Route path="timetable" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Timetable /></ProtectedRoute>} />
+            <Route path="parent-portal" element={<ProtectedRoute allowedRoles={[UserRole.PARENT]}><ParentPortal /></ProtectedRoute>} />
             <Route path="settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
           </Route>
 
@@ -138,8 +143,10 @@ const App: React.FC = () => {
   return (
     <AuthProvider>
       <NotificationProvider>
-        <GlobalClickSound />
-        <AppContent />
+        <StaffRoomProvider>
+          <GlobalClickSound />
+          <AppContent />
+        </StaffRoomProvider>
       </NotificationProvider>
     </AuthProvider>
   );
@@ -154,6 +161,7 @@ const DashboardWrapper = () => {
      return <SuperAdmin />;
    }
    if (user?.role === UserRole.STUDENT) return <Navigate to="/student-portal" replace />;
+   if (user?.role === UserRole.PARENT) return <Navigate to="/parent-portal" replace />;
    return <Dashboard />;
 };
 

@@ -1,5 +1,4 @@
 import { Student, Subject, ApiResponse, SchemeSubmission, Assessment, ResultData, School, User, UserRole, ActiveExam, ExamQuestion, ExamSession, Announcement, LiveClass, SchoolClassItem, StaffMessage, TeacherAssignment, Notification, NotificationAudience, PrivateConversation, PrivateConversationMessage, CalendarEvent, SchoolTerm, StudentFeeLedger, StudentFeePayment, AttendanceSummary } from '../types';
-import { MOCK_STUDENTS, MOCK_SUBJECTS, MOCK_SCHEMES, MOCK_ASSESSMENTS, MOCK_RESULTS, MOCK_SCHOOLS, MOCK_USER, MOCK_SUPER_ADMIN } from './mockData';
 import apiClient, { buildSchoolScopedConfig } from '../src/utils/api';
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -307,27 +306,11 @@ export const api = {
       await delay(800); // Simulate network delay
       
       if (email === 'creator@smartschool.edu') {
-        return wrapResponse(MOCK_SUPER_ADMIN, 'Demo login successful');
+        return wrapResponse({ id: 'sa_001', name: 'SmartSchool Creator', email, role: UserRole.SUPER_ADMIN, avatar: `https://ui-avatars.com/api/?name=Creator&background=0F172A&color=fff` } as User, 'Demo login successful');
       } else if (email.includes('admin')) {
-        const adminUser = { 
-          ...MOCK_USER, 
-          role: UserRole.ADMIN, 
-          name: 'School Principal', 
-          email, 
-          id: 'admin1',
-          avatar: `https://ui-avatars.com/api/?name=School+Principal&background=random`
-        };
-        return wrapResponse(adminUser, 'Demo login successful');
+        return wrapResponse({ id: 'admin1', name: 'School Principal', email, role: UserRole.ADMIN, avatar: `https://ui-avatars.com/api/?name=School+Principal&background=random` } as User, 'Demo login successful');
       } else if (email.includes('teacher') || email.includes('alex')) {
-        const teacherUser = { 
-          ...MOCK_USER, 
-          role: UserRole.TEACHER, 
-          name: 'Alex Johnson', 
-          email, 
-          id: 'teacher1',
-          avatar: `https://ui-avatars.com/api/?name=Alex+Johnson&background=random`
-        };
-        return wrapResponse(teacherUser, 'Demo login successful');
+        return wrapResponse({ id: 'teacher1', name: 'Alex Johnson', email, role: UserRole.TEACHER, avatar: `https://ui-avatars.com/api/?name=Alex+Johnson&background=random` } as User, 'Demo login successful');
       } else {
         return wrapError(error, {} as User, 'Invalid credentials. Try: creator@smartschool.edu, admin@school.edu, or teacher@school.edu');
       }
@@ -378,6 +361,16 @@ export const api = {
     } catch (error) {
       console.error('Failed to update profile:', error);
       return wrapError(error, {} as User, 'Failed to update profile');
+    }
+  },
+
+  changePassword: async (currentPassword: string, newPassword: string): Promise<ApiResponse<boolean>> => {
+    try {
+      const response = await apiClient.post('/auth/change-password', { currentPassword, newPassword });
+      return normalizeApiResponse<boolean>(response, 'Password changed successfully');
+    } catch (error) {
+      console.error('Failed to change password:', error);
+      return wrapError(error, false, 'Failed to change password');
     }
   },
 
@@ -506,6 +499,16 @@ export const api = {
     }
   },
 
+  updateResultStatus: async (resultId: string, status: 'Published' | 'Draft' | 'withheld'): Promise<ApiResponse<boolean>> => {
+    try {
+      const response = await apiClient.patch(`/results/${resultId}/status`, { status });
+      return normalizeApiResponse<boolean>(response);
+    } catch (error) {
+      console.error('Failed to update result status:', error);
+      return wrapError(error, false, 'Failed to update result status');
+    }
+  },
+
   getSchools: async (): Promise<ApiResponse<School[]>> => {
     try {
       const response = await apiClient.get('/schools');
@@ -621,38 +624,52 @@ export const api = {
     } catch (error) {
       console.error('Failed to get schemes:', error);
       await delay(700);
-      return wrapResponse(MOCK_SCHEMES, 'Using demo schemes');
+      return wrapResponse([], 'Using empty scheme list');
     }
   },
 
   uploadScheme: async (file: File, metadata: any): Promise<ApiResponse<{ id: string }>> => {
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('metadata', JSON.stringify(metadata));
-      
-      const response = await apiClient.post('/schemes/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+      // Upload file to Supabase Storage if configured, then record metadata via backend
+      const { getSupabaseClient } = await import('../src/services/supabaseClient');
+      const supabase = getSupabaseClient();
+      const bucket = import.meta.env.VITE_SUPABASE_STORAGE_BUCKET || 'schemes';
+
+      let fileUrl = '';
+      if (supabase) {
+        const path = `schemes/${Date.now()}_${file.name.replace(/\s+/g, '_')}`;
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from(bucket)
+          .upload(path, file, { upsert: false });
+        if (uploadError) throw new Error(uploadError.message);
+        const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(uploadData.path);
+        fileUrl = urlData.publicUrl;
+      }
+
+      // Record the submission in the backend
+      const response = await apiClient.post('/schemes/upload', {
+        fileName: file.name,
+        fileUrl,
+        term: metadata.term,
+        subject: metadata.subject,
+        year: metadata.year,
       });
       const data = extractData(response);
       return wrapResponse(data, 'Scheme uploaded successfully');
     } catch (error) {
       console.error('Failed to upload scheme:', error);
-      await delay(1500);
-      return wrapResponse(
-        { id: `scheme_${Date.now()}` },
-        'Scheme uploaded successfully (demo mode)'
-      );
+      return wrapError(error, { id: '' }, 'Upload failed. Check your Supabase storage configuration.');
     }
   },
 
-  getAssessments: async (subjectId?: string, term?: string, studentId?: string): Promise<ApiResponse<Assessment[]>> => {
+  getAssessments: async (subjectId?: string, term?: string, studentId?: string, classId?: string): Promise<ApiResponse<Assessment[]>> => {
     try {
       const params = new URLSearchParams();
       if (subjectId) params.append('subjectId', subjectId);
       if (term) params.append('term', term);
       if (studentId) params.append('studentId', studentId);
-      
+      if (classId) params.append('classId', classId);
+
       const response = await apiClient.get(`/assessments?${params}`);
       const data = extractData(response) || [];
       return wrapResponse(data);
@@ -874,6 +891,17 @@ export const api = {
     }
   },
 
+  getClassAssignments: async (classId: string): Promise<ApiResponse<(TeacherAssignment & { teacherName?: string })[]>> => {
+    try {
+      const response = await apiClient.get(`/teacher-assignments?classId=${classId}`);
+      const data = extractData(response) || [];
+      return wrapResponse(data);
+    } catch (error) {
+      console.error('Failed to get class assignments:', error);
+      return wrapError(error, [], 'Failed to load class assignments');
+    }
+  },
+
   getTeacherAssignments: async (teacherId: string): Promise<ApiResponse<TeacherAssignment[]>> => {
     try {
       const response = await apiClient.get(`/teacher-assignments?teacherId=${teacherId}`);
@@ -1016,7 +1044,7 @@ export const api = {
 
   // ── Attendance Summaries ──────────────────────────────────────────────────
 
-  getAttendanceSummaries: async (studentIds: string[]): Promise<ApiResponse<Record<string, { present: number; total: number }>>> => {
+  getAttendanceSummaries: async (studentIds: string[]): Promise<ApiResponse<Record<string, { present: number; absent: number; late: number; excused: number; total: number }>>> => {
     try {
       const response = await apiClient.get(`/attendance/summaries?ids=${studentIds.join(',')}`);
       const data = extractData(response) ?? {};
@@ -1183,7 +1211,9 @@ export const api = {
     schoolId: string;
   }): Promise<ApiResponse<StudentFeePayment>> => {
     try {
-      const response = await apiClient.post('/finance/payments', payload);
+      // Generate a one-time idempotency key so retries don't create duplicate records
+      const clientRef = `pay_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+      const response = await apiClient.post('/finance/payments', { ...payload, clientRef });
       const data = extractData(response);
       return wrapResponse(data, 'Payment recorded');
     } catch (error) {
@@ -1221,6 +1251,58 @@ export const api = {
     } catch (error) {
       console.error('Failed to get audit logs:', error);
       return wrapError(error, [], 'Failed to load audit logs');
+    }
+  },
+
+  // ── Parent Portal ─────────────────────────────────────────────────────────
+
+  getSchoolParents: async (schoolId: string): Promise<ApiResponse<(User & { childCount: number })[]>> => {
+    try {
+      const response = await apiClient.get(`/parents?schoolId=${schoolId}`);
+      const data = extractData(response) ?? [];
+      return wrapResponse(data);
+    } catch (error) {
+      return wrapError(error, [], 'Failed to load parents');
+    }
+  },
+
+  createParent: async (payload: {
+    name: string; email: string; phone?: string; schoolId: string; studentIds: string[];
+  }): Promise<ApiResponse<User & { authToken?: string }>> => {
+    try {
+      const response = await apiClient.post('/parents', payload);
+      const data = extractData(response);
+      return wrapResponse(data, 'Parent account created');
+    } catch (error) {
+      return wrapError(error, {} as User, 'Failed to create parent');
+    }
+  },
+
+  linkParentToStudent: async (parentId: string, studentId: string): Promise<ApiResponse<boolean>> => {
+    try {
+      const response = await apiClient.post(`/parents/${parentId}/link`, { studentId });
+      return wrapResponse(true);
+    } catch (error) {
+      return wrapError(error, false, 'Failed to link student');
+    }
+  },
+
+  unlinkParentFromStudent: async (parentId: string, studentId: string): Promise<ApiResponse<boolean>> => {
+    try {
+      await apiClient.delete(`/parents/${parentId}/link/${studentId}`);
+      return wrapResponse(true);
+    } catch (error) {
+      return wrapError(error, false, 'Failed to unlink student');
+    }
+  },
+
+  getParentChildren: async (): Promise<ApiResponse<any[]>> => {
+    try {
+      const response = await apiClient.get('/parents/my-children');
+      const data = extractData(response) ?? [];
+      return wrapResponse(data);
+    } catch (error) {
+      return wrapError(error, [], 'Failed to load children data');
     }
   },
 };

@@ -1011,17 +1011,46 @@ export const Results: React.FC = () => {
                           </td>
                           
                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                            <button 
+                            <div className="flex items-center gap-2 justify-end">
+                              {(user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN) && (
+                                <>
+                                  {result.status === 'Published' && (
+                                    <button
+                                      onClick={async () => {
+                                        const res = await api.updateResultStatus(result.id, 'withheld');
+                                        if (res.ok) setResults(prev => prev.map(r => r.id === result.id ? { ...r, status: 'withheld' } : r));
+                                      }}
+                                      className="text-xs text-red-600 hover:text-red-800 border border-red-200 hover:bg-red-50 px-2 py-1 rounded-lg transition-colors"
+                                      title="Withhold this result"
+                                    >
+                                      Withhold
+                                    </button>
+                                  )}
+                                  {(result.status === 'withheld' || result.status === 'Draft') && (
+                                    <button
+                                      onClick={async () => {
+                                        const res = await api.updateResultStatus(result.id, 'Published');
+                                        if (res.ok) setResults(prev => prev.map(r => r.id === result.id ? { ...r, status: 'Published' } : r));
+                                      }}
+                                      className="text-xs text-emerald-600 hover:text-emerald-800 border border-emerald-200 hover:bg-emerald-50 px-2 py-1 rounded-lg transition-colors"
+                                      title="Publish this result"
+                                    >
+                                      Publish
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                              <button
                                 onClick={() => {
                                   setSelectedTermFilter(result.term || '');
                                   setSelectedClassFilter(allStudents.find((student) => student.id === result.studentId)?.grade || '');
                                   setShowReportSelector(true);
                                 }}
                                 className="text-primary-600 hover:text-primary-900 inline-flex items-center gap-1"
-                            >
-                                <Eye size={16} />
-                                Select
-                            </button>
+                              >
+                                <Eye size={16} /> Select
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))

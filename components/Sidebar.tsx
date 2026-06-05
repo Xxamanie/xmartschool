@@ -22,10 +22,13 @@ import {
   MessageSquare,
   Bell,
   MessageCircle,
+  Grid3x3,
+  Baby,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useClickSound } from '../src/utils/useClickSound';
 import { useNotifications } from '../context/NotificationContext';
+import { useStaffRoom } from '../context/StaffRoomContext';
 import { UserRole } from '../types';
 
 interface SidebarProps {
@@ -37,6 +40,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const { logout, user, isImpersonating, viewingSchoolId, setViewingSchoolId } = useAuth();
   const { playSound } = useClickSound();
   const { unreadCount } = useNotifications();
+  const { unreadCount: staffUnread } = useStaffRoom();
   const navigate = useNavigate();
   const isCreator = user?.role === UserRole.SUPER_ADMIN;
   const isScopedToSchool = isCreator && !!viewingSchoolId;
@@ -53,6 +57,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     { to: '/scheme-of-work', icon: FileText, label: 'Scheme of Work' },
     { to: '/assessments', icon: ClipboardCheck, label: 'Assessments' },
     { to: '/results', icon: TrendingUp, label: 'Results' },
+    { to: '/timetable', icon: Grid3x3, label: 'Timetable' },
     { to: '/live-classes', icon: Video, label: 'Live Classes' },
     { to: '/staff-room', icon: MessageSquare, label: 'Staff Room' },
     { to: '/notifications', icon: Bell, label: 'Notifications' },
@@ -73,6 +78,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
         { to: '/student-portal', icon: FileText, label: 'My Result Slip' },
         { to: '/notifications', icon: Bell, label: 'Notifications' },
         { to: '/messages', icon: MessageCircle, label: 'Ask a Teacher' },
+      ];
+    } else if (user?.role === UserRole.PARENT) {
+      return [
+        { to: '/parent-portal', icon: Baby, label: 'My Children' },
+        { to: '/notifications', icon: Bell, label: 'Notifications' },
       ];
     } else {
       return schoolNavItems;
@@ -177,6 +187,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                 {item.to === '/notifications' && unreadCount > 0 && (
                   <span className="ml-auto min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
                     {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
+                {item.to === '/staff-room' && staffUnread > 0 && (
+                  <span className="ml-auto min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
+                    {staffUnread > 99 ? '99+' : staffUnread}
                   </span>
                 )}
               </>

@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { api } from '../services/api';
-import { Assessment, Student, Subject, ResultData, ExamQuestion, ActiveExam, UserRole, SchoolClassItem } from '../types';
+import { Assessment, Student, Subject, ResultData, ExamQuestion, ActiveExam, UserRole, SchoolClassItem, TeacherAssignment } from '../types';
 import { GoogleGenAI, Type } from "@google/genai";
 import { useAuth } from '../context/AuthContext';
 import { ToastContainer } from '../components/Toast';
@@ -94,11 +94,52 @@ export const Assessments: React.FC = () => {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [teachers, setTeachers] = useState<Record<string, string>>({}); // Map ID to Name for Admin context
-  
+  const [classMasters, setClassMasters] = useState<Record<string, string>>({}); // grade → teacherId
+  const [teacherAssignments, setTeacherAssignments] = useState<TeacherAssignment[]>([]);
+
   const [selectedSubject, setSelectedSubject] = useState('');
   const [selectedTerm, setSelectedTerm] = useState('Term 1');
   const [selectedClass, setSelectedClass] = useState('');
   const [schoolClasses, setSchoolClasses] = useState<SchoolClassItem[]>([]);
+
+  // Form master detection (derived from classMasters)
+  const formMasterGrade = useMemo(
+    () =>
+      user?.role === UserRole.TEACHER
+        ? (Object.entries(classMasters).find(([, tid]) => tid === user.id)?.[0] ?? null)
+        : null,
+    [classMasters, user],
+  );
+  const isFormMaster = !!formMasterGrade;
+
+  // Classes this teacher is allowed to access:
+  //   - their form class (if form master)
+  //   - every class they have a TeacherAssignment for
+  // Admins and super-admins see the full list.
+  const accessibleClasses = useMemo(() => {
+    if (user?.role !== UserRole.TEACHER) return schoolClasses;
+    const ids = new Set<string>();
+    if (formMasterGrade) {
+      const fc = schoolClasses.find(c => c.name === formMasterGrade);
+      if (fc) ids.add(fc.id);
+    }
+    teacherAssignments.forEach(a => ids.add(a.schoolClassId));
+    return schoolClasses.filter(c => ids.has(c.id));
+  }, [schoolClasses, formMasterGrade, teacherAssignments, user?.role]);
+
+  // Subjects visible for the currently-selected class:
+  //   - All subjects  → when no class selected, or when admin, or when the selected class IS the form class
+  //   - Assigned only → when a different class is selected (subject-teacher context)
+  const visibleSubjects = useMemo(() => {
+    if (user?.role !== UserRole.TEACHER || !selectedClass) return subjects;
+    const selectedClassName = schoolClasses.find(c => c.id === selectedClass)?.name;
+    if (isFormMaster && selectedClassName === formMasterGrade) return subjects; // form class → all subjects
+    // Subject-teacher class → only subjects assigned for this class
+    const assignedIds = new Set(
+      teacherAssignments.filter(a => a.schoolClassId === selectedClass).map(a => a.subjectId),
+    );
+    return subjects.filter(s => assignedIds.has(s.id));
+  }, [subjects, selectedClass, schoolClasses, isFormMaster, formMasterGrade, teacherAssignments, user?.role]);
   // Which accordion step is open: 'term' | 'class' | 'subject' | null (all collapsed once all chosen)
   const [openAccordion, setOpenAccordion] = useState<'term' | 'class' | 'subject'>('term');
   
@@ -154,10 +195,6 @@ export const Assessments: React.FC = () => {
   });
   const [isGenerating, setIsGenerating] = useState(false);
 
-  // Import Modal State
-  const [showImportModal, setShowImportModal] = useState(false);
-  const [importSourceExamId, setImportSourceExamId] = useState('');
-  const [questionsToImport, setQuestionsToImport] = useState<string[]>([]);
 
   // Tooltip State
   const [hoveredStudent, setHoveredStudent] = useState<string | null>(null);
@@ -178,29 +215,49 @@ export const Assessments: React.FC = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
+        // For teachers: load class masters AND teacher assignments first so we
+        // can decide subject scope and accessible classes before rendering.
+        let mastersData: Record<string, string> = {};
+        let assignmentsData: TeacherAssignment[] = [];
+        if (user?.role === UserRole.TEACHER) {
+          const [mastersRes, assignmentsRes] = await Promise.all([
+            api.getClassMasters(),
+            api.getTeacherAssignments(user.id),
+          ]);
+          if (mastersRes.ok) {
+            mastersData = mastersRes.data;
+            setClassMasters(mastersData);
+          }
+          if (assignmentsRes.ok) {
+            assignmentsData = assignmentsRes.data;
+            setTeacherAssignments(assignmentsData);
+          }
+        }
+
+        // Determine if this teacher is a form master BEFORE subject filtering
+        const thisFormMasterGrade = user?.role === UserRole.TEACHER
+          ? (Object.entries(mastersData).find(([, tid]) => tid === user.id)?.[0] ?? null)
+          : null;
+
         const [studentsRes, subjectsRes, examRes] = await Promise.all([
           api.getStudents(),
           api.getSubjects(),
           api.getExams()
         ]);
 
-        // Filter students based on user role
-        let filteredStudents = studentsRes.data;
-        if (user?.role === UserRole.TEACHER) {
-          // Teachers only see students from their assigned subjects/classes
-          // For now, show all students but this can be enhanced with class assignments
-          filteredStudents = studentsRes.data;
-        }
-        if (studentsRes.ok) setStudents(filteredStudents);
-        
-        // Filter subjects based on user role
+        if (studentsRes.ok) setStudents(studentsRes.data);
+
+        // Subject scope:
+        // - Admin / Super admin: all subjects
+        // - Form master: ALL subjects (they compile marks across every subject for their class)
+        // - Regular teacher: subjects they are assigned to teach (via TeacherAssignment)
         let filteredSubjects = subjectsRes.data;
-        if (user?.role === UserRole.TEACHER) {
-          // Teachers only see subjects assigned to them
-          filteredSubjects = subjectsRes.data.filter(subject => subject.teacherId === user.id);
+        if (user?.role === UserRole.TEACHER && !thisFormMasterGrade) {
+          const assignedSubjectIds = new Set(assignmentsData.map(a => a.subjectId));
+          filteredSubjects = subjectsRes.data.filter(s => assignedSubjectIds.has(s.id));
         }
-        
-        // If Admin, fetch users to map teacher IDs to names
+
+        // If Admin, fetch users to map teacher IDs to names for display
         if (user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN) {
             const usersRes = await api.getAllUsers();
             if (usersRes.ok) {
@@ -212,15 +269,9 @@ export const Assessments: React.FC = () => {
             }
         }
 
-        if (subjectsRes.ok && filteredSubjects.length > 0) {
-          let subs = filteredSubjects;
-          // Filter for Teachers (Admins see all) - already filtered above
-          setSubjects(subs);
-          if (subs.length > 0) {
-             setSelectedSubject(subs[0].id);
-          } else {
-             setSelectedSubject('');
-          }
+        if (subjectsRes.ok) {
+          setSubjects(filteredSubjects);
+          // Don't auto-select a subject — let the teacher pick via the accordion
         }
 
         // Load school classes for the class accordion
@@ -229,15 +280,13 @@ export const Assessments: React.FC = () => {
           const classRes = await api.getSchoolClasses(schoolId);
           if (classRes.ok) setSchoolClasses(classRes.data);
         }
-        
+
         if (examRes.ok && examRes.data.length > 0) {
            let exams = examRes.data;
-           // Filter exams for teachers so they only manage their own
            if (user?.role === UserRole.TEACHER) {
              exams = exams.filter(e => e.teacherId === user.id);
            }
            setAllExams(exams);
-
            if (exams.length > 0) {
               const activeOne = exams.find(e => e.status === 'active') || exams[0];
               setSelectedExamId(activeOne.id);
@@ -253,6 +302,30 @@ export const Assessments: React.FC = () => {
     };
     fetchData();
   }, [user]);
+
+  // When the accessible class list is ready, pre-select for teachers:
+  //   1. Form master → pre-select their form class
+  //   2. Regular subject teacher → pre-select their first assigned class
+  useEffect(() => {
+    if (user?.role !== UserRole.TEACHER || accessibleClasses.length === 0 || selectedClass) return;
+
+    if (formMasterGrade) {
+      const fc = accessibleClasses.find(c => c.name === formMasterGrade);
+      if (fc) { setSelectedClass(fc.id); setOpenAccordion('subject'); }
+    } else if (accessibleClasses.length > 0) {
+      setSelectedClass(accessibleClasses[0].id);
+      setOpenAccordion('subject');
+    }
+  }, [user?.role, accessibleClasses, formMasterGrade, selectedClass]);
+
+  // When the selected class changes, clear the subject selection if it is no
+  // longer in the visible subjects list for the new class context.
+  useEffect(() => {
+    if (!selectedSubject) return;
+    if (!visibleSubjects.some(s => s.id === selectedSubject)) {
+      setSelectedSubject('');
+    }
+  }, [selectedClass]); // intentionally depends only on class change
 
   // Poll for exam stats when in Exams > Proctoring sub-mode
   useEffect(() => {
@@ -339,9 +412,11 @@ export const Assessments: React.FC = () => {
     const fetchAssessments = async () => {
       setLoading(true);
       try {
-        const res = await api.getAssessments(selectedSubject, selectedTerm);
+        // Pass classId so the backend can apply the correct role-based access
+        // (form master vs subject teacher) for the exact class being viewed.
+        const res = await api.getAssessments(selectedSubject, selectedTerm, undefined, selectedClass || undefined);
         if (res.ok) {
-          // Filter students by selected class (if any) and subject enrollment
+          // Frontend: further narrow to students enrolled in the subject
           const eligibleStudents = students.filter(s => {
             const inClass = !selectedClass || s.grade === schoolClasses.find(c => c.id === selectedClass)?.name;
             const offersSubject = !s.enrolledSubjects?.length || s.enrolledSubjects.includes(selectedSubject);
@@ -371,31 +446,6 @@ export const Assessments: React.FC = () => {
 
     if (students.length > 0) fetchAssessments();
   }, [selectedSubject, selectedTerm, selectedClass, students]);
-
-  // NEW: Handle safe navigation for dropdowns
-  const handleSubjectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-     const newValue = e.target.value;
-     if (modifiedRows.size > 0) {
-         setConfirmDialog({
-           message: 'You have unsaved changes. Switching subjects will discard them.',
-           onConfirm: () => setSelectedSubject(newValue)
-         });
-         return;
-     }
-     setSelectedSubject(newValue);
-  };
-
-  const handleTermChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-     const newValue = e.target.value;
-     if (modifiedRows.size > 0) {
-         setConfirmDialog({
-           message: 'You have unsaved changes. Switching terms will discard them.',
-           onConfirm: () => setSelectedTerm(newValue)
-         });
-         return;
-     }
-     setSelectedTerm(newValue);
-  };
 
   const handleScoreChange = (id: string, field: string, value: string) => {
     const numValue = parseFloat(value) || 0;
@@ -639,7 +689,7 @@ export const Assessments: React.FC = () => {
       const generated = JSON.parse(generatedText);
       
       const newQuestions: ExamQuestion[] = generated.map((q: any) => ({
-        id: `gen-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        id: `gen-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
         type: builderConfig.type,
         text: q.text,
         options: q.options || [],
@@ -737,22 +787,6 @@ export const Assessments: React.FC = () => {
     }
   };
 
-  const handleImportQuestions = () => {
-      if (!importSourceExamId) return;
-      const sourceExam = allExams.find(e => e.id === importSourceExamId);
-      if (!sourceExam) return;
-
-      const questionsToAdd = sourceExam.questions
-          .filter(q => questionsToImport.includes(q.id))
-          .map(q => ({...q, id: `imp-${Date.now()}-${Math.random().toString(36).substr(2,5)}`})); // Clone with new IDs
-
-      setBuilderQuestions(prev => [...prev, ...questionsToAdd]);
-      setShowImportModal(false);
-      setQuestionsToImport([]);
-      setSaveMessage({ type: 'success', text: `Imported ${questionsToAdd.length} questions successfully.` });
-      setTimeout(() => setSaveMessage(null), 3000);
-  };
-
   const handleClearExam = () => {
     if (builderQuestions.length > 0) {
       setConfirmDialog({
@@ -796,10 +830,6 @@ export const Assessments: React.FC = () => {
       default: return 'bg-gray-100 text-gray-500';
     }
   };
-
-  // Helper to get current teacher name for display
-  const currentSubjectData = subjects.find(s => s.id === selectedSubject);
-  const currentTeacherName = currentSubjectData ? teachers[currentSubjectData.teacherId] : null;
 
   const filteredAssessments = useMemo(() => {
       if (studentSearch === '' && gradeFilter === 'All') return assessments;
@@ -867,13 +897,25 @@ export const Assessments: React.FC = () => {
       )}
       <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Assessments</h1>
-          <p className="text-gray-500">Manage continuous assessments, examinations, and question banks.</p>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-2xl font-bold text-gray-900">Assessments</h1>
+            {isFormMaster && (
+              <span className="inline-flex items-center gap-1.5 text-xs font-semibold bg-amber-100 text-amber-800 px-2.5 py-1 rounded-full border border-amber-200">
+                <span className="w-1.5 h-1.5 bg-amber-500 rounded-full" />
+                Form Teacher · {formMasterGrade}
+              </span>
+            )}
+          </div>
+          <p className="text-gray-500 mt-0.5">
+            {isFormMaster
+              ? `Viewing all subjects for your class: ${formMasterGrade}`
+              : 'Manage continuous assessments, examinations, and question banks.'}
+          </p>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-3 w-full xl:w-auto">
+        <div className="flex flex-col sm:flex-row gap-3 w-full xl:w-auto items-start sm:items-center flex-wrap">
           {/* Mode tabs */}
-          <div className="bg-gray-100 p-1 rounded-lg flex items-center self-start sm:self-auto">
+          <div className="bg-gray-100 p-1 rounded-lg flex items-center self-start sm:self-auto shrink-0">
             <button
               onClick={() => setMode('manual')}
               className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all flex items-center gap-2 ${mode === 'manual' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
@@ -890,53 +932,38 @@ export const Assessments: React.FC = () => {
             </button>
           </div>
 
-          <div className="h-8 w-px bg-gray-200 hidden sm:block" />
-
-          {/* Gradebook toolbar actions */}
-          {mode === 'manual' && (
-            <div className="flex gap-2 flex-wrap items-center">
-              <button
-                onClick={handleAddCA}
-                className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm font-medium text-blue-700 hover:bg-blue-100 transition-colors whitespace-nowrap"
-              >
-                <Plus size={16} /> Add CA
-              </button>
-              <button
-                onClick={() => setShowSettings(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors whitespace-nowrap"
-              >
-                <Settings size={16} className="text-gray-600" /> Settings
-              </button>
-              <button
-                onClick={exportToCSV}
-                className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors whitespace-nowrap"
-              >
-                <FileSpreadsheet size={16} className="text-green-600" /> Export
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-70 whitespace-nowrap"
-              >
-                {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Save
-              </button>
-              <button
-                onClick={handlePublish}
-                disabled={publishing}
-                className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors disabled:opacity-70 whitespace-nowrap"
-              >
-                {publishing ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />} Publish Results
-              </button>
-            </div>
+          {/* Gradebook: Settings shortcut — admin only (configures marking scheme) */}
+          {mode === 'manual' && (user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN) && (
+            <button
+              onClick={() => setShowSettings(true)}
+              className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shrink-0"
+              title="Assessment settings"
+            >
+              <Settings size={15} className="text-gray-600" /> Settings
+            </button>
           )}
 
-          {/* Exams toolbar: exam selector + sync */}
+          {/* Exams: sub-mode toggle + exam selector + sync */}
           {mode === 'builder' && (
             <div className="flex items-center gap-2 flex-wrap">
+              <div className="bg-gray-100 p-1 rounded-lg flex items-center shrink-0">
+                <button
+                  onClick={() => setExamSubMode('builder')}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all flex items-center gap-2 ${examSubMode === 'builder' ? 'bg-white shadow text-purple-600' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  <PenTool size={15} /> Builder
+                </button>
+                <button
+                  onClick={() => setExamSubMode('proctor')}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all flex items-center gap-2 ${examSubMode === 'proctor' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  <Monitor size={15} /> Proctor
+                </button>
+              </div>
               <select
                 value={selectedExamId}
                 onChange={handleExamSelectionChange}
-                className="block pl-3 pr-8 py-1.5 text-sm border border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 rounded-lg max-w-[200px]"
+                className="block pl-3 pr-8 py-1.5 text-sm border border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 rounded-lg min-w-[200px] max-w-xs"
               >
                 <option value="" disabled>Select Exam</option>
                 <option value="new">+ Create New Exam</option>
@@ -947,9 +974,9 @@ export const Assessments: React.FC = () => {
               {examSubMode === 'proctor' && (
                 <button
                   onClick={handleSyncScores}
-                  className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors whitespace-nowrap"
+                  className="flex items-center gap-2 px-3 py-1.5 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors whitespace-nowrap shrink-0"
                 >
-                  <RefreshCw size={16} /> Sync Scores
+                  <RefreshCw size={15} /> Sync Scores
                 </button>
               )}
             </div>
@@ -1152,33 +1179,55 @@ export const Assessments: React.FC = () => {
               </button>
               {openAccordion === 'class' && (
                 <div className="px-5 pb-4">
-                  {schoolClasses.length === 0 ? (
-                    <p className="text-sm text-gray-400">No classes created yet. Go to Classes to add some.</p>
+                  {accessibleClasses.length === 0 ? (
+                    <p className="text-sm text-gray-400">
+                      {user?.role === UserRole.TEACHER
+                        ? 'No classes assigned yet. Ask an admin to assign you to a class.'
+                        : 'No classes created yet. Go to Classes to add some.'}
+                    </p>
                   ) : (
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        onClick={() => { setSelectedClass(''); setOpenAccordion('subject'); }}
-                        className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-all ${
-                          selectedClass === ''
-                            ? 'bg-primary-600 text-white border-primary-600'
-                            : 'bg-white text-gray-700 border-gray-300 hover:border-primary-400'
-                        }`}
-                      >
-                        All Classes
-                      </button>
-                      {schoolClasses.map(cls => (
-                        <button
-                          key={cls.id}
-                          onClick={() => { setSelectedClass(cls.id); setOpenAccordion('subject'); }}
-                          className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-all ${
-                            selectedClass === cls.id
-                              ? 'bg-primary-600 text-white border-primary-600'
-                              : 'bg-white text-gray-700 border-gray-300 hover:border-primary-400'
-                          }`}
-                        >
-                          {cls.name}
-                        </button>
-                      ))}
+                    <div className="space-y-2">
+                      {user?.role === UserRole.TEACHER && isFormMaster && (
+                        <p className="text-xs text-gray-400 mb-1">
+                          Your form class is pre-selected. You may also switch to other classes you teach.
+                        </p>
+                      )}
+                      <div className="flex flex-wrap gap-2">
+                        {/* "All Classes" only for admins */}
+                        {user?.role !== UserRole.TEACHER && (
+                          <button
+                            onClick={() => { setSelectedClass(''); setOpenAccordion('subject'); }}
+                            className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-all ${
+                              selectedClass === ''
+                                ? 'bg-primary-600 text-white border-primary-600'
+                                : 'bg-white text-gray-700 border-gray-300 hover:border-primary-400'
+                            }`}
+                          >
+                            All Classes
+                          </button>
+                        )}
+                        {accessibleClasses.map(cls => {
+                          const isFormClass = cls.name === formMasterGrade;
+                          return (
+                            <button
+                              key={cls.id}
+                              onClick={() => { setSelectedClass(cls.id); setOpenAccordion('subject'); }}
+                              className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-all flex items-center gap-1.5 ${
+                                selectedClass === cls.id
+                                  ? 'bg-primary-600 text-white border-primary-600'
+                                  : 'bg-white text-gray-700 border-gray-300 hover:border-primary-400'
+                              }`}
+                            >
+                              {cls.name}
+                              {isFormClass && (
+                                <span className={`text-[10px] font-medium ${selectedClass === cls.id ? 'text-primary-200' : 'text-amber-600'}`}>
+                                  · Form
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1206,11 +1255,15 @@ export const Assessments: React.FC = () => {
               </button>
               {openAccordion === 'subject' && (
                 <div className="px-5 pb-4">
-                  {subjects.length === 0 ? (
-                    <p className="text-sm text-gray-400">No subjects enrolled. Go to Subjects to enroll some first.</p>
+                  {visibleSubjects.length === 0 ? (
+                    <p className="text-sm text-gray-400">
+                      {selectedClass
+                        ? 'No subjects available for this class. Select your form class to see all subjects.'
+                        : 'No subjects enrolled. Go to Subjects to enroll some first.'}
+                    </p>
                   ) : (
                     <div className="flex flex-wrap gap-2">
-                      {subjects.map(sub => (
+                      {visibleSubjects.map(sub => (
                         <button
                           key={sub.id}
                           onClick={() => {
@@ -1248,7 +1301,7 @@ export const Assessments: React.FC = () => {
                 <span>{selectedClass ? schoolClasses.find(c => c.id === selectedClass)?.name : 'All Classes'}</span>
                 <ChevronRight size={14} className="text-primary-400" />
                 <BookOpen size={15} />
-                <span>{subjects.find(s => s.id === selectedSubject)?.name}</span>
+                <span>{visibleSubjects.find(s => s.id === selectedSubject)?.name ?? subjects.find(s => s.id === selectedSubject)?.name}</span>
                 <span className="ml-2 text-xs text-primary-600 bg-primary-100 px-2 py-0.5 rounded-full">
                   {filteredAssessments.length} student{filteredAssessments.length !== 1 ? 's' : ''}
                 </span>
@@ -1274,14 +1327,17 @@ export const Assessments: React.FC = () => {
                   {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
                   {modifiedRows.size > 0 ? `Save (${modifiedRows.size})` : 'Saved'}
                 </button>
-                <button
-                  onClick={handlePublish}
-                  disabled={publishing}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-600 text-white rounded-lg text-xs font-semibold hover:bg-primary-700 disabled:opacity-50"
-                >
-                  {publishing ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
-                  Publish
-                </button>
+                {/* Publish is admin-only — teachers can record scores but only admins finalise */}
+                {(user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN) && (
+                  <button
+                    onClick={handlePublish}
+                    disabled={publishing}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-600 text-white rounded-lg text-xs font-semibold hover:bg-primary-700 disabled:opacity-50"
+                  >
+                    {publishing ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                    Publish Results
+                  </button>
+                )}
               </div>
             </div>
           )}

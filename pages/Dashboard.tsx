@@ -181,44 +181,43 @@ export const Dashboard: React.FC = () => {
     navigateTo('/login');
   };
 
-  // Role-aware quick actions with navigation
+  // Role-aware quick actions — all paths must match registered routes in App.tsx
   const getRoleSpecificActions = () => {
     if (user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN) {
       return [
-        { label: 'Add Student', icon: UserPlus, color: 'purple', gradient: 'from-purple-500 to-purple-600', path: '/students/new' },
-        { label: 'Add Teacher', icon: Users, color: 'blue', gradient: 'from-blue-500 to-blue-600', path: '/teachers/new' },
-        { label: 'Record Fees', icon: CreditCard, color: 'emerald', gradient: 'from-emerald-500 to-emerald-600', path: '/fees/record' },
-        { label: 'Generate Reports', icon: FileText, color: 'orange', gradient: 'from-orange-500 to-orange-600', path: '/reports' },
-        { label: 'Take Attendance', icon: UserCheck, color: 'pink', gradient: 'from-pink-500 to-pink-600', path: '/attendance' },
-        { label: 'Post Announcement', icon: Megaphone, color: 'indigo', gradient: 'from-indigo-500 to-indigo-600', path: '/announcements/new' },
+        { label: 'Add Student',       icon: UserPlus,   color: 'purple',  gradient: 'from-purple-500 to-purple-600', path: '/students'     },
+        { label: 'Add Teacher',        icon: Users,      color: 'blue',    gradient: 'from-blue-500 to-blue-600',    path: '/teachers'     },
+        { label: 'Record Fees',        icon: CreditCard, color: 'emerald', gradient: 'from-emerald-500 to-teal-600', path: '/finance'      },
+        { label: 'View Results',       icon: FileText,   color: 'orange',  gradient: 'from-orange-500 to-red-500',   path: '/results'      },
+        { label: 'Take Attendance',    icon: UserCheck,  color: 'pink',    gradient: 'from-pink-500 to-pink-600',    path: '/attendance'   },
+        { label: 'Notifications',      icon: Megaphone,  color: 'indigo',  gradient: 'from-indigo-500 to-violet-600',path: '/notifications' },
       ];
     } else if (user?.role === UserRole.TEACHER) {
       return [
-        { label: 'Take Attendance', icon: UserCheck, color: 'purple', gradient: 'from-purple-500 to-purple-600', path: '/attendance' },
-        { label: 'Upload Results', icon: FileText, color: 'blue', gradient: 'from-blue-500 to-blue-600', path: '/results/upload' },
-        { label: 'View My Students', icon: GraduationCap, color: 'emerald', gradient: 'from-emerald-500 to-emerald-600', path: '/my-students' },
-        { label: 'Lesson Notes', icon: BookOpen, color: 'amber', gradient: 'from-amber-500 to-amber-600', path: '/lesson-notes' },
-        { label: 'Class Schedule', icon: Calendar, color: 'rose', gradient: 'from-rose-500 to-rose-600', path: '/schedule' },
-        { label: 'View Reports', icon: TrendingUp, color: 'cyan', gradient: 'from-cyan-500 to-cyan-600', path: '/reports' },
+        { label: 'Take Attendance',    icon: UserCheck,    color: 'purple',  gradient: 'from-purple-500 to-purple-600', path: '/attendance'    },
+        { label: 'Enter Results',      icon: FileText,     color: 'blue',    gradient: 'from-blue-500 to-cyan-600',    path: '/results'       },
+        { label: 'My Students',        icon: GraduationCap,color: 'emerald', gradient: 'from-emerald-500 to-teal-600', path: '/students'      },
+        { label: 'Scheme of Work',     icon: BookOpen,     color: 'amber',   gradient: 'from-amber-500 to-orange-500', path: '/scheme-of-work'},
+        { label: 'Live Classes',       icon: Calendar,     color: 'rose',    gradient: 'from-rose-500 to-pink-600',    path: '/live-classes'  },
+        { label: 'Assessments',        icon: TrendingUp,   color: 'cyan',    gradient: 'from-cyan-500 to-blue-600',    path: '/assessments'   },
       ];
     } else if (user?.role === UserRole.STUDENT) {
       return [
-        { label: 'My Results', icon: FileText, color: 'purple', gradient: 'from-purple-500 to-purple-600', path: '/my-results' },
-        { label: 'Pay Fees', icon: CreditCard, color: 'emerald', gradient: 'from-emerald-500 to-emerald-600', path: '/fees/pay' },
-        { label: 'My Attendance', icon: UserCheck, color: 'blue', gradient: 'from-blue-500 to-blue-600', path: '/my-attendance' },
-        { label: 'My Schedule', icon: Calendar, color: 'orange', gradient: 'from-orange-500 to-orange-600', path: '/my-schedule' },
-        { label: 'My Teachers', icon: Users, color: 'pink', gradient: 'from-pink-500 to-pink-600', path: '/my-teachers' },
-        { label: 'My Performance', icon: TrendingUp, color: 'cyan', gradient: 'from-cyan-500 to-cyan-600', path: '/my-performance' },
+        { label: 'My Portal',          icon: FileText,   color: 'purple',  gradient: 'from-purple-500 to-violet-600', path: '/student-portal'},
+        { label: 'Take Exam',          icon: BookOpen,   color: 'emerald', gradient: 'from-emerald-500 to-teal-600',  path: '/student-portal'},
+        { label: 'Live Classes',       icon: Calendar,   color: 'blue',    gradient: 'from-blue-500 to-cyan-600',     path: '/live-classes'  },
+        { label: 'My Messages',        icon: MessageCircle,color:'orange', gradient: 'from-orange-500 to-amber-500',  path: '/messages'      },
+        { label: 'Notifications',      icon: BellRing,   color: 'pink',    gradient: 'from-pink-500 to-rose-600',    path: '/notifications' },
+        { label: 'Settings',           icon: Settings,   color: 'cyan',    gradient: 'from-cyan-500 to-blue-600',    path: '/settings'      },
       ];
     } else if (user?.role === (UserRole as any).PARENT) {
       return [
-
-        { label: 'Pay School Fees', icon: CreditCard, color: 'purple', gradient: 'from-purple-500 to-purple-600', path: '/fees/pay' },
-        { label: "View Children's Results", icon: FileText, color: 'blue', gradient: 'from-blue-500 to-blue-600', path: '/children-results' },
-        { label: 'Track Attendance', icon: UserCheck, color: 'emerald', gradient: 'from-emerald-500 to-emerald-600', path: '/children-attendance' },
-        { label: 'Schedule Meeting', icon: Calendar, color: 'amber', gradient: 'from-amber-500 to-amber-600', path: '/schedule-meeting' },
-        { label: 'Make Complaint', icon: Megaphone, color: 'rose', gradient: 'from-rose-500 to-rose-600', path: '/complaints' },
-        { label: 'View Reports', icon: TrendingUp, color: 'cyan', gradient: 'from-cyan-500 to-cyan-600', path: '/reports' },
+        { label: 'View Results',       icon: FileText,   color: 'purple',  gradient: 'from-purple-500 to-purple-600', path: '/results'      },
+        { label: 'Attendance',         icon: UserCheck,  color: 'blue',    gradient: 'from-blue-500 to-cyan-600',    path: '/attendance'   },
+        { label: 'Live Classes',       icon: Calendar,   color: 'emerald', gradient: 'from-emerald-500 to-teal-600', path: '/live-classes' },
+        { label: 'Notifications',      icon: Megaphone,  color: 'amber',   gradient: 'from-amber-500 to-orange-500', path: '/notifications'},
+        { label: 'Messages',           icon: MessageCircle,color:'rose',   gradient: 'from-rose-500 to-pink-600',    path: '/messages'     },
+        { label: 'Finance',            icon: CreditCard, color: 'cyan',    gradient: 'from-cyan-500 to-blue-600',    path: '/finance'      },
       ];
     }
     return [];

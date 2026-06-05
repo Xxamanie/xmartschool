@@ -13,7 +13,6 @@ import {
   AttendanceRecord as PrismaAttendanceRecordModel,
   ClassMaster as PrismaClassMasterModel,
   StaffMessage as PrismaStaffMessageModel,
-  TeacherAssignment as PrismaTeacherAssignmentModel,
 } from '@prisma/client';
 import {
   SchoolTerm,
@@ -216,6 +215,7 @@ const mapStudentModel = (student: PrismaStudentModel): Student => ({
   attendance: student.attendance,
   schoolId: student.schoolId,
   accessCode: student.accessCode,
+  avatar: (student as any).avatar || undefined,
   enrolledSubjects: (student as any).enrolledSubjects ?? [],
 });
 
@@ -563,6 +563,19 @@ export const appService = {
     }
   },
 
+  changePassword: async (userId: string, currentPassword: string, newPassword: string): Promise<ApiResponse<boolean>> => {
+    await wait(100);
+    const bcrypt = await import('bcryptjs');
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, password: true } });
+    if (!user) return failure('User not found', false as unknown as boolean);
+    if (!user.password) return failure('Password authentication not available for this account. Use your Supabase account settings to change your password.', false as unknown as boolean);
+    const valid = await bcrypt.compare(currentPassword, user.password);
+    if (!valid) return failure('Current password is incorrect', false as unknown as boolean);
+    const hash = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({ where: { id: userId }, data: { password: hash } });
+    return success(true, 'Password changed successfully');
+  },
+
   getSchools: async (): Promise<ApiResponse<School[]>> => {
     await wait(100);
     const schools = await prisma.school.findMany({ orderBy: { name: 'asc' } });
@@ -707,6 +720,7 @@ export const appService = {
   createUserForSchool: async (
     payload: Partial<User>,
     schoolId?: string,
+    actorUserId?: string,
   ): Promise<ApiResponse<User>> => {
     await wait(100);
 
@@ -751,6 +765,15 @@ export const appService = {
         bio: payload.bio?.trim() || undefined,
         avatar: payload.avatar || avatarFromName(payload.name.trim()),
       },
+    });
+
+    await appService.writeAuditLog({
+      schoolId: targetSchoolId,
+      userId: actorUserId,
+      action: 'CREATE_USER',
+      entity: 'User',
+      entityId: createdUser.id,
+      metadata: { name: createdUser.name, role: createdUser.role, email: createdUser.email },
     });
 
     return success(mapUserModel(createdUser), 'Teacher created successfully');
@@ -812,11 +835,12 @@ export const appService = {
   deleteUserForSchool: async (
     userId: string,
     schoolId?: string,
+    actorUserId?: string,
   ): Promise<ApiResponse<boolean>> => {
     await wait(100);
     const existingUser = await prisma.user.findUnique({
       where: { id: userId },
-      select: { schoolId: true, role: true },
+      select: { name: true, email: true, role: true, schoolId: true },
     });
 
     if (!existingUser) {
@@ -832,6 +856,16 @@ export const appService = {
     }
 
     await prisma.user.delete({ where: { id: userId } });
+
+    await appService.writeAuditLog({
+      schoolId: existingUser.schoolId ?? schoolId,
+      userId: actorUserId,
+      action: 'DELETE_USER',
+      entity: 'User',
+      entityId: userId,
+      metadata: { name: existingUser.name, role: existingUser.role, email: existingUser.email },
+    });
+
     return success(true, 'Teacher deleted successfully');
   },
 
@@ -855,11 +889,13 @@ export const appService = {
   updateStudent: async (studentId: string, updates: Partial<Student>): Promise<ApiResponse<Student>> => {
     await wait(100);
     try {
+      const { avatar, enrollmentDate, ...rest } = updates as any;
       const updated = await prisma.student.update({
         where: { id: studentId },
         data: {
-          ...updates,
-          enrollmentDate: updates.enrollmentDate ? toDateOnly(updates.enrollmentDate) : undefined,
+          ...rest,
+          ...(enrollmentDate ? { enrollmentDate: toDateOnly(enrollmentDate) } : {}),
+          ...(avatar !== undefined ? { avatar: avatar?.trim() || '' } : {}),
         },
       });
       return success(mapStudentModel(updated), 'Student updated successfully');
@@ -906,6 +942,7 @@ export const appService = {
       schoolId?: string;
     },
     schoolId?: string,
+    actorUserId?: string,
   ): Promise<ApiResponse<Student>> => {
     await wait(100);
 
@@ -937,6 +974,7 @@ export const appService = {
         gpa: data.gpa ?? 0,
         attendance: data.attendance ?? 0,
         accessCode,
+        avatar: (data as any).avatar?.trim() || '',
         schoolId: targetSchoolId,
         schoolClassId: data.schoolClassId ?? null,
         field: data.field ?? 'general',
@@ -982,6 +1020,7 @@ export const appService = {
 
     await appService.writeAuditLog({
       schoolId: targetSchoolId,
+      userId: actorUserId,
       action: 'CREATE_STUDENT',
       entity: 'Student',
       entityId: created.id,
@@ -994,12 +1033,13 @@ export const appService = {
   deleteStudentForSchool: async (
     studentId: string,
     schoolId?: string,
+    actorUserId?: string,
   ): Promise<ApiResponse<boolean>> => {
     await wait(100);
 
     const student = await prisma.student.findUnique({
       where: { id: studentId },
-      select: { id: true, schoolId: true },
+      select: { id: true, name: true, grade: true, schoolId: true },
     });
     if (!student) return failure('Student not found', false as unknown as boolean);
     if (schoolId && student.schoolId !== schoolId) {
@@ -1011,6 +1051,15 @@ export const appService = {
     await prisma.school.update({
       where: { id: student.schoolId },
       data: { studentCount: { decrement: 1 } },
+    });
+
+    await appService.writeAuditLog({
+      schoolId: student.schoolId,
+      userId: actorUserId,
+      action: 'DELETE_STUDENT',
+      entity: 'Student',
+      entityId: studentId,
+      metadata: { name: student.name, grade: student.grade },
     });
 
     return success(true, 'Student deleted successfully');
@@ -1054,15 +1103,18 @@ export const appService = {
     metadata: Record<string, unknown>,
   ): Promise<ApiResponse<{ id: string }>> => {
     await wait(100);
-    const subjectName = (metadata.subjectName as string) || 'Unknown Subject';
+    // metadata.subject is the subject name (or id) sent from the frontend
+    const subjectName = (metadata.subject as string) || (metadata.subjectName as string) || 'Unknown Subject';
     const subject = await prisma.subject.findFirst({ where: { name: subjectName } });
+    // Store fileUrl in fileName field when a real URL is provided (backward-compatible)
+    const storedFileName = (metadata.fileUrl as string) || fileName || 'upload.bin';
     const scheme = await prisma.schemeSubmission.create({
       data: {
         subjectId: subject?.id,
         subjectName,
         term: (metadata.term as string) || 'Term 1',
         status: 'Pending',
-        fileName: fileName || 'upload.bin',
+        fileName: storedFileName,
       },
     });
     return success({ id: scheme.id }, 'Scheme uploaded successfully');
@@ -1074,6 +1126,7 @@ export const appService = {
     term?: string,
     studentId?: string,
     teacherId?: string,
+    classId?: string,    // SchoolClass.id selected by the teacher on the frontend
   ): Promise<ApiResponse<Assessment[]>> => {
     await wait(100);
 
@@ -1091,26 +1144,84 @@ export const appService = {
       }
     }
 
-    // If a teacher is requesting, restrict to students in their assigned class for this subject
+    // Build the permitted student ID set as a UNION of all roles the teacher holds.
+    // A teacher may simultaneously be a form master (sees every subject for their class)
+    // AND a subject teacher (sees their specific subject in potentially different classes).
+    // Both access paths must co-exist without one overriding the other.
     let allowedStudentIds: string[] | undefined;
-    if (teacherId && subjectId) {
-      const assignment = await prisma.teacherAssignment.findFirst({
-        where: { teacherId, subjectId },
-        select: { schoolClassId: true },
+
+    if (teacherId) {
+      const permitted = new Set<string>();
+
+      // ── Path A: Form master access ──────────────────────────────────────────
+      // Form masters see ALL subjects for every student in their assigned grade.
+      const masterEntry = await prisma.classMaster.findFirst({
+        where: { teacherId, ...(schoolId ? { schoolId } : {}) },
       });
-      if (assignment) {
-        const classStudents = await prisma.student.findMany({
-          where: { schoolClassId: assignment.schoolClassId },
-          select: { id: true, enrolledSubjects: true },
+
+      if (masterEntry) {
+        // Build a class-scoped filter: if the teacher selected a class that matches
+        // their form-master grade, include those students.
+        const formClassRecord = await prisma.schoolClass.findFirst({
+          where: {
+            name: masterEntry.grade,
+            ...(schoolId ? { schoolId } : {}),
+          },
+          select: { id: true },
         });
-        // Only students in that class who offer this subject
-        allowedStudentIds = classStudents
-          .filter((s: any) => !s.enrolledSubjects?.length || s.enrolledSubjects.includes(subjectId))
-          .map((s: any) => s.id);
-      } else {
-        // Teacher has no assignment for this subject — return empty
-        return success([], 'No class assignment found for this subject');
+
+        // Include students if: no class filter selected, OR the selected class IS their form class
+        const formClassId = formClassRecord?.id;
+        if (!classId || classId === formClassId) {
+          const query: any = { ...(schoolId ? { schoolId } : {}) };
+          if (classId && formClassId) {
+            query.schoolClassId = formClassId;
+          } else {
+            query.grade = masterEntry.grade;
+          }
+          const gradeStudents = await prisma.student.findMany({
+            where: query,
+            select: { id: true },
+          });
+          gradeStudents.forEach((s: { id: string }) => permitted.add(s.id));
+        }
       }
+
+      // ── Path B: Subject teacher access ──────────────────────────────────────
+      // Subject teachers see their specific subject's students in their assigned class(es).
+      if (subjectId) {
+        // Find ALL classes this teacher is assigned to teach this subject in.
+        const assignments = await prisma.teacherAssignment.findMany({
+          where: {
+            teacherId,
+            subjectId,
+            // If a class was selected, only look at assignments for that class.
+            ...(classId ? { schoolClassId: classId } : {}),
+          },
+          select: { schoolClassId: true },
+        });
+
+        for (const assignment of assignments) {
+          const classStudents = await prisma.student.findMany({
+            where: {
+              schoolClassId: assignment.schoolClassId,
+              ...(schoolId ? { schoolId } : {}),
+            },
+            select: { id: true, enrolledSubjects: true },
+          });
+          classStudents
+            .filter((s: any) => !(s.enrolledSubjects as string[])?.length || (s.enrolledSubjects as string[]).includes(subjectId))
+            .forEach((s: any) => permitted.add(s.id));
+        }
+      }
+
+      // ── No access ────────────────────────────────────────────────────────────
+      if (permitted.size === 0) {
+        // If neither role grants access, return empty (not an error — just nothing to show)
+        return success([], 'No accessible students for the selected class/subject');
+      }
+
+      allowedStudentIds = [...permitted];
     }
 
     const where: Prisma.AssessmentWhereInput = {
@@ -1136,8 +1247,11 @@ export const appService = {
   saveAssessments: async (
     assessments: Assessment[],
     schoolId?: string,
+    teacherId?: string,
   ): Promise<ApiResponse<{ success: boolean }>> => {
     await wait(100);
+
+    // School membership check
     if (schoolId) {
       const studentIds = [...new Set(assessments.map(assessment => assessment.studentId))];
       const students = await prisma.student.findMany({
@@ -1147,6 +1261,28 @@ export const appService = {
       const invalidStudent = students.find(student => student.schoolId !== schoolId);
       if (invalidStudent || students.length !== studentIds.length) {
         return failure('Cannot save assessments for students outside your school', { success: false });
+      }
+    }
+
+    // Teacher ownership check: verify the teacher is authorised for each subject being saved
+    if (teacherId) {
+      const uniqueSubjectIds = [...new Set(assessments.map(a => a.subjectId))];
+      // Check if teacher is a form master (exempt from subject-level restriction)
+      const isMaster = await prisma.classMaster.findFirst({
+        where: { teacherId, ...(schoolId ? { schoolId } : {}) },
+        select: { id: true },
+      });
+      if (!isMaster) {
+        // Regular teacher: must have a TeacherAssignment for every subject they're saving
+        for (const subjectId of uniqueSubjectIds) {
+          const assigned = await prisma.teacherAssignment.findFirst({
+            where: { teacherId, subjectId },
+            select: { id: true },
+          });
+          if (!assigned) {
+            return failure(`Not authorised to save assessments for subject ${subjectId}`, { success: false });
+          }
+        }
       }
     }
 
@@ -1252,7 +1388,7 @@ export const appService = {
     return success(results.map(mapResultModel));
   },
 
-  publishResults: async (schoolId: string | undefined, newResults: ResultData[]): Promise<ApiResponse<{ success: boolean }>> => {
+  publishResults: async (schoolId: string | undefined, newResults: ResultData[], actorUserId?: string): Promise<ApiResponse<{ success: boolean }>> => {
     await wait(100);
 
     for (const result of newResults) {
@@ -1323,6 +1459,7 @@ export const appService = {
     if (schoolId) {
       await appService.writeAuditLog({
         schoolId,
+        userId: actorUserId,
         action: 'PUBLISH_RESULTS',
         entity: 'Result',
         metadata: { count: newResults.length, published: newResults.filter(r => r.status === 'Published').length },
@@ -2037,7 +2174,7 @@ export const appService = {
     })));
   },
 
-  sendConversationMessage: async (conversationId: string, senderId: string, role: UserRole, content: string): Promise<ApiResponse<any>> => {
+  sendConversationMessage: async (conversationId: string, senderId: string, _role: UserRole, content: string): Promise<ApiResponse<any>> => {
     await wait(30);
     if (!content.trim()) return failure('Message cannot be empty', null);
     const conv = await prisma.privateConversation.findUnique({ where: { id: conversationId } });
@@ -2101,22 +2238,29 @@ export const appService = {
     meetingLink: string,
   ): Promise<ApiResponse<LiveClass>> => {
     await wait(50);
+
+    // Auto-generate a Jitsi Meet room URL if none provided.
+    // Jitsi is free, open-source and needs no API key — rooms are created on first join.
+    // Format: https://meet.jit.si/xmartschool-{unique-slug}
+    const resolvedLink = meetingLink?.trim()
+      || `https://meet.jit.si/xmartschool-${schoolClassId.slice(-8)}-${Date.now().toString(36)}`;
+
     const created = await prisma.liveClass.create({
       data: {
         subjectId: subjectId || undefined,
         teacherId: teacherId || undefined,
         schoolClassId: schoolClassId,
         scheduledTime: toDateOnly(scheduledTime),
-        meetingLink,
+        meetingLink: resolvedLink,
       },
     });
     return success(mapLiveClassModel(created), 'Live class scheduled');
   },
 
 
-  getClassMasters: async (): Promise<ApiResponse<Record<string, string>>> => {
+  getClassMasters: async (schoolId: string): Promise<ApiResponse<Record<string, string>>> => {
     await wait(100);
-    const masters: PrismaClassMasterModel[] = await prisma.classMaster.findMany();
+    const masters = await prisma.classMaster.findMany({ where: { schoolId } });
     const store = masters.reduce<Record<string, string>>((acc, item) => {
       acc[item.grade] = item.teacherId;
       return acc;
@@ -2124,12 +2268,12 @@ export const appService = {
     return success(store);
   },
 
-  assignClassMaster: async (grade: string, teacherId: string): Promise<ApiResponse<boolean>> => {
+  assignClassMaster: async (grade: string, teacherId: string, schoolId: string): Promise<ApiResponse<boolean>> => {
     await wait(100);
     await prisma.classMaster.upsert({
-      where: { grade },
+      where: { schoolId_grade: { schoolId, grade } },
       update: { teacherId },
-      create: { grade, teacherId },
+      create: { grade, teacherId, schoolId },
     });
     return success(true);
   },
@@ -2294,10 +2438,24 @@ export const appService = {
       orderBy: { createdAt: 'asc' },
       take: 200,
     });
+
+    // Batch-resolve sender names + avatars
+    const senderIds = [...new Set(messages.map((m: PrismaStaffMessageModel) => m.userId))];
+    const senders = senderIds.length
+      ? await prisma.user.findMany({
+          where: { id: { in: senderIds } },
+          select: { id: true, name: true, avatar: true, role: true },
+        })
+      : [];
+    const senderMap = Object.fromEntries(senders.map((u: { id: string; name: string; avatar: string | null; role: string }) => [u.id, u]));
+
     return success(messages.map((m: PrismaStaffMessageModel) => ({
       id: m.id,
       schoolId: m.schoolId,
       userId: m.userId,
+      senderName: senderMap[m.userId]?.name ?? 'Staff Member',
+      senderAvatar: senderMap[m.userId]?.avatar ?? undefined,
+      senderRole: senderMap[m.userId]?.role ?? undefined,
       type: m.type as StaffMessage['type'],
       content: m.content,
       mediaUrl: m.mediaUrl ?? undefined,
@@ -2319,10 +2477,19 @@ export const appService = {
     const created = await prisma.staffMessage.create({
       data: { schoolId, userId, type, content: content.trim(), mediaUrl: mediaUrl || null },
     });
+
+    const sender = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true, avatar: true, role: true },
+    });
+
     return success({
       id: created.id,
       schoolId: created.schoolId,
       userId: created.userId,
+      senderName: sender?.name ?? 'Staff Member',
+      senderAvatar: sender?.avatar ?? undefined,
+      senderRole: sender?.role ?? undefined,
       type: created.type as StaffMessage['type'],
       content: created.content,
       mediaUrl: created.mediaUrl ?? undefined,
@@ -2341,6 +2508,27 @@ export const appService = {
     return success(rows.map((r: any) => ({
       id: r.id,
       teacherId: r.teacherId,
+      subjectId: r.subjectId,
+      schoolClassId: r.schoolClassId,
+      subjectName: r.subject?.name,
+      className: r.schoolClass?.name,
+    })));
+  },
+
+  getClassAssignments: async (schoolClassId: string): Promise<ApiResponse<(TeacherAssignment & { teacherName?: string })[]>> => {
+    await wait(50);
+    const rows = await prisma.teacherAssignment.findMany({
+      where: { schoolClassId },
+      include: {
+        subject: { select: { name: true } },
+        schoolClass: { select: { name: true } },
+        teacher: { select: { name: true } },
+      },
+    });
+    return success(rows.map((r: any) => ({
+      id: r.id,
+      teacherId: r.teacherId,
+      teacherName: r.teacher?.name,
       subjectId: r.subjectId,
       schoolClassId: r.schoolClassId,
       subjectName: r.subject?.name,
@@ -2406,7 +2594,7 @@ export const appService = {
 
   getStudentsAttendanceSummaries: async (
     studentIds: string[],
-  ): Promise<ApiResponse<Record<string, { present: number; total: number }>>> => {
+  ): Promise<ApiResponse<Record<string, { present: number; absent: number; late: number; excused: number; total: number }>>> => {
     await wait(30);
     if (studentIds.length === 0) return success({});
     const groups = await prisma.attendanceRecord.groupBy({
@@ -2414,13 +2602,15 @@ export const appService = {
       where: { studentId: { in: studentIds } },
       _count: { id: true },
     });
-    const map: Record<string, { present: number; total: number }> = {};
+    const map: Record<string, { present: number; absent: number; late: number; excused: number; total: number }> = {};
     for (const g of groups) {
-      if (!map[g.studentId]) map[g.studentId] = { present: 0, total: 0 };
-      map[g.studentId].total += g._count.id;
-      if (g.status === 'Present' || g.status === 'Late') {
-        map[g.studentId].present += g._count.id;
-      }
+      if (!map[g.studentId]) map[g.studentId] = { present: 0, absent: 0, late: 0, excused: 0, total: 0 };
+      const count = g._count.id;
+      map[g.studentId].total += count;
+      if (g.status === 'Present') map[g.studentId].present += count;
+      else if (g.status === 'Absent') map[g.studentId].absent += count;
+      else if (g.status === 'Late') map[g.studentId].late += count;
+      else if (g.status === 'Excused') map[g.studentId].excused += count;
     }
     return success(map);
   },
@@ -2591,17 +2781,47 @@ export const appService = {
     amount: number;
     method?: string;
     paymentRef?: string;
+    clientRef?: string;
     schoolId: string;
+    actorUserId?: string;
   }): Promise<ApiResponse<StudentFeePayment>> => {
     await wait(50);
     if (params.amount <= 0) return failure('Payment amount must be positive', {} as StudentFeePayment);
 
     const item = await (prisma as any).studentFeeLedgerItem.findUnique({
       where: { id: params.ledgerItemId },
-      include: { ledger: { select: { schoolId: true } } },
+      include: {
+        ledger: { select: { schoolId: true, studentId: true } },
+        payments: { select: { amount: true } },
+      },
     });
     if (!item) return failure('Ledger item not found', {} as StudentFeePayment);
     if (item.ledger.schoolId !== params.schoolId) return failure('Access denied', {} as StudentFeePayment);
+
+    // Idempotency: return existing payment if clientRef already recorded
+    if (params.clientRef) {
+      const existing = await (prisma as any).studentFeePayment.findUnique({
+        where: { clientRef: params.clientRef },
+      });
+      if (existing) {
+        return success({
+          id: existing.id,
+          ledgerItemId: existing.ledgerItemId,
+          amount: existing.amount,
+          paymentRef: existing.paymentRef ?? undefined,
+          method: existing.method ?? undefined,
+          createdAt: existing.createdAt.toISOString(),
+        } as StudentFeePayment, 'Payment already recorded');
+      }
+    }
+
+    const alreadyPaid: number = item.payments.reduce((sum: number, p: { amount: number }) => sum + p.amount, 0);
+    if (alreadyPaid + params.amount > item.payableAmount) {
+      return failure(
+        `Payment of ${params.amount} would exceed the payable amount. Already paid: ${alreadyPaid}, payable: ${item.payableAmount}`,
+        {} as StudentFeePayment,
+      );
+    }
 
     const payment = await (prisma as any).studentFeePayment.create({
       data: {
@@ -2609,6 +2829,21 @@ export const appService = {
         amount: params.amount,
         method: params.method ?? null,
         paymentRef: params.paymentRef ?? null,
+        clientRef: params.clientRef ?? null,
+      },
+    });
+
+    await appService.writeAuditLog({
+      schoolId: params.schoolId,
+      userId: params.actorUserId,
+      action: 'RECORD_PAYMENT',
+      entity: 'StudentFeePayment',
+      entityId: payment.id,
+      metadata: {
+        amount: params.amount,
+        method: params.method,
+        ledgerItemId: params.ledgerItemId,
+        studentId: item.ledger.studentId,
       },
     });
 
@@ -2708,6 +2943,136 @@ export const appService = {
       entityId: l.entityId ?? undefined,
       metadata: l.metadata ?? undefined,
       createdAt: l.createdAt.toISOString(),
+    })));
+  },
+
+  // ── Parent Portal ────────────────────────────────────────────────────────
+
+  createParent: async (payload: {
+    name: string;
+    email: string;
+    phone?: string;
+    schoolId: string;
+    studentIds: string[];
+  }): Promise<ApiResponse<User>> => {
+    await wait(100);
+    const bcrypt = await import('bcryptjs');
+    const existing = await prisma.user.findFirst({ where: { email: payload.email.toLowerCase() }, select: { id: true } });
+    if (existing) return failure('A user with this email already exists', {} as User);
+
+    const tempPassword = generateTemporaryPassword();
+    const hash = await bcrypt.hash(tempPassword, 10);
+
+    const parent = await prisma.user.create({
+      data: {
+        name: payload.name.trim(),
+        email: payload.email.toLowerCase(),
+        password: hash,
+        role: UserRole.PARENT,
+        schoolId: payload.schoolId,
+        phone: payload.phone?.trim() || undefined,
+        avatar: avatarFromName(payload.name.trim()),
+      },
+    });
+
+    // Link to students
+    if (payload.studentIds.length > 0) {
+      await prisma.parentStudent.createMany({
+        data: payload.studentIds.map(studentId => ({ parentId: parent.id, studentId })),
+        skipDuplicates: true,
+      });
+    }
+
+    return success({ ...mapUserModel(parent), authToken: tempPassword }, 'Parent account created. Share the temporary password with the parent.');
+  },
+
+  getParentChildren: async (parentId: string): Promise<ApiResponse<{
+    student: Student;
+    results: ResultData[];
+    attendance: { present: number; absent: number; late: number; excused: number; total: number };
+    ledgers: StudentFeeLedger[];
+  }[]>> => {
+    await wait(100);
+    const links = await prisma.parentStudent.findMany({
+      where: { parentId },
+      include: { student: true },
+    });
+
+    const children = await Promise.all(links.map(async (link) => {
+      const s = link.student;
+
+      const [resultsRaw, attendanceGroups, ledgersRaw] = await Promise.all([
+        prisma.result.findMany({ where: { studentId: s.id }, orderBy: { subjectName: 'asc' } }),
+        prisma.attendanceRecord.groupBy({
+          by: ['status'],
+          where: { studentId: s.id },
+          _count: { id: true },
+        }),
+        (prisma as any).studentFeeLedger.findMany({
+          where: { studentId: s.id },
+          include: { lineItems: { include: { payments: true } } },
+          orderBy: { createdAt: 'desc' },
+          take: 5,
+        }),
+      ]);
+
+      const attendance = { present: 0, absent: 0, late: 0, excused: 0, total: 0 };
+      for (const g of attendanceGroups) {
+        const count = g._count.id;
+        attendance.total += count;
+        if (g.status === 'Present') attendance.present += count;
+        else if (g.status === 'Absent') attendance.absent += count;
+        else if (g.status === 'Late') attendance.late += count;
+        else if (g.status === 'Excused') attendance.excused += count;
+      }
+
+      return {
+        student: mapStudentModel(s as any),
+        results: resultsRaw.map((r: any) => ({
+          id: r.id,
+          studentId: r.studentId,
+          studentName: s.name,
+          subjectName: r.subjectName,
+          average: r.average,
+          grade: r.grade,
+          status: r.status,
+          term: r.term,
+          remarks: r.remarks ?? undefined,
+        })) as ResultData[],
+        attendance,
+        ledgers: ledgersRaw.map(mapLedgerModel) as StudentFeeLedger[],
+      };
+    }));
+
+    return success(children);
+  },
+
+  linkParentToStudent: async (parentId: string, studentId: string): Promise<ApiResponse<boolean>> => {
+    await wait(50);
+    await prisma.parentStudent.upsert({
+      where: { parentId_studentId: { parentId, studentId } },
+      update: {},
+      create: { parentId, studentId },
+    });
+    return success(true);
+  },
+
+  unlinkParentFromStudent: async (parentId: string, studentId: string): Promise<ApiResponse<boolean>> => {
+    await wait(50);
+    await prisma.parentStudent.delete({ where: { parentId_studentId: { parentId, studentId } } });
+    return success(true);
+  },
+
+  getSchoolParents: async (schoolId: string): Promise<ApiResponse<(User & { childCount: number })[]>> => {
+    await wait(100);
+    const parents = await prisma.user.findMany({
+      where: { schoolId, role: UserRole.PARENT },
+      include: { parentLinks: { select: { id: true } } },
+      orderBy: { name: 'asc' },
+    });
+    return success(parents.map(p => ({
+      ...mapUserModel(p),
+      childCount: (p as any).parentLinks.length,
     })));
   },
 };

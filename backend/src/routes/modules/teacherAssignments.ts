@@ -7,10 +7,17 @@ import { UserRole } from '../../types';
 
 const router = Router();
 
-// GET /api/teacher-assignments?teacherId=xxx
+// GET /api/teacher-assignments?teacherId=xxx   OR   ?classId=xxx
 router.get(
   '/',
   asyncHandler(async (req, res) => {
+    // classId query fetches all assignments for a class (used by Timetable)
+    if (req.query.classId) {
+      const classId = z.string().min(1).parse(req.query.classId);
+      const response = await appService.getClassAssignments(classId);
+      res.json(response);
+      return;
+    }
     const teacherId = req.auth!.role === UserRole.TEACHER
       ? req.auth!.userId
       : z.string().min(1).parse(req.query.teacherId);

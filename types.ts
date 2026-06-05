@@ -5,6 +5,7 @@ export enum UserRole {
   ADMIN = 'ADMIN', // School Administrator
   TEACHER = 'TEACHER',
   STUDENT = 'STUDENT',
+  PARENT = 'PARENT', // Parent/guardian — read-only access to linked children's data
 }
 
 export interface User {
@@ -171,6 +172,9 @@ export interface StaffMessage {
   id: string;
   schoolId: string;
   userId: string;
+  senderName?: string;
+  senderAvatar?: string;
+  senderRole?: string;
   type: 'text' | 'image' | 'video' | 'audio';
   content: string;
   mediaUrl?: string;

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
+import { supabaseAuthService } from '../src/services/supabaseAuthService';
 import {
   Save, User, Lock, Bell, Shield, CheckCircle2, AlertCircle,
-  Building2, Calendar, Plus, Trash2, Star, Palette,
+  Building2, Calendar, Plus, Trash2, Star, Palette, Eye, EyeOff,
 } from 'lucide-react';
 import { School, SchoolTerm, UserRole } from '../types';
 
@@ -156,8 +157,79 @@ export const Settings: React.FC = () => {
     else flash(res.message || 'Failed.', 'error');
   };
 
+  // ── Notification Preferences ─────────────────────────────────────────────
+  const NOTIF_PREFS_KEY = `notif_prefs_${user?.id ?? 'anon'}`;
+
+  const defaultPrefs = {
+    examSubmission: true,
+    resultsPublished: true,
+    paymentReceived: false,
+    newAnnouncement: true,
+    dailySummary: false,
+    systemMaintenance: false,
+  };
+
+  type NotifPrefs = typeof defaultPrefs;
+
+  const loadPrefs = (): NotifPrefs => {
+    try {
+      const stored = localStorage.getItem(NOTIF_PREFS_KEY);
+      return stored ? { ...defaultPrefs, ...JSON.parse(stored) } : defaultPrefs;
+    } catch { return defaultPrefs; }
+  };
+
+  const [notifPrefs, setNotifPrefs] = useState<NotifPrefs>(loadPrefs);
+  const [notifSaved, setNotifSaved] = useState(false);
+
+  const handleSaveNotifPrefs = () => {
+    localStorage.setItem(NOTIF_PREFS_KEY, JSON.stringify(notifPrefs));
+    setNotifSaved(true);
+    setTimeout(() => setNotifSaved(false), 2500);
+  };
+
+  const NOTIF_OPTIONS: { key: keyof NotifPrefs; label: string; desc: string }[] = [
+    { key: 'examSubmission', label: 'Exam submitted', desc: 'In-app alert when a student submits an exam' },
+    { key: 'resultsPublished', label: 'Results published', desc: 'Notify me when academic results are published' },
+    { key: 'paymentReceived', label: 'Payment recorded', desc: 'Alert when a fee payment is recorded for any student' },
+    { key: 'newAnnouncement', label: 'New announcement', desc: 'Show in-app banner when a new announcement is posted' },
+    { key: 'dailySummary', label: 'Daily summary', desc: 'Receive a daily summary of school activity' },
+    { key: 'systemMaintenance', label: 'System maintenance', desc: 'Alerts about planned maintenance windows' },
+  ];
+
+  // ── Security / Password change ────────────────────────────────────────────
+  const [pwForm, setPwForm] = useState({ current: '', next: '', confirm: '' });
+  const [pwVisible, setPwVisible] = useState(false);
+  const [pwLoading, setPwLoading] = useState(false);
+
+  const handleChangePassword = async () => {
+    if (!pwForm.next || pwForm.next !== pwForm.confirm) {
+      flash('New passwords do not match.', 'error'); return;
+    }
+    if (pwForm.next.length < 8) {
+      flash('Password must be at least 8 characters.', 'error'); return;
+    }
+    setPwLoading(true);
+    try {
+      // Try Supabase first (production), then fall back to backend (demo mode)
+      if (supabaseAuthService.isConfigured()) {
+        await supabaseAuthService.updatePassword(pwForm.next);
+        flash('Password updated via Supabase.', 'success');
+      } else {
+        const res = await api.changePassword(pwForm.current, pwForm.next);
+        if (res.ok) flash('Password changed successfully.', 'success');
+        else flash(res.message || 'Failed to change password.', 'error');
+      }
+      setPwForm({ current: '', next: '', confirm: '' });
+    } catch (e: any) {
+      flash(e.message || 'Failed to change password.', 'error');
+    } finally {
+      setPwLoading(false);
+    }
+  };
+
   // ── Shared action footer ──────────────────────────────────────────────────
   const showSaveButton = activeTab === 'profile' || activeTab === 'school';
+  // security and notifications have their own inline save controls
   const handleSave = activeTab === 'school' ? handleSaveBranding : handleSaveProfile;
 
   const tabs = [
@@ -236,37 +308,138 @@ export const Settings: React.FC = () => {
 
           {/* ── Security Tab ── */}
           {activeTab === 'security' && (
-            <div className="space-y-6">
+            <div className="space-y-6 max-w-md">
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex gap-3 text-amber-800 text-sm">
-                <Shield size={20} className="flex-shrink-0" />
-                <p>Major account changes may require email verification.</p>
+                <Shield size={20} className="flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium">Change Password</p>
+                  <p className="mt-0.5 text-amber-700">Password must be at least 8 characters. You will remain logged in after changing.</p>
+                </div>
               </div>
-              <div className="space-y-4">
+
+              {!supabaseAuthService.isConfigured() && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Current Password</label>
-                  <input type="password" className="w-full max-w-md border border-gray-300 rounded-lg p-2.5 text-sm" />
+                  <div className="relative">
+                    <input
+                      type={pwVisible ? 'text' : 'password'}
+                      value={pwForm.current}
+                      onChange={(e) => setPwForm({ ...pwForm, current: e.target.value })}
+                      className="w-full border border-gray-300 rounded-lg p-2.5 pr-10 text-sm focus:ring-2 focus:ring-primary-500"
+                      placeholder="Your current password"
+                    />
+                    <button type="button" onClick={() => setPwVisible(v => !v)} className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600">
+                      {pwVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
-                  <input type="password" className="w-full max-w-md border border-gray-300 rounded-lg p-2.5 text-sm" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Confirm New Password</label>
-                  <input type="password" className="w-full max-w-md border border-gray-300 rounded-lg p-2.5 text-sm" />
-                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
+                <input
+                  type={pwVisible ? 'text' : 'password'}
+                  value={pwForm.next}
+                  onChange={(e) => setPwForm({ ...pwForm, next: e.target.value })}
+                  className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary-500"
+                  placeholder="At least 8 characters"
+                />
+                {pwForm.next.length > 0 && (
+                  <div className="mt-1.5 flex gap-1">
+                    {[...Array(4)].map((_, i) => (
+                      <div key={i} className={`h-1 flex-1 rounded-full ${
+                        pwForm.next.length >= (i + 1) * 3
+                          ? i < 2 ? 'bg-red-400' : i === 2 ? 'bg-amber-400' : 'bg-emerald-500'
+                          : 'bg-gray-200'
+                      }`} />
+                    ))}
+                  </div>
+                )}
               </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Confirm New Password</label>
+                <input
+                  type={pwVisible ? 'text' : 'password'}
+                  value={pwForm.confirm}
+                  onChange={(e) => setPwForm({ ...pwForm, confirm: e.target.value })}
+                  className={`w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary-500 ${
+                    pwForm.confirm && pwForm.confirm !== pwForm.next ? 'border-red-300' : 'border-gray-300'
+                  }`}
+                  placeholder="Repeat new password"
+                />
+                {pwForm.confirm && pwForm.confirm !== pwForm.next && (
+                  <p className="text-xs text-red-500 mt-1">Passwords do not match</p>
+                )}
+              </div>
+
+              {(errorMessage || successMessage) && (
+                <div className={`text-sm flex items-center gap-2 ${errorMessage ? 'text-red-600' : 'text-green-600'}`}>
+                  {errorMessage ? <AlertCircle size={15} /> : <CheckCircle2 size={15} />}
+                  {errorMessage || successMessage}
+                </div>
+              )}
+
+              <button
+                onClick={handleChangePassword}
+                disabled={pwLoading || !pwForm.next || !pwForm.confirm}
+                className="flex items-center gap-2 px-5 py-2.5 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors disabled:opacity-60"
+              >
+                {pwLoading ? 'Saving…' : <><Lock size={15} /> Update Password</>}
+              </button>
             </div>
           )}
 
           {/* ── Notifications Tab ── */}
           {activeTab === 'notifications' && (
-            <div className="space-y-4">
-              {['Email me when a student submits an exam', 'Email me daily summary reports', 'Notify me about system maintenance'].map((label, i) => (
-                <label key={i} className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
-                  <input type="checkbox" defaultChecked={i === 0} className="w-4 h-4 text-primary-600 rounded border-gray-300 focus:ring-primary-500" />
-                  <span className="text-sm text-gray-700">{label}</span>
-                </label>
-              ))}
+            <div className="space-y-6 max-w-lg">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900 mb-1">In-App Notification Preferences</h3>
+                <p className="text-xs text-gray-500 mb-4">
+                  Choose which events trigger a notification for you. Preferences are saved locally on this device.
+                </p>
+                <div className="space-y-2">
+                  {NOTIF_OPTIONS.map(({ key, label, desc }) => (
+                    <label
+                      key={key}
+                      className={`flex items-start gap-3 p-3.5 border rounded-xl cursor-pointer transition-colors ${
+                        notifPrefs[key]
+                          ? 'border-primary-200 bg-primary-50/40'
+                          : 'border-gray-200 hover:bg-gray-50'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={notifPrefs[key]}
+                        onChange={(e) => setNotifPrefs(p => ({ ...p, [key]: e.target.checked }))}
+                        className="mt-0.5 w-4 h-4 text-primary-600 rounded border-gray-300 focus:ring-primary-500 flex-shrink-0"
+                      />
+                      <div>
+                        <p className="text-sm font-medium text-gray-800 leading-none">{label}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{desc}</p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  onClick={handleSaveNotifPrefs}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
+                >
+                  <Save size={15} /> Save Preferences
+                </button>
+                {notifSaved && (
+                  <span className="flex items-center gap-1.5 text-sm text-emerald-600">
+                    <CheckCircle2 size={15} /> Saved
+                  </span>
+                )}
+              </div>
+
+              <div className="border-t border-gray-200 pt-4 text-xs text-gray-400">
+                Email and SMS delivery are not yet configured. These preferences control in-app alerts only.
+              </div>
             </div>
           )}
 

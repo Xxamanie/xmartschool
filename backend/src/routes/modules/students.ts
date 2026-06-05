@@ -95,7 +95,7 @@ router.post(
       req.auth?.role === UserRole.SUPER_ADMIN
         ? (data.schoolId?.trim() || req.auth?.schoolId)
         : req.auth?.schoolId;
-    const response = await appService.createStudent(data as any, effectiveSchoolId);
+    const response = await appService.createStudent(data as any, effectiveSchoolId, req.auth?.userId);
     res.json(response);
   }),
 );
@@ -145,6 +145,7 @@ router.delete(
     const response = await appService.deleteStudentForSchool(
       id,
       req.auth?.role === UserRole.SUPER_ADMIN ? undefined : req.auth?.schoolId,
+      req.auth?.userId,
     );
     res.json(response);
   }),

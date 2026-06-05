@@ -17,15 +17,18 @@ router.get(
 
 const uploadSchema = z.object({
   fileName: z.string().min(1),
-  metadata: z.record(z.string(), z.unknown()).default({}),
+  fileUrl: z.string().optional().default(''),
+  term: z.string().min(1),
+  subject: z.string().min(1),
+  year: z.string().optional().default(new Date().getFullYear().toString()),
 });
 
 router.post(
   '/upload',
   requireRole(UserRole.ADMIN, UserRole.TEACHER, UserRole.SUPER_ADMIN),
   asyncHandler(async (req, res) => {
-    const { fileName, metadata } = uploadSchema.parse(req.body);
-    const response = await appService.uploadScheme(fileName, metadata);
+    const { fileName, fileUrl, term, subject } = uploadSchema.parse(req.body);
+    const response = await appService.uploadScheme(fileName, { term, subject, fileUrl });
     res.json(response);
   }),
 );

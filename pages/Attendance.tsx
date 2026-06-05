@@ -2,12 +2,172 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { api } from '../services/api';
 import { Student, UserRole } from '../types';
 import { useAuth } from '../context/AuthContext';
-import { Calendar as CalendarIcon, CheckCircle2, XCircle, Clock, AlertCircle, Save, Loader2, Users, Filter } from 'lucide-react';
+import { Calendar as CalendarIcon, CheckCircle2, XCircle, Clock, AlertCircle, Save, Loader2, Users, Filter, BarChart2, Download } from 'lucide-react';
+
+// ── Termly Report ────────────────────────────────────────────────────────────
+
+interface TermSummary {
+  studentId: string;
+  name: string;
+  grade: string;
+  present: number;
+  absent: number;
+  late: number;
+  excused: number;
+  total: number;
+  pct: number;
+}
+
+const TermlyReport: React.FC<{ students: Student[] }> = ({ students }) => {
+  const [summaries, setSummaries] = useState<TermSummary[]>([]);
+  const [loadingReport, setLoadingReport] = useState(false);
+  const [selectedGrade, setSelectedGrade] = useState('');
+
+  const uniqueGrades = useMemo(() => Array.from(new Set(students.map(s => s.grade))).sort(), [students]);
+
+  useEffect(() => {
+    if (students.length === 0) return;
+    if (!selectedGrade && uniqueGrades.length > 0) setSelectedGrade(uniqueGrades[0]);
+  }, [uniqueGrades]);
+
+  useEffect(() => {
+    if (!selectedGrade) return;
+    const gradeStudents = students.filter(s => s.grade === selectedGrade);
+    if (gradeStudents.length === 0) { setSummaries([]); return; }
+
+    setLoadingReport(true);
+    api.getAttendanceSummaries(gradeStudents.map(s => s.id)).then(res => {
+      if (res.ok) {
+        const rows: TermSummary[] = gradeStudents.map(s => {
+          const raw = res.data[s.id] as any;
+          const present = raw?.present ?? 0;
+          const total = raw?.total ?? 0;
+          const absent = raw?.absent ?? 0;
+          const late = raw?.late ?? 0;
+          const excused = raw?.excused ?? 0;
+          return {
+            studentId: s.id,
+            name: s.name,
+            grade: s.grade,
+            present,
+            absent,
+            late,
+            excused,
+            total,
+            pct: total > 0 ? Math.round((present / total) * 100) : 0,
+          };
+        });
+        setSummaries(rows.sort((a, b) => b.pct - a.pct));
+      }
+    }).finally(() => setLoadingReport(false));
+  }, [selectedGrade, students]);
+
+  const exportCSV = () => {
+    const header = 'Name,Grade,Present,Absent,Late,Excused,Total Days,Attendance %\n';
+    const rows = summaries.map(s =>
+      `${s.name},${s.grade},${s.present},${s.absent},${s.late},${s.excused},${s.total},${s.pct}%`
+    ).join('\n');
+    const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `attendance_report_${selectedGrade.replace(/\s+/g, '_')}.csv`;
+    link.click();
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center gap-3">
+        <select
+          value={selectedGrade}
+          onChange={e => setSelectedGrade(e.target.value)}
+          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
+        >
+          <option value="" disabled>Select class</option>
+          {uniqueGrades.map(g => <option key={g} value={g}>{g}</option>)}
+        </select>
+        <button
+          onClick={exportCSV}
+          disabled={summaries.length === 0}
+          className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+        >
+          <Download size={15} /> Export CSV
+        </button>
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Student</th>
+              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Present</th>
+              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Absent</th>
+              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Late</th>
+              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Excused</th>
+              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Total</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Attendance</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-100">
+            {loadingReport ? (
+              [...Array(5)].map((_, i) => (
+                <tr key={i}>
+                  <td colSpan={7} className="px-5 py-3">
+                    <div className="h-4 bg-gray-100 rounded animate-pulse" />
+                  </td>
+                </tr>
+              ))
+            ) : summaries.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="px-5 py-10 text-center text-sm text-gray-400">
+                  No attendance data yet for {selectedGrade}.
+                </td>
+              </tr>
+            ) : summaries.map(s => (
+              <tr key={s.studentId} className="hover:bg-gray-50">
+                <td className="px-5 py-3 text-sm font-medium text-gray-900">{s.name}</td>
+                <td className="px-4 py-3 text-center text-sm text-green-700 font-semibold">{s.present}</td>
+                <td className="px-4 py-3 text-center text-sm text-red-600 font-semibold">{s.absent}</td>
+                <td className="px-4 py-3 text-center text-sm text-amber-600 font-semibold">{s.late}</td>
+                <td className="px-4 py-3 text-center text-sm text-blue-600 font-semibold">{s.excused}</td>
+                <td className="px-4 py-3 text-center text-sm text-gray-500">{s.total}</td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 bg-gray-200 rounded-full h-2 max-w-[100px]">
+                      <div
+                        className={`h-2 rounded-full ${s.pct >= 75 ? 'bg-emerald-500' : s.pct >= 50 ? 'bg-amber-400' : 'bg-red-500'}`}
+                        style={{ width: `${s.pct}%` }}
+                      />
+                    </div>
+                    <span className={`text-xs font-bold ${s.pct >= 75 ? 'text-emerald-600' : s.pct >= 50 ? 'text-amber-600' : 'text-red-600'}`}>
+                      {s.pct}%
+                    </span>
+                    {s.pct < 75 && (
+                      <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-semibold">LOW</span>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {summaries.length > 0 && (
+        <p className="text-xs text-gray-400">
+          Flagged in red: students below 75% attendance threshold.
+        </p>
+      )}
+    </div>
+  );
+};
+
+// ── Main page ────────────────────────────────────────────────────────────────
 
 export const Attendance: React.FC = () => {
   const { user } = useAuth();
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'register' | 'report'>('register');
   const [selectedGrade, setSelectedGrade] = useState<string>('');
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [attendanceMap, setAttendanceMap] = useState<Record<string, 'Present' | 'Absent' | 'Late' | 'Excused'>>({});
@@ -18,255 +178,231 @@ export const Attendance: React.FC = () => {
     const loadData = async () => {
       setLoading(true);
       try {
-        // Load Students
         const studentsRes = await api.getStudents();
         if (studentsRes.ok) {
-            // Filter students based on user role
-            let filteredStudents = studentsRes.data;
-            if (user?.role === UserRole.TEACHER) {
-              // Teachers only see students from their assigned subjects/classes
-              // For now, show all students but this can be enhanced with class assignments
-              filteredStudents = studentsRes.data;
-            }
-            setStudents(filteredStudents);
-            // Default to first available grade if not set
-            if (!selectedGrade && filteredStudents.length > 0) {
-                const grades = Array.from(new Set(filteredStudents.map(s => s.grade))).sort();
-                if (grades.length > 0) setSelectedGrade(grades[0]);
-            }
+          setStudents(studentsRes.data);
+          if (!selectedGrade && studentsRes.data.length > 0) {
+            const grades = Array.from(new Set(studentsRes.data.map(s => s.grade))).sort();
+            if (grades.length > 0) setSelectedGrade(grades[0]);
+          }
         }
       } catch (e) {
-          console.error(e);
+        console.error(e);
       } finally {
-          setLoading(false);
+        setLoading(false);
       }
     };
     loadData();
   }, []);
 
-  // Load attendance when grade or date changes
   useEffect(() => {
-      if (!selectedGrade) return;
-
-      const loadAttendance = async () => {
-          try {
-              const res = await api.getAttendance(selectedDate, selectedGrade);
-              if (res.ok) {
-                  const map: Record<string, any> = {};
-                  // Default everyone to 'Present' if no record exists yet, otherwise load record
-                  const filteredStudents = students.filter(s => s.grade === selectedGrade);
-                  filteredStudents.forEach(s => {
-                      const record = res.data.find(r => r.studentId === s.id);
-                      map[s.id] = record ? record.status : 'Present';
-                  });
-                  setAttendanceMap(map);
-              }
-          } catch (e) {
-              console.error(e);
-          }
-      };
-      loadAttendance();
+    if (!selectedGrade) return;
+    const loadAttendance = async () => {
+      try {
+        const res = await api.getAttendance(selectedDate, selectedGrade);
+        if (res.ok) {
+          const map: Record<string, any> = {};
+          students.filter(s => s.grade === selectedGrade).forEach(s => {
+            const record = res.data.find((r: any) => r.studentId === s.id);
+            map[s.id] = record ? record.status : 'Present';
+          });
+          setAttendanceMap(map);
+        }
+      } catch (e) { console.error(e); }
+    };
+    loadAttendance();
   }, [selectedGrade, selectedDate, students]);
 
-  const handleStatusChange = (studentId: string, status: 'Present' | 'Absent' | 'Late' | 'Excused') => {
-      setAttendanceMap(prev => ({ ...prev, [studentId]: status }));
-  };
+  const handleStatusChange = (studentId: string, status: 'Present' | 'Absent' | 'Late' | 'Excused') =>
+    setAttendanceMap(prev => ({ ...prev, [studentId]: status }));
 
   const handleSave = async () => {
-      setSaving(true);
-      setSuccessMsg('');
-      try {
-          const updates = Object.entries(attendanceMap).map(([studentId, status]) => ({
-              studentId,
-              status: status as 'Present' | 'Absent' | 'Late' | 'Excused',
-              date: selectedDate
-          }));
-          
-          await api.markAttendance(updates);
-          setSuccessMsg('Attendance saved successfully');
-          setTimeout(() => setSuccessMsg(''), 3000);
-      } catch (e) {
-          console.error(e);
-      } finally {
-          setSaving(false);
-      }
+    setSaving(true); setSuccessMsg('');
+    try {
+      const updates = Object.entries(attendanceMap).map(([studentId, status]) => ({
+        studentId, status: status as any, date: selectedDate,
+      }));
+      await api.markAttendance(updates);
+      setSuccessMsg('Attendance saved successfully');
+      setTimeout(() => setSuccessMsg(''), 3000);
+    } catch (e) { console.error(e); }
+    finally { setSaving(false); }
   };
 
-  const filteredStudents = useMemo(() => {
-      return students.filter(s => s.grade === selectedGrade).sort((a, b) => a.name.localeCompare(b.name));
-  }, [students, selectedGrade]);
+  const filteredStudents = useMemo(() =>
+    students.filter(s => s.grade === selectedGrade).sort((a, b) => a.name.localeCompare(b.name)),
+    [students, selectedGrade]);
 
-  const uniqueGrades = useMemo(() => {
-      return Array.from(new Set(students.map(s => s.grade))).sort();
-  }, [students]);
+  const uniqueGrades = useMemo(() => Array.from(new Set(students.map(s => s.grade))).sort(), [students]);
 
   const stats = useMemo(() => {
-      const total = filteredStudents.length;
-      if (total === 0) return { present: 0, absent: 0, late: 0 };
-      
-      let present = 0, absent = 0, late = 0;
-      Object.values(attendanceMap).forEach(status => {
-          if (status === 'Present') present++;
-          if (status === 'Absent') absent++;
-          if (status === 'Late') late++;
-      });
-      
-      return { present, absent, late };
-  }, [attendanceMap, filteredStudents]);
+    let present = 0, absent = 0, late = 0;
+    Object.values(attendanceMap).forEach(s => {
+      if (s === 'Present') present++;
+      if (s === 'Absent') absent++;
+      if (s === 'Late') late++;
+    });
+    return { present, absent, late };
+  }, [attendanceMap]);
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Daily Attendance</h1>
-          <p className="text-gray-500">Mark and track student attendance records.</p>
+          <h1 className="text-2xl font-bold text-gray-900">Attendance</h1>
+          <p className="text-gray-500">Mark daily registers and view termly attendance reports.</p>
         </div>
-        <div className="flex items-center gap-3 bg-white p-1.5 rounded-lg border border-gray-200 shadow-sm">
-            <button 
-                onClick={handleSave}
-                disabled={saving || filteredStudents.length === 0}
-                className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-bold hover:bg-primary-700 transition-colors disabled:opacity-70"
-            >
-                {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                Save Register
-            </button>
-        </div>
+        {activeTab === 'register' && (
+          <button
+            onClick={handleSave}
+            disabled={saving || filteredStudents.length === 0}
+            className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-bold hover:bg-primary-700 transition-colors disabled:opacity-70"
+          >
+            {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+            Save Register
+          </button>
+        )}
       </div>
 
-      {/* Filters & Stats */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm space-y-4">
-             <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide flex items-center gap-2">
-                 <Filter size={16} /> Configuration
-             </h3>
-             <div className="space-y-3">
-                 <div>
-                     <label className="block text-xs font-medium text-gray-500 mb-1">Select Class</label>
-                     <select 
-                        value={selectedGrade}
-                        onChange={(e) => setSelectedGrade(e.target.value)}
-                        className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-primary-500 focus:border-primary-500"
-                     >
-                         <option value="" disabled>Select a Class</option>
-                         {uniqueGrades.map(g => <option key={g} value={g}>{g}</option>)}
-                     </select>
-                 </div>
-                 <div>
-                     <label className="block text-xs font-medium text-gray-500 mb-1">Date</label>
-                     <input 
-                        type="date" 
-                        value={selectedDate}
-                        onChange={(e) => setSelectedDate(e.target.value)}
-                        className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-primary-500 focus:border-primary-500"
-                     />
-                 </div>
-             </div>
-          </div>
-
-          <div className="lg:col-span-2 bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-             <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide flex items-center gap-2 mb-4">
-                 <Users size={16} /> Class Summary: {selectedGrade}
-             </h3>
-             <div className="grid grid-cols-3 gap-4">
-                 <div className="p-3 bg-green-50 rounded-lg border border-green-100">
-                     <p className="text-xs text-green-600 font-bold uppercase">Present</p>
-                     <p className="text-2xl font-bold text-green-700">{stats.present}</p>
-                 </div>
-                 <div className="p-3 bg-red-50 rounded-lg border border-red-100">
-                     <p className="text-xs text-red-600 font-bold uppercase">Absent</p>
-                     <p className="text-2xl font-bold text-red-700">{stats.absent}</p>
-                 </div>
-                 <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-100">
-                     <p className="text-xs text-yellow-600 font-bold uppercase">Late</p>
-                     <p className="text-2xl font-bold text-yellow-700">{stats.late}</p>
-                 </div>
-             </div>
-             {successMsg && (
-                 <div className="mt-4 p-2 bg-green-100 text-green-700 text-xs font-bold rounded flex items-center gap-2 animate-in fade-in">
-                     <CheckCircle2 size={14} /> {successMsg}
-                 </div>
-             )}
-          </div>
+      {/* Tabs */}
+      <div className="bg-gray-100 p-1 rounded-lg flex items-center self-start gap-0.5 w-fit">
+        <button
+          onClick={() => setActiveTab('register')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'register' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
+        >
+          <CalendarIcon size={15} /> Daily Register
+        </button>
+        <button
+          onClick={() => setActiveTab('report')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'report' ? 'bg-white shadow text-primary-700' : 'text-gray-500 hover:text-gray-700'}`}
+        >
+          <BarChart2 size={15} /> Termly Report
+        </button>
       </div>
 
-      {/* Student List */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200">
+      {activeTab === 'report' && <TermlyReport students={students} />}
+
+      {activeTab === 'register' && (
+        <>
+          {/* Filters & Stats */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm space-y-4">
+              <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide flex items-center gap-2">
+                <Filter size={16} /> Configuration
+              </h3>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Select Class</label>
+                  <select
+                    value={selectedGrade}
+                    onChange={e => setSelectedGrade(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-primary-500 focus:border-primary-500"
+                  >
+                    <option value="" disabled>Select a Class</option>
+                    {uniqueGrades.map(g => <option key={g} value={g}>{g}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Date</label>
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    onChange={e => setSelectedDate(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-primary-500 focus:border-primary-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="lg:col-span-2 bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
+              <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide flex items-center gap-2 mb-4">
+                <Users size={16} /> Class Summary: {selectedGrade}
+              </h3>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="p-3 bg-green-50 rounded-lg border border-green-100">
+                  <p className="text-xs text-green-600 font-bold uppercase">Present</p>
+                  <p className="text-2xl font-bold text-green-700">{stats.present}</p>
+                </div>
+                <div className="p-3 bg-red-50 rounded-lg border border-red-100">
+                  <p className="text-xs text-red-600 font-bold uppercase">Absent</p>
+                  <p className="text-2xl font-bold text-red-700">{stats.absent}</p>
+                </div>
+                <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-100">
+                  <p className="text-xs text-yellow-600 font-bold uppercase">Late</p>
+                  <p className="text-2xl font-bold text-yellow-700">{stats.late}</p>
+                </div>
+              </div>
+              {successMsg && (
+                <div className="mt-4 p-2 bg-green-100 text-green-700 text-xs font-bold rounded flex items-center gap-2 animate-in fade-in">
+                  <CheckCircle2 size={14} /> {successMsg}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Student register table */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
-                  <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/3">Student Name</th>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Present</th>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Absent</th>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Late</th>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Excused</th>
-                  </tr>
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/3">Student</th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Present</th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Absent</th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Late</th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Excused</th>
+                </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                  {loading ? (
-                      [1,2,3,4].map(i => (
-                          <tr key={i}><td colSpan={5} className="px-6 py-4"><div className="h-6 bg-gray-100 rounded w-full animate-pulse"></div></td></tr>
-                      ))
-                  ) : filteredStudents.length > 0 ? (
-                      filteredStudents.map(student => {
-                          const status = attendanceMap[student.id] || 'Present';
-                          return (
-                              <tr key={student.id} className="hover:bg-gray-50 transition-colors">
-                                  <td className="px-6 py-4 whitespace-nowrap">
-                                      <div className="flex items-center">
-                                          <div className="h-8 w-8 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center font-bold text-xs mr-3">
-                                              {student.name.charAt(0)}
-                                          </div>
-                                          <div>
-                                              <div className="text-sm font-bold text-gray-900">{student.name}</div>
-                                              <div className="text-xs text-gray-500">{student.accessCode}</div>
-                                          </div>
-                                      </div>
-                                  </td>
-                                  <td className="px-6 py-4 text-center">
-                                      <button 
-                                        onClick={() => handleStatusChange(student.id, 'Present')}
-                                        className={`p-2 rounded-full transition-all ${status === 'Present' ? 'bg-green-100 text-green-600 ring-2 ring-green-500 ring-offset-1' : 'text-gray-300 hover:bg-gray-100'}`}
-                                      >
-                                          <CheckCircle2 size={20} fill={status === 'Present' ? 'currentColor' : 'none'} />
-                                      </button>
-                                  </td>
-                                  <td className="px-6 py-4 text-center">
-                                      <button 
-                                        onClick={() => handleStatusChange(student.id, 'Absent')}
-                                        className={`p-2 rounded-full transition-all ${status === 'Absent' ? 'bg-red-100 text-red-600 ring-2 ring-red-500 ring-offset-1' : 'text-gray-300 hover:bg-gray-100'}`}
-                                      >
-                                          <XCircle size={20} fill={status === 'Absent' ? 'currentColor' : 'none'} />
-                                      </button>
-                                  </td>
-                                  <td className="px-6 py-4 text-center">
-                                      <button 
-                                        onClick={() => handleStatusChange(student.id, 'Late')}
-                                        className={`p-2 rounded-full transition-all ${status === 'Late' ? 'bg-yellow-100 text-yellow-600 ring-2 ring-yellow-500 ring-offset-1' : 'text-gray-300 hover:bg-gray-100'}`}
-                                      >
-                                          <Clock size={20} fill={status === 'Late' ? 'currentColor' : 'none'} />
-                                      </button>
-                                  </td>
-                                  <td className="px-6 py-4 text-center">
-                                      <button 
-                                        onClick={() => handleStatusChange(student.id, 'Excused')}
-                                        className={`p-2 rounded-full transition-all ${status === 'Excused' ? 'bg-blue-100 text-blue-600 ring-2 ring-blue-500 ring-offset-1' : 'text-gray-300 hover:bg-gray-100'}`}
-                                      >
-                                          <AlertCircle size={20} fill={status === 'Excused' ? 'currentColor' : 'none'} />
-                                      </button>
-                                  </td>
-                              </tr>
-                          );
-                      })
-                  ) : (
-                      <tr>
-                          <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
-                              No students found in this class.
-                          </td>
-                      </tr>
-                  )}
+                {loading ? (
+                  [1,2,3,4].map(i => (
+                    <tr key={i}><td colSpan={5} className="px-6 py-4"><div className="h-6 bg-gray-100 rounded w-full animate-pulse" /></td></tr>
+                  ))
+                ) : filteredStudents.length > 0 ? filteredStudents.map(student => {
+                  const status = attendanceMap[student.id] || 'Present';
+                  return (
+                    <tr key={student.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-3">
+                          <div className="h-8 w-8 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center font-bold text-xs">
+                            {student.name.charAt(0)}
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-gray-900">{student.name}</p>
+                            <p className="text-xs text-gray-500">{student.accessCode}</p>
+                          </div>
+                        </div>
+                      </td>
+                      {(['Present', 'Absent', 'Late', 'Excused'] as const).map(s => (
+                        <td key={s} className="px-6 py-4 text-center">
+                          <button
+                            onClick={() => handleStatusChange(student.id, s)}
+                            className={`p-2 rounded-full transition-all ${status === s
+                              ? s === 'Present' ? 'bg-green-100 text-green-600 ring-2 ring-green-500 ring-offset-1'
+                              : s === 'Absent' ? 'bg-red-100 text-red-600 ring-2 ring-red-500 ring-offset-1'
+                              : s === 'Late' ? 'bg-yellow-100 text-yellow-600 ring-2 ring-yellow-500 ring-offset-1'
+                              : 'bg-blue-100 text-blue-600 ring-2 ring-blue-500 ring-offset-1'
+                              : 'text-gray-300 hover:bg-gray-100'}`}
+                          >
+                            {s === 'Present' && <CheckCircle2 size={20} fill={status === s ? 'currentColor' : 'none'} />}
+                            {s === 'Absent' && <XCircle size={20} fill={status === s ? 'currentColor' : 'none'} />}
+                            {s === 'Late' && <Clock size={20} fill={status === s ? 'currentColor' : 'none'} />}
+                            {s === 'Excused' && <AlertCircle size={20} fill={status === s ? 'currentColor' : 'none'} />}
+                          </button>
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                }) : (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-12 text-center text-gray-500">No students found in this class.</td>
+                  </tr>
+                )}
               </tbody>
-          </table>
-      </div>
+            </table>
+          </div>
+        </>
+      )}
     </div>
   );
 };

@@ -87,6 +87,22 @@ export const supabaseAuthService = {
     };
   },
 
+  sendPasswordResetEmail: async (email: string): Promise<void> => {
+    const supabase = getSupabaseClient();
+    if (!supabase) throw new Error('Supabase is not configured. Use demo mode password reset.');
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/#/reset-password`,
+    });
+    if (error) throw new Error(error.message);
+  },
+
+  updatePassword: async (newPassword: string): Promise<void> => {
+    const supabase = getSupabaseClient();
+    if (!supabase) throw new Error('Supabase is not configured.');
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw new Error(error.message);
+  },
+
   getAccessToken: async (): Promise<string | null> => {
     const supabase = getSupabaseClient();
     if (!supabase) return null;

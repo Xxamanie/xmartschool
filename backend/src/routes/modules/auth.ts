@@ -83,4 +83,23 @@ router.put(
   }),
 );
 
+router.post(
+  '/change-password',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const schema = z.object({
+      currentPassword: z.string().min(1),
+      newPassword: z.string().min(8, 'New password must be at least 8 characters'),
+    });
+    const { currentPassword, newPassword } = schema.parse(req.body);
+    const userId = req.auth?.userId;
+    if (!userId) {
+      res.status(401).json({ ok: false, data: null, message: 'Authentication required' });
+      return;
+    }
+    const response = await appService.changePassword(userId, currentPassword, newPassword);
+    res.json(response);
+  }),
+);
+
 export { router as authRouter };

@@ -89,6 +89,19 @@ router.delete(
   requireRole(UserRole.ADMIN, UserRole.SUPER_ADMIN),
   asyncHandler(async (req, res) => {
     const { id } = z.object({ id: z.string().min(1) }).parse(req.params);
+
+    if (req.auth?.role !== UserRole.SUPER_ADMIN) {
+      const template = await prisma.feeTemplate.findUnique({ where: { id }, select: { schoolId: true } });
+      if (!template) {
+        res.status(404).json({ ok: false, data: null, message: 'Template not found' });
+        return;
+      }
+      if (template.schoolId !== req.auth?.schoolId) {
+        res.status(403).json({ ok: false, data: null, message: 'Cannot delete a template from another school' });
+        return;
+      }
+    }
+
     await prisma.feeTemplate.delete({ where: { id } });
     res.json({ ok: true, data: true });
   }),
@@ -151,6 +164,7 @@ const paymentSchema = z.object({
   amount: z.number().positive(),
   method: z.string().optional(),
   paymentRef: z.string().optional(),
+  clientRef: z.string().optional(),
   schoolId: z.string().optional(),
 });
 
@@ -164,7 +178,7 @@ router.post(
       res.status(400).json({ ok: false, data: null, message: 'School context required' });
       return;
     }
-    const response = await appService.recordPayment({ ...data, schoolId: effectiveSchoolId });
+    const response = await appService.recordPayment({ ...data, schoolId: effectiveSchoolId, actorUserId: req.auth?.userId });
     res.json(response);
   }),
 );

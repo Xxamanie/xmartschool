@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import {
   DollarSign, TrendingUp, AlertCircle, Users, Plus, ChevronDown,
-  Loader2, CheckCircle2, CreditCard, BookOpen, Trash2, X,
+  Loader2, CheckCircle2, CreditCard, BookOpen, Trash2, X, Download, Printer,
 } from 'lucide-react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -136,6 +136,45 @@ export const Finance: React.FC = () => {
 
   const removeTemplateLine = (index: number) => {
     setTemplateForm((prev) => ({ ...prev, lines: prev.lines.filter((_, i) => i !== index) }));
+  };
+
+  // ── Ledger CSV export ─────────────────────────────────────────────────────
+
+  const exportLedgersCSV = () => {
+    const header = 'Student,Term,Payable (₦),Paid (₦),Outstanding (₦),Status\n';
+    const rows = ledgers.map(l =>
+      `"${l.studentName || l.studentId}","${l.term}",${l.totalPayable},${l.totalPaid},${l.outstanding},${l.outstanding === 0 ? 'Paid' : 'Owing'}`
+    ).join('\n');
+    const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `fee_ledger_${selectedTerm || 'all'}.csv`;
+    link.click();
+  };
+
+  // ── Print receipt for a payment ──────────────────────────────────────────
+
+  const printReceipt = (ledger: typeof ledgers[0], item: typeof ledgers[0]['lineItems'][0]) => {
+    const w = window.open('', '_blank', 'width=600,height=700');
+    if (!w) return;
+    w.document.write(`
+      <html><head><title>Payment Receipt</title>
+      <style>body{font-family:sans-serif;padding:32px;color:#111}h1{font-size:18px;margin-bottom:4px}
+      .sub{color:#666;font-size:13px;margin-bottom:24px}.row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee;font-size:14px}
+      .bold{font-weight:700}.footer{margin-top:32px;font-size:11px;color:#999;text-align:center}</style>
+      </head><body>
+      <h1>Payment Receipt</h1>
+      <div class="sub">Generated ${new Date().toLocaleString()}</div>
+      <div class="row"><span>Student</span><span class="bold">${ledger.studentName || ledger.studentId}</span></div>
+      <div class="row"><span>Fee Item</span><span class="bold">${item.title}</span></div>
+      <div class="row"><span>Term</span><span>${ledger.term}</span></div>
+      <div class="row"><span>Total Payable</span><span>₦${item.payableAmount.toLocaleString()}</span></div>
+      <div class="row"><span>Total Paid</span><span class="bold" style="color:#059669">₦${item.totalPaid.toLocaleString()}</span></div>
+      <div class="row"><span>Outstanding</span><span style="color:${item.payableAmount - item.totalPaid > 0 ? '#dc2626' : '#059669'}">${item.payableAmount - item.totalPaid > 0 ? '₦' + (item.payableAmount - item.totalPaid).toLocaleString() : 'NIL'}</span></div>
+      <div class="footer">SmartSchool Finance — Keep this receipt for your records</div>
+      <script>window.onload=()=>window.print()</script>
+      </body></html>`);
+    w.document.close();
   };
 
   // ── Payment recording ─────────────────────────────────────────────────────
@@ -333,6 +372,16 @@ export const Finance: React.FC = () => {
           {/* Ledgers Tab */}
           {activeTab === 'ledgers' && (
             <div>
+              {!ledgersLoading && ledgers.length > 0 && (
+                <div className="flex justify-end mb-4">
+                  <button
+                    onClick={exportLedgersCSV}
+                    className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-xs font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    <Download size={13} /> Export CSV
+                  </button>
+                </div>
+              )}
               {ledgersLoading && (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 size={24} className="animate-spin text-primary-600" />
@@ -387,14 +436,25 @@ export const Finance: React.FC = () => {
                                   : '—'}
                               </td>
                               <td className="py-1.5">
-                                {isAdmin && item.payableAmount - item.totalPaid > 0 && (
-                                  <button
-                                    onClick={() => setPaymentModal({ itemId: item.id, title: item.title, payable: item.payableAmount - item.totalPaid })}
-                                    className="flex items-center gap-1 text-[10px] font-medium text-primary-600 hover:text-primary-800"
-                                  >
-                                    <CreditCard size={11} /> Pay
-                                  </button>
-                                )}
+                                <div className="flex items-center gap-2">
+                                  {isAdmin && item.payableAmount - item.totalPaid > 0 && (
+                                    <button
+                                      onClick={() => setPaymentModal({ itemId: item.id, title: item.title, payable: item.payableAmount - item.totalPaid })}
+                                      className="flex items-center gap-1 text-[10px] font-medium text-primary-600 hover:text-primary-800"
+                                    >
+                                      <CreditCard size={11} /> Pay
+                                    </button>
+                                  )}
+                                  {item.totalPaid > 0 && (
+                                    <button
+                                      onClick={() => printReceipt(ledger, item)}
+                                      className="flex items-center gap-1 text-[10px] font-medium text-gray-500 hover:text-gray-700"
+                                      title="Print receipt"
+                                    >
+                                      <Printer size={11} /> Receipt
+                                    </button>
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           ))}

@@ -168,16 +168,30 @@ export const LiveClassRoom: React.FC = () => {
     );
   }
 
+  // Build the video URL — supports both Jitsi (meet.jit.si) and plain meeting links.
+  // Jitsi lets you pass display name and role via URL hash fragments.
+  const videoSrc = (() => {
+    const base = liveClass.meetingLink ?? '';
+    if (base.includes('meet.jit.si')) {
+      const role = isTeacher ? 'moderator' : 'participant';
+      return `${base}#userInfo.displayName="${encodeURIComponent(user?.name ?? 'User')}"&config.prejoinPageEnabled=false`;
+    }
+    // Generic fallback — append name as query param (works for most SFU embeds)
+    const sep = base.includes('?') ? '&' : '?';
+    return `${base}${sep}name=${encodeURIComponent(user?.name ?? 'User')}`;
+  })();
+
   return (
     <div className="h-screen bg-gray-900 flex flex-col">
       <div className="flex-1 flex gap-4 p-4 overflow-hidden">
         <div className="flex-1 flex flex-col gap-4">
           <iframe
             ref={iframeRef}
-            allow="camera; microphone; display-capture"
-            src={`${liveClass.meetingLink}?name=${user?.name || 'User'}`}
+            allow="camera; microphone; display-capture; fullscreen; autoplay"
+            allowFullScreen
+            src={videoSrc}
             className="flex-1 rounded-lg border border-gray-700"
-            title="Jitsi Meet"
+            title="Live Class Room"
           />
 
           <div className="bg-gray-800 rounded-lg p-4 flex items-center justify-between gap-4">

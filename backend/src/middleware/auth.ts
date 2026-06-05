@@ -105,7 +105,8 @@ export const requireSchoolContext = (req: Request, res: Response, next: NextFunc
     return;
   }
 
-  if (req.auth.role !== UserRole.SUPER_ADMIN && !req.auth.schoolId) {
+  // PARENT accounts are linked to students directly — they don't need a schoolId for their own routes
+  if (req.auth.role !== UserRole.SUPER_ADMIN && req.auth.role !== UserRole.PARENT && !req.auth.schoolId) {
     res.status(403).json({ ok: false, data: null, message: 'School context is required for this operation' });
     return;
   }

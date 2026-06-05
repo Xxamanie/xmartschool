@@ -25,6 +25,7 @@ import { eventsRouter } from './modules/events';
 import { financeRouter } from './modules/finance';
 import { termsRouter } from './modules/terms';
 import { auditRouter } from './modules/audit';
+import { parentsRouter } from './modules/parents';
 
 export const registerRoutes = (app: Express) => {
 
@@ -55,5 +56,6 @@ export const registerRoutes = (app: Express) => {
   app.use('/api/finance', financeRouter);
   app.use('/api/terms', termsRouter);
   app.use('/api/audit', auditRouter);
+  app.use('/api/parents', parentsRouter);
 };
 

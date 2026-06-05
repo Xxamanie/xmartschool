@@ -793,6 +793,28 @@ async function main() {
     }
   }
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // FORM MASTERS (class teachers) — one per class per school
+  // ──────────────────────────────────────────────────────────────────────────
+  const classMasterEntries = [
+    // Greenfield Academy
+    { schoolId: gfa.id, grade: 'SS1A', teacherId: gfaT1.id },
+    { schoolId: gfa.id, grade: 'SS2A', teacherId: gfaT2.id },
+    // Sunrise International School
+    { schoolId: sis.id, grade: 'JSS1', teacherId: 'u_sis_t1' },
+    { schoolId: sis.id, grade: 'JSS2', teacherId: 'u_sis_t2' },
+    // Kings College Ibadan
+    { schoolId: kc.id, grade: 'Form 1', teacherId: 'u_kc_t1' },
+    { schoolId: kc.id, grade: 'Form 2', teacherId: 'u_kc_t2' },
+  ];
+  for (const { schoolId, grade, teacherId } of classMasterEntries) {
+    await prisma.classMaster.upsert({
+      where: { schoolId_grade: { schoolId, grade } },
+      update: { teacherId },
+      create: { schoolId, grade, teacherId },
+    });
+  }
+
   console.log('✅  Seed complete.');
   console.log('');
   console.log('  SCHOOL LOGINS');

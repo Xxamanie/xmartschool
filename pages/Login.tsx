@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { GraduationCap, Loader2, Lock, Mail, KeyRound, Building2, UserCircle2, CheckCircle2, AlertCircle, Wifi, WifiOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useClickSound } from '../src/utils/useClickSound';
+import { supabaseAuthService } from '../src/services/supabaseAuthService';
 import { UserRole } from '../types';
 
 const CAPABILITIES = [
@@ -20,6 +21,23 @@ export const Login: React.FC = () => {
   const navigate = useNavigate();
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<'staff' | 'student'>('staff');
+  const [resetSent, setResetSent] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+
+  const handleForgotPassword = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (!email) { setError('Enter your email address first, then click Forgot password.'); return; }
+    setResetLoading(true);
+    try {
+      await supabaseAuthService.sendPasswordResetEmail(email);
+      setResetSent(true);
+      setError('');
+    } catch (err: any) {
+      setError(err.message || 'Could not send reset email. Check your email address.');
+    } finally {
+      setResetLoading(false);
+    }
+  };
 
   // Animation State
   const [currentCapability, setCurrentCapability] = useState(0);
@@ -252,10 +270,21 @@ export const Login: React.FC = () => {
                         <input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
                         <span className="ml-2 text-sm text-gray-500">Remember me</span>
                     </label>
-                    <a href="#" className="text-sm font-medium text-primary-600 hover:text-primary-700">
-                    Forgot password?
-                    </a>
+                    <button
+                      type="button"
+                      onClick={handleForgotPassword}
+                      disabled={resetLoading}
+                      className="text-sm font-medium text-primary-600 hover:text-primary-700 disabled:opacity-60"
+                    >
+                      {resetLoading ? 'Sending…' : 'Forgot password?'}
+                    </button>
                 </div>
+                {resetSent && (
+                  <div className="p-3 rounded-lg bg-green-50 border border-green-200 text-green-700 text-sm flex items-center gap-2">
+                    <CheckCircle2 size={15} />
+                    Reset link sent — check your inbox for {email}.
+                  </div>
+                )}
 
                 {error && (
                     <div className="p-3 rounded-lg bg-red-50 border border-red-100 text-red-600 text-sm flex items-center gap-2">

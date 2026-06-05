@@ -199,13 +199,16 @@ export const LiveClasses: React.FC = () => {
             </div>
 
             <div>
-              <label className="text-sm font-medium text-gray-700">Meeting Link (optional)</label>
+              <label className="text-sm font-medium text-gray-700">
+                Meeting Link
+                <span className="ml-2 text-xs text-gray-400 font-normal">optional — Jitsi room auto-created if blank</span>
+              </label>
               <input
                 type="text"
                 value={form.meetingLink}
                 onChange={(e) => setForm((s) => ({ ...s, meetingLink: e.target.value }))}
                 className="mt-1 w-full border border-gray-300 rounded-lg p-2"
-                placeholder="https://meet.jit.si/..."
+                placeholder="Leave blank for auto-generated Jitsi room"
               />
             </div>
           </div>

@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { StudentForm } from '../components/StudentForm';
 import { ToastContainer } from '../components/Toast';
 import { useToast } from '../src/utils/useToast';
-import { Search, Filter, MoreHorizontal, Plus, ArrowUp, ArrowDown, ArrowUpDown, Calendar, Crown, X, UserCheck, CheckCircle2, Trash2, Edit, BookOpen } from 'lucide-react';
+import { Search, Filter, MoreHorizontal, Plus, ArrowUp, ArrowDown, ArrowUpDown, Calendar, Crown, X, UserCheck, CheckCircle2, Trash2, Edit, BookOpen, Upload, Download, Baby, Link, Link2Off, Eye, EyeOff } from 'lucide-react';
 
 export const Students: React.FC = () => {
   const { user, isCreator, effectiveSchoolId } = useAuth();
@@ -28,6 +28,15 @@ export const Students: React.FC = () => {
   const [allSubjects, setAllSubjects] = useState<Subject[]>([]);
   const [fieldForm, setFieldForm] = useState<{ field: string; enrolledSubjects: string[] }>({ field: 'general', enrolledSubjects: [] });
   const [fieldSaving, setFieldSaving] = useState(false);
+
+  // Parent management
+  const [showParentModal, setShowParentModal] = useState(false);
+  const [parents, setParents] = useState<(User & { childCount: number })[]>([]);
+  const [parentForm, setParentForm] = useState({ name: '', email: '', phone: '', studentIds: [] as string[] });
+  const [parentPwVisible, setParentPwVisible] = useState(false);
+  const [parentTempPw, setParentTempPw] = useState<string | null>(null);
+  const [parentSaving, setParentSaving] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
   
   const [sortConfig, setSortConfig] = useState<{ key: keyof Student; direction: 'asc' | 'desc' }>({
     key: 'name',
@@ -159,6 +168,59 @@ export const Students: React.FC = () => {
       toast.success('Student updated successfully!');
   };
 
+  // ── CSV template download ─────────────────────────────────────────────────
+
+  const downloadTemplate = () => {
+    const csv = 'Name,Gender,Grade,Status,GPA,Attendance\nAda Obi,Female,JSS2A,Active,3.5,90\n';
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'students_import_template.csv';
+    link.click();
+  };
+
+  // ── CSV import ────────────────────────────────────────────────────────────
+
+  const handleImportCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !effectiveSchoolId) return;
+    setImportLoading(true);
+    const text = await file.text();
+    const lines = text.split('\n').filter(l => l.trim());
+    const headers = lines[0].toLowerCase().split(',').map(h => h.trim());
+    const nameIdx = headers.indexOf('name');
+    const genderIdx = headers.indexOf('gender');
+    const gradeIdx = headers.indexOf('grade');
+    const statusIdx = headers.indexOf('status');
+    const gpaIdx = headers.indexOf('gpa');
+    const attIdx = headers.indexOf('attendance');
+
+    let created = 0; let failed = 0;
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+      const name = nameIdx >= 0 ? cols[nameIdx] : '';
+      const gender = (genderIdx >= 0 ? cols[genderIdx] : 'Male') as 'Male' | 'Female';
+      const grade = gradeIdx >= 0 ? cols[gradeIdx] : '';
+      if (!name || !grade) { failed++; continue; }
+      const res = await api.createStudent({
+        name,
+        gender: gender === 'Female' ? 'Female' : 'Male',
+        grade,
+        status: (statusIdx >= 0 ? cols[statusIdx] : 'Active') as any,
+        gpa: gpaIdx >= 0 ? parseFloat(cols[gpaIdx]) || 0 : 0,
+        attendance: attIdx >= 0 ? parseInt(cols[attIdx]) || 100 : 100,
+        schoolId: effectiveSchoolId,
+        accessCode: '',
+      });
+      if (res.ok) created++; else failed++;
+    }
+    toast.success(`Import complete: ${created} added${failed > 0 ? `, ${failed} skipped` : ''}.`);
+    const refreshed = await api.getStudents(effectiveSchoolId);
+    if (refreshed.ok) setStudents(refreshed.data);
+    setImportLoading(false);
+    e.target.value = '';
+  };
+
   const handleDeleteStudent = async () => {
       if (!deleteConfirm) return;
       const response = await api.deleteStudent(deleteConfirm.id);
@@ -188,6 +250,31 @@ export const Students: React.FC = () => {
       } else {
           toast.error(`${succeeded} deleted, ${failed} failed.`);
       }
+  };
+
+  // ── Parent management ─────────────────────────────────────────────────────
+
+  const loadParents = async () => {
+    if (!effectiveSchoolId) return;
+    const res = await api.getSchoolParents(effectiveSchoolId);
+    if (res.ok) setParents(res.data);
+  };
+
+  const handleCreateParent = async () => {
+    if (!parentForm.name || !parentForm.email || parentForm.studentIds.length === 0 || !effectiveSchoolId) {
+      toast.error('Name, email and at least one child are required.'); return;
+    }
+    setParentSaving(true);
+    const res = await api.createParent({ ...parentForm, schoolId: effectiveSchoolId });
+    setParentSaving(false);
+    if (res.ok) {
+      setParentTempPw(res.data.authToken ?? null);
+      setParentForm({ name: '', email: '', phone: '', studentIds: [] });
+      loadParents();
+      toast.success('Parent account created.');
+    } else {
+      toast.error(res.message || 'Failed to create parent.');
+    }
   };
 
   const toggleStudentSelection = (studentId: string) => {
@@ -252,12 +339,35 @@ export const Students: React.FC = () => {
         </div>
         {isAdmin && (
             <div className="flex gap-2">
-                <button 
+                <button
                     onClick={() => setShowMasterModal(true)}
                     className="inline-flex items-center justify-center px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium shadow-sm"
                 >
                     <Crown size={16} className="mr-2 text-amber-500" /> Form Masters
                 </button>
+                <button
+                    onClick={() => { setShowParentModal(true); loadParents(); }}
+                    className="inline-flex items-center justify-center px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium shadow-sm"
+                >
+                    <Baby size={16} className="mr-2 text-pink-500" /> Parents
+                </button>
+                {isAdmin && (
+                  <>
+                    <button
+                      onClick={downloadTemplate}
+                      className="inline-flex items-center justify-center px-3 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium text-gray-700"
+                      title="Download CSV template"
+                    >
+                      <Download size={15} className="mr-1.5" /> Template
+                    </button>
+                    <label className="inline-flex items-center justify-center px-3 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium text-gray-700 cursor-pointer">
+                      {importLoading
+                        ? <><span className="w-3 h-3 border-2 border-primary-500 border-t-transparent rounded-full animate-spin mr-1.5" /> Importing…</>
+                        : <><Upload size={15} className="mr-1.5" /> Import CSV</>}
+                      <input type="file" accept=".csv" className="hidden" onChange={handleImportCSV} disabled={importLoading} />
+                    </label>
+                  </>
+                )}
                 <button className="inline-flex items-center justify-center px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm font-medium shadow-sm" onClick={() => setShowAddModal(true)}>
                     <Plus size={16} className="mr-2" /> Add Student
                 </button>
@@ -764,6 +874,102 @@ export const Students: React.FC = () => {
               >
                 Delete
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Parent Management Modal ── */}
+      {showParentModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-2xl rounded-xl shadow-2xl flex flex-col max-h-[85vh]">
+            <div className="p-5 border-b border-gray-200 bg-gray-50 rounded-t-xl flex items-center justify-between">
+              <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                <Baby size={18} className="text-pink-500" /> Parent Accounts
+              </h2>
+              <button onClick={() => { setShowParentModal(false); setParentTempPw(null); }} className="text-gray-400 hover:text-gray-600">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5 space-y-6">
+              {/* Temp password banner */}
+              {parentTempPw && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-2">
+                  <p className="text-sm font-semibold text-emerald-800">✅ Parent account created!</p>
+                  <p className="text-xs text-emerald-700">Share this temporary password with the parent. They should change it after first login.</p>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 bg-white border border-emerald-300 rounded-lg px-3 py-2 text-sm font-mono text-gray-900">
+                      {parentPwVisible ? parentTempPw : '•'.repeat(parentTempPw.length)}
+                    </code>
+                    <button onClick={() => setParentPwVisible(v => !v)} className="p-2 text-gray-400 hover:text-gray-700">
+                      {parentPwVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Create new parent form */}
+              <div className="border border-gray-200 rounded-xl p-4 space-y-4">
+                <h3 className="text-sm font-bold text-gray-800">Add New Parent / Guardian</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Full Name *</label>
+                    <input type="text" value={parentForm.name} onChange={e => setParentForm(p => ({ ...p, name: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary-500" placeholder="Parent's full name" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Email Address *</label>
+                    <input type="email" value={parentForm.email} onChange={e => setParentForm(p => ({ ...p, email: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary-500" placeholder="parent@email.com" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Phone</label>
+                    <input type="tel" value={parentForm.phone} onChange={e => setParentForm(p => ({ ...p, phone: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary-500" placeholder="+2348012345678" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Link Children *</label>
+                    <select multiple value={parentForm.studentIds}
+                      onChange={e => setParentForm(p => ({ ...p, studentIds: Array.from(e.target.selectedOptions, o => o.value) }))}
+                      className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-primary-500 h-24">
+                      {students.map(s => <option key={s.id} value={s.id}>{s.name} ({s.grade})</option>)}
+                    </select>
+                    <p className="text-[10px] text-gray-400 mt-1">Hold Ctrl/Cmd to select multiple</p>
+                  </div>
+                </div>
+                <button onClick={handleCreateParent} disabled={parentSaving}
+                  className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-60">
+                  {parentSaving ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Creating…</> : <><Baby size={15} /> Create Parent Account</>}
+                </button>
+              </div>
+
+              {/* Existing parents list */}
+              <div>
+                <h3 className="text-sm font-bold text-gray-800 mb-3">Existing Parents ({parents.length})</h3>
+                {parents.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-6 border border-dashed border-gray-200 rounded-xl">No parent accounts yet</p>
+                ) : (
+                  <div className="space-y-2">
+                    {parents.map(p => (
+                      <div key={p.id} className="flex items-center justify-between px-4 py-3 bg-gray-50 rounded-xl border border-gray-100">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-pink-100 flex items-center justify-center text-pink-600 font-bold text-sm">
+                            {p.name.charAt(0)}
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">{p.name}</p>
+                            <p className="text-xs text-gray-500">{p.email}</p>
+                          </div>
+                        </div>
+                        <span className="text-xs text-gray-500 bg-white border border-gray-200 px-2 py-1 rounded-full">
+                          {p.childCount} child{p.childCount !== 1 ? 'ren' : ''}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
