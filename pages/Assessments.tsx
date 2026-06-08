@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { api } from '../services/api';
 import { Assessment, Student, Subject, ResultData, ExamQuestion, ActiveExam, UserRole, SchoolClassItem, TeacherAssignment } from '../types';
-import { GoogleGenAI, Type } from "@google/genai";
+import apiClient from '../src/utils/api';
 import { useAuth } from '../context/AuthContext';
 import { ToastContainer } from '../components/Toast';
 import { useToast } from '../src/utils/useToast';
@@ -89,6 +89,7 @@ export const Assessments: React.FC = () => {
   } | null>(null);
   const [newCAName, setNewCAName] = useState('');
   const [showCANameModal, setShowCANameModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
 
   const [students, setStudents] = useState<Student[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -638,55 +639,14 @@ export const Assessments: React.FC = () => {
     setIsGenerating(true);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      
-      let formatInstructions = "";
-      if (builderConfig.type === 'multiple-choice') {
-        formatInstructions = "Format: Multiple Choice. Provide exactly 4 distinct options for each question. The 'correctAnswer' must be one of the options.";
-      } else if (builderConfig.type === 'true-false') {
-        formatInstructions = "Format: True/False. The 'correctAnswer' must be exactly 'True' or 'False'. The 'options' array must be empty [].";
-      } else if (builderConfig.type === 'short-answer') {
-        formatInstructions = "Format: Short Answer. Provide a concise correct answer. The 'options' array must be empty [].";
-      } else if (builderConfig.type === 'essay') {
-         formatInstructions = "Format: Essay. Provide key grading points as the 'correctAnswer'. The 'options' array must be empty [].";
-      }
-
-      const prompt = `Create ${builderConfig.count} ${builderConfig.difficulty} level questions about "${builderConfig.topic}". ${formatInstructions}`;
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: prompt,
-        config: {
-          systemInstruction: "You are an expert educational assessment specialist. Generate high-quality exam questions suitable for high school students. Ensure strict adherence to the requested JSON schema and question type constraints.",
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                text: { type: Type.STRING, description: "The question stem" },
-                options: { type: Type.ARRAY, items: { type: Type.STRING }, description: "List of options for MCQs (empty for others)" },
-                correctAnswer: { type: Type.STRING, description: "The correct answer or grading key" },
-                points: { type: Type.NUMBER, description: "Suggested score value" }
-              },
-              required: ["text", "options", "correctAnswer", "points"]
-            }
-          }
-        }
+      const response = await apiClient.post('/ai/generate-questions', {
+        topic: builderConfig.topic,
+        type: builderConfig.type,
+        difficulty: builderConfig.difficulty,
+        count: builderConfig.count,
       });
 
-      let generatedText = response.text;
-      if (!generatedText) throw new Error("No content generated");
-      
-      // Robust JSON extraction
-      const jsonMatch = generatedText.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-          generatedText = jsonMatch[0];
-      } else {
-          generatedText = generatedText.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/, "");
-      }
-      
-      const generated = JSON.parse(generatedText);
+      const generated: any[] = response.data?.data ?? response.data;
       
       const newQuestions: ExamQuestion[] = generated.map((q: any) => ({
         id: `gen-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
@@ -875,6 +835,7 @@ export const Assessments: React.FC = () => {
             <div className="p-6">
               <h3 className="text-sm font-bold text-gray-900 mb-3">New CA Column Name</h3>
               <input
+                id="ca-column-name" name="ca-column-name"
                 type="text"
                 value={newCAName}
                 onChange={(e) => setNewCAName(e.target.value)}
@@ -961,6 +922,7 @@ export const Assessments: React.FC = () => {
                 </button>
               </div>
               <select
+                id="exam-select" name="exam-select"
                 value={selectedExamId}
                 onChange={handleExamSelectionChange}
                 className="block pl-3 pr-8 py-1.5 text-sm border border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 rounded-lg min-w-[200px] max-w-xs"
@@ -1003,9 +965,10 @@ export const Assessments: React.FC = () => {
                   {caColumns.map(col => (
                     <div key={col.id} className="flex items-end gap-2">
                       <div className="flex-1">
-                        <label className="block text-xs font-medium text-gray-700 mb-1">{col.label}</label>
-                        <input 
-                          type="number" 
+                        <label htmlFor={`ca-max-${col.id}`} className="block text-xs font-medium text-gray-700 mb-1">{col.label}</label>
+                        <input
+                          id={`ca-max-${col.id}`} name={`ca-max-${col.id}`}
+                          type="number"
                           value={col.maxScore}
                           onChange={(e) => {
                             const newMax = parseInt(e.target.value) || 0;
@@ -1037,19 +1000,21 @@ export const Assessments: React.FC = () => {
                 <h3 className="text-sm font-bold text-gray-900 mb-3">Examination & Passing</h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Exam Max Score</label>
-                    <input 
-                      type="number" 
+                    <label htmlFor="exam-max-score" className="block text-xs font-medium text-gray-700 mb-1">Exam Max Score</label>
+                    <input
+                      id="exam-max-score" name="exam-max-score"
+                      type="number"
                       value={config.examMax}
                       onChange={(e) => setConfig({...config, examMax: parseInt(e.target.value) || 0})}
                       className="block w-full border border-gray-300 rounded-lg p-2.5 focus:ring-primary-500 focus:border-primary-500 text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Pass Mark (Score)</label>
+                    <label htmlFor="pass-mark" className="block text-xs font-medium text-gray-700 mb-1">Pass Mark (Score)</label>
                     <div className="flex items-center gap-2">
-                      <input 
-                        type="number" 
+                      <input
+                        id="pass-mark" name="pass-mark"
+                        type="number"
                         value={config.passMark}
                         onChange={(e) => setConfig({...config, passMark: parseInt(e.target.value) || 0})}
                         className="block w-full border border-gray-300 rounded-lg p-2.5 focus:ring-primary-500 focus:border-primary-500 text-sm"
@@ -1068,8 +1033,9 @@ export const Assessments: React.FC = () => {
                 <div className="space-y-2">
                   {gradingScale.map((threshold, index) => (
                      <div key={index} className="flex items-center gap-3">
-                        <input 
-                          type="text" 
+                        <input
+                          id={`grade-letter-${index}`} name={`grade-letter-${index}`}
+                          type="text"
                           value={threshold.grade}
                           onChange={(e) => {
                              const newScale = [...gradingScale];
@@ -1080,13 +1046,14 @@ export const Assessments: React.FC = () => {
                         />
                         <span className="text-gray-500 text-sm">≥</span>
                         <div className="relative flex-1">
-                           <input 
-                             type="number" 
+                           <input
+                             id={`grade-min-pct-${index}`} name={`grade-min-pct-${index}`}
+                             type="number"
                              value={threshold.minPercentage}
                              onChange={(e) => {
                                 const newScale = [...gradingScale];
                                 newScale[index].minPercentage = Number(e.target.value);
-                                setGradingScale(newScale); 
+                                setGradingScale(newScale);
                              }}
                              className="w-full border border-gray-300 rounded-lg p-2 text-sm pr-8"
                            />
@@ -1399,6 +1366,7 @@ export const Assessments: React.FC = () => {
                             {caColumns.map(col => (
                               <td key={col.id} className="px-2 py-2">
                                 <input
+                                  id={`score-${assessment.id}-${col.id}`} name={`score-${assessment.id}-${col.id}`}
                                   type="number" min="0" max={col.maxScore}
                                   value={(assessment as any)[col.id] ?? ''}
                                   onChange={(e) => handleScoreChange(assessment.id, col.id, e.target.value)}
@@ -1408,6 +1376,7 @@ export const Assessments: React.FC = () => {
                             ))}
                             <td className="px-2 py-2">
                               <input
+                                id={`score-${assessment.id}-exam`} name={`score-${assessment.id}-exam`}
                                 type="number" min="0" max={config.examMax}
                                 value={assessment.exam || ''}
                                 onChange={(e) => handleScoreChange(assessment.id, 'exam', e.target.value)}
@@ -1650,9 +1619,10 @@ export const Assessments: React.FC = () => {
               
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Context / Topic</label>
+                  <label htmlFor="builder-topic" className="block text-xs font-medium text-gray-700 mb-1">Context / Topic</label>
                   <div className="flex flex-col gap-2">
                     <textarea
+                      id="builder-topic" name="builder-topic"
                       value={builderConfig.topic}
                       onChange={(e) => setBuilderConfig({...builderConfig, topic: e.target.value})}
                       placeholder="e.g. Photosynthesis, World War II, Calculus Derivatives..."
@@ -1663,8 +1633,9 @@ export const Assessments: React.FC = () => {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Question Type</label>
+                    <label htmlFor="builder-q-type" className="block text-xs font-medium text-gray-700 mb-1">Question Type</label>
                     <select
+                      id="builder-q-type" name="builder-q-type"
                       value={builderConfig.type}
                       onChange={(e) => setBuilderConfig({...builderConfig, type: e.target.value as any})}
                       className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-purple-500 focus:border-purple-500"
@@ -1676,8 +1647,9 @@ export const Assessments: React.FC = () => {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Difficulty</label>
+                    <label htmlFor="builder-difficulty" className="block text-xs font-medium text-gray-700 mb-1">Difficulty</label>
                     <select
+                      id="builder-difficulty" name="builder-difficulty"
                       value={builderConfig.difficulty}
                       onChange={(e) => setBuilderConfig({...builderConfig, difficulty: e.target.value as any})}
                       className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-purple-500 focus:border-purple-500"
@@ -1690,8 +1662,9 @@ export const Assessments: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Number of Questions</label>
+                  <label htmlFor="builder-q-count" className="block text-xs font-medium text-gray-700 mb-1">Number of Questions</label>
                   <input
+                    id="builder-q-count" name="builder-q-count"
                     type="number"
                     min="1"
                     max="20"
@@ -1830,6 +1803,7 @@ export const Assessments: React.FC = () => {
                         {/* Question Text */}
                         <div className="flex gap-2 items-start">
                            <textarea
+                             id={`q-text-${question.id}`} name={`q-text-${question.id}`}
                              value={question.text}
                              onChange={(e) => updateQuestion(question.id, { text: e.target.value })}
                              className="w-full border-none p-0 text-base font-medium text-gray-900 focus:ring-0 resize-none bg-transparent placeholder-gray-400"
@@ -1850,6 +1824,7 @@ export const Assessments: React.FC = () => {
                                    {question.correctAnswer === option && option !== '' && <div className="w-2 h-2 rounded-full bg-green-500" />}
                                 </div>
                                 <input
+                                  id={`q-${question.id}-opt-${optIndex}`} name={`q-${question.id}-opt-${optIndex}`}
                                   type="text"
                                   value={option}
                                   onChange={(e) => {
@@ -1889,7 +1864,8 @@ export const Assessments: React.FC = () => {
                         
                         {(question.type === 'short-answer' || question.type === 'essay') && (
                            <div className="mt-2">
-                             <input 
+                             <input
+                               id={`q-answer-${question.id}`} name={`q-answer-${question.id}`}
                                type="text"
                                value={question.correctAnswer}
                                onChange={(e) => updateQuestion(question.id, { correctAnswer: e.target.value })}
@@ -1903,7 +1879,8 @@ export const Assessments: React.FC = () => {
                         <div className="flex items-center gap-4 mt-2 pt-2 border-t border-gray-50">
                            <div className="flex items-center gap-2">
                               <span className="text-xs text-gray-400 uppercase tracking-wider font-semibold">Points</span>
-                              <input 
+                              <input
+                                id={`q-points-${question.id}`} name={`q-points-${question.id}`}
                                 type="number"
                                 min="0"
                                 value={question.points}

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
 import { asyncHandler } from '../../utils/asyncHandler';
-import { requireRole } from '../../middleware/auth';
+import { requireAuth, requireRole } from '../../middleware/auth';
 import { appService } from '../../services/appService';
 import { getEffectiveSchoolId } from '../../utils/tenant';
 import { UserRole } from '../../types';
@@ -30,6 +30,7 @@ const createTemplateSchema = z.object({
 
 router.get(
   '/templates',
+  requireAuth,
   asyncHandler(async (req, res) => {
     const querySchema = z.object({
       schoolId: z.string().min(1),
@@ -138,6 +139,7 @@ router.post(
 
 router.get(
   '/ledgers',
+  requireAuth,
   asyncHandler(async (req, res) => {
     const querySchema = z.object({
       schoolId: z.string().optional(),
@@ -187,6 +189,7 @@ router.post(
 
 router.get(
   '/summary',
+  requireAuth,
   asyncHandler(async (req, res) => {
     const querySchema = z.object({
       schoolId: z.string().optional(),

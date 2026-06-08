@@ -76,8 +76,9 @@ export const TeacherForm: React.FC<TeacherFormProps> = ({ teacher, onSubmit, onC
 
       {/* Name */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+        <label htmlFor="teacher-name" className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
         <input
+          id="teacher-name" name="name"
           type="text"
           value={formData.name}
           onChange={(e) => handleChange('name', e.target.value)}
@@ -91,12 +92,13 @@ export const TeacherForm: React.FC<TeacherFormProps> = ({ teacher, onSubmit, onC
 
       {/* Email */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+        <label htmlFor="teacher-email" className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
         <div className="relative">
           <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
             <Mail size={15} />
           </span>
           <input
+            id="teacher-email" name="email"
             type="email"
             value={formData.email}
             onChange={(e) => handleChange('email', e.target.value)}
@@ -111,12 +113,13 @@ export const TeacherForm: React.FC<TeacherFormProps> = ({ teacher, onSubmit, onC
 
       {/* Phone */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+        <label htmlFor="teacher-phone" className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
         <div className="relative">
           <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
             <Phone size={15} />
           </span>
           <input
+            id="teacher-phone" name="phone"
             type="tel"
             value={formData.phone}
             onChange={(e) => handleChange('phone', e.target.value)}
@@ -131,12 +134,13 @@ export const TeacherForm: React.FC<TeacherFormProps> = ({ teacher, onSubmit, onC
 
       {/* Role */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+        <label htmlFor="teacher-role" className="block text-sm font-medium text-gray-700 mb-1">Role</label>
         <div className="relative">
           <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
             <Briefcase size={15} />
           </span>
           <select
+            id="teacher-role" name="role"
             value={formData.role}
             onChange={(e) => handleChange('role', e.target.value)}
             className="pl-9 pr-8 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent block w-full appearance-none"
@@ -154,8 +158,9 @@ export const TeacherForm: React.FC<TeacherFormProps> = ({ teacher, onSubmit, onC
 
       {/* Gender */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Gender</label>
+        <label htmlFor="teacher-gender" className="block text-sm font-medium text-gray-700 mb-1">Gender</label>
         <select
+          id="teacher-gender" name="gender"
           value={formData.gender}
           onChange={(e) => handleChange('gender', e.target.value)}
           className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent block w-full"
@@ -168,8 +173,9 @@ export const TeacherForm: React.FC<TeacherFormProps> = ({ teacher, onSubmit, onC
 
       {/* Bio */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Bio (Optional)</label>
+        <label htmlFor="teacher-bio" className="block text-sm font-medium text-gray-700 mb-1">Bio (Optional)</label>
         <textarea
+          id="teacher-bio" name="bio"
           value={formData.bio}
           onChange={(e) => handleChange('bio', e.target.value)}
           rows={3}

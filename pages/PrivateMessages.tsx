@@ -259,6 +259,7 @@ export const PrivateMessages: React.FC = () => {
           <div className="p-4 border-b border-gray-100 bg-primary-50/30 space-y-3">
             <p className="text-xs font-semibold text-gray-700">Ask a teacher</p>
             <select
+              id="pm-teacher-select" name="pm-teacher-select"
               value={selectedTeacher}
               onChange={(e) => setSelectedTeacher(e.target.value)}
               className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
@@ -457,6 +458,7 @@ export const PrivateMessages: React.FC = () => {
               <div className="flex-1 flex items-center gap-2 bg-gray-100 rounded-xl px-4 py-2.5 border border-transparent focus-within:border-primary-400 focus-within:bg-white transition-colors">
                 <input
                   ref={inputRef}
+                  id="pm-message-input" name="pm-message-input"
                   type="text"
                   value={content}
                   onChange={(e) => setContent(e.target.value)}

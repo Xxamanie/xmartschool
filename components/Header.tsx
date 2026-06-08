@@ -37,6 +37,7 @@ export const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
         <div className="hidden md:flex items-center gap-2.5 bg-gray-50 border border-gray-200/70 rounded-xl px-3.5 py-2 w-60 group focus-within:border-violet-300 focus-within:bg-white transition-all">
           <Search size={15} className="text-gray-400 group-focus-within:text-violet-500 transition-colors flex-shrink-0" />
           <input
+            id="global-search" name="global-search"
             type="text"
             placeholder="Search anything…"
             className="bg-transparent border-none outline-none text-sm text-gray-700 w-full placeholder-gray-400"

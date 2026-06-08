@@ -40,7 +40,6 @@ apiClient.interceptors.request.use(async (config) => {
     console.warn('Failed to get auth token:', error);
   }
 
-  console.log(`[API] ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
   return config;
 }, (error) => {
   console.error('[API] Request error:', error);
@@ -49,10 +48,7 @@ apiClient.interceptors.request.use(async (config) => {
 
 // Response interceptor
 apiClient.interceptors.response.use(
-  (response) => {
-    console.log(`[API] Response OK: ${response.status}`);
-    return response;
-  },
+  (response) => response,
   (error) => {
     if (error.code === 'ECONNABORTED') {
       console.error('[API] Request timeout');

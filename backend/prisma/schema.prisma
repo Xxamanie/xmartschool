@@ -137,6 +137,12 @@ model Student {
   /// Academic field: science | arts | business | general
   field         String           @default("general")
 
+  /// System-generated 8-char alphanumeric PIN issued when all fees are cleared.
+  /// null = fees not yet cleared. Parent receives this in their payment receipt.
+  /// PIN is valid only while results are Published for resultPinTerm.
+  resultPin     String?
+  resultPinTerm String?  // e.g. "First Term 2024/2025" — the term this PIN covers
+
   assessments    Assessment[]
   results        Result[]
   examSessions   ExamSession[]
@@ -166,7 +172,7 @@ model Subject {
 model Assessment {
   id        String   @id @default(cuid())
   studentId String
-  student   Student  @relation(fields: [studentId], references: [id])
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
   subjectId String
   subject   Subject  @relation(fields: [subjectId], references: [id])
   term      String
@@ -179,7 +185,7 @@ model Assessment {
 model Result {
   id          String   @id @default(cuid())
   studentId   String
-  student     Student  @relation(fields: [studentId], references: [id])
+  student     Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
   subjectId   String?
   subject     Subject? @relation(fields: [subjectId], references: [id])
   subjectName String
@@ -389,7 +395,7 @@ model ExamSession {
   examId     String
   exam       Exam      @relation(fields: [examId], references: [id])
   studentId  String
-  student    Student   @relation(fields: [studentId], references: [id])
+  student    Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
   status     String    @default("in-progress")
   progress   Int       @default(0)
   score      Float?
@@ -403,7 +409,7 @@ model ExamSession {
 model AttendanceRecord {
   id        String           @id @default(cuid())
   studentId String
-  student   Student          @relation(fields: [studentId], references: [id])
+  student   Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
   status    AttendanceStatus
   date      DateTime
 

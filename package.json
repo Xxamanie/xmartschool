@@ -11,7 +11,6 @@
     "start": "serve -s dist -l 3000"
   },
   "dependencies": {
-    "@google/genai": "^1.30.0",
     "@supabase/supabase-js": "^2.48.0",
     "axios": "^1.13.2",
     "lucide-react": "^0.554.0",

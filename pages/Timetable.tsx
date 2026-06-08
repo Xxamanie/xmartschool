@@ -168,8 +168,9 @@ export const Timetable: React.FC = () => {
 
       {/* Class selector */}
       <div className="flex items-center gap-3">
-        <label className="text-sm font-medium text-gray-700">Class:</label>
+        <label htmlFor="timetable-class" className="text-sm font-medium text-gray-700">Class:</label>
         <select
+          id="timetable-class" name="timetable-class"
           value={selectedClass}
           onChange={e => setSelectedClass(e.target.value)}
           className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { appService } from '../../services/appService';
-import { requireRole } from '../../middleware/auth';
+import { requireAuth, requireRole } from '../../middleware/auth';
 import { UserRole } from '../../types';
 
 const router = Router();
@@ -13,6 +13,7 @@ const listQuery = z.object({
 
 router.get(
   '/',
+  requireAuth,
   asyncHandler(async (req, res) => {
     const { role } = listQuery.parse(req.query);
     const response = await appService.getAnnouncements(role ?? req.auth?.role);

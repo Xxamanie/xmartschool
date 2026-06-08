@@ -3,7 +3,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { ResultData, ActiveExam, School } from '../types';
-import { FileCheck, Award, Calendar, Timer, ArrowRight, CheckCircle, BookOpen, ChevronRight, X, Ghost } from 'lucide-react';
+import { FileCheck, Award, Calendar, Timer, ArrowRight, CheckCircle, BookOpen, ChevronRight, X, Ghost, Lock, KeyRound, AlertCircle } from 'lucide-react';
 
 export const StudentPortal: React.FC = () => {
   const { user } = useAuth();
@@ -11,6 +11,13 @@ export const StudentPortal: React.FC = () => {
   const [availableExams, setAvailableExams] = useState<ActiveExam[]>([]);
   const [school, setSchool] = useState<School | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Fee / PIN gate state
+  const [feeCleared, setFeeCleared] = useState<boolean | null>(null); // null = unknown
+  const [pinUnlocked, setPinUnlocked] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+  const [pinError, setPinError] = useState('');
+  const [pinInfoMsg, setPinInfoMsg] = useState('');
   
   // Exam Taking State
   const [activeExam, setActiveExam] = useState<ActiveExam | null>(null); // The exam currently being taken
@@ -34,32 +41,49 @@ export const StudentPortal: React.FC = () => {
 
   useEffect(() => {
     const fetchMyData = async () => {
-        if (!user?.id) return;
-        try {
-            const [resResults, resExams, resSchools] = await Promise.all([
-                api.getResults(user.id),
-                api.getAvailableExams(),
-                api.getSchools()
-            ]);
-            
-            if (resResults.ok) {
-                setResults(resResults.data.filter(r => r.status === 'Published'));
-            }
-            if (resExams.ok) {
-                setAvailableExams(resExams.data);
-            }
-            if (resSchools.ok && user.schoolId) {
-                const foundSchool = resSchools.data.find(s => s.id === user.schoolId);
-                setSchool(foundSchool || null);
-            }
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setLoading(false);
+      if (!user?.id) return;
+      try {
+        const [resProfile, resExams, resSchools] = await Promise.all([
+          api.getStudentProfile(),
+          api.getAvailableExams(),
+          api.getSchools(),
+        ]);
+
+        if (resProfile.ok) {
+          setFeeCleared(resProfile.data.feeCleared);
         }
+        if (resExams.ok) setAvailableExams(resExams.data);
+        if (resSchools.ok && user.schoolId) {
+          setSchool(resSchools.data.find(s => s.id === user.schoolId) ?? null);
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
     };
     fetchMyData();
   }, [user?.id, user?.schoolId]);
+
+  const handleUnlockResults = async () => {
+    if (pinInput.length !== 8) { setPinError('PIN must be 8 characters'); return; }
+    setPinError('');
+    setPinInfoMsg('');
+    try {
+      const res = await api.getResults(user?.id, pinInput.toUpperCase());
+      if (res.ok) {
+        setResults((res.data as ResultData[]).filter(r => r.status === 'Published'));
+        setPinUnlocked(true);
+      } else {
+        const status = (res as any).feeStatus;
+        if (status === 'not_cleared') setPinError('Your fees have not been cleared.');
+        else if (status === 'results_not_published') setPinInfoMsg('Results for your term have not been published yet. Check back later.');
+        else setPinError('Incorrect PIN. Please check with your parent/guardian.');
+      }
+    } catch {
+      setPinError('Could not verify PIN. Please try again.');
+    }
+  };
 
   // Prevent accidental close/refresh during exam
   useEffect(() => {
@@ -327,7 +351,8 @@ export const StudentPortal: React.FC = () => {
                                     )}
 
                                     {(q.type === 'short-answer' || q.type === 'essay') && (
-                                        <textarea 
+                                        <textarea
+                                            id={`answer-${q.id}`} name={`answer-${q.id}`}
                                             value={answers[q.id] || ''}
                                             onChange={(e) => handleAnswerChange(q.id, e.target.value)}
                                             className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
@@ -428,6 +453,104 @@ export const StudentPortal: React.FC = () => {
                 </div>
              </div>
           </div>
+       </div>
+
+       {/* Results Section — fee-gated */}
+       <div>
+         <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+           <Award className="text-primary-600" />
+           Academic Results
+         </h2>
+
+         {feeCleared === false ? (
+           <div className="bg-amber-50 border border-amber-200 rounded-xl p-8 text-center space-y-3">
+             <div className="mx-auto w-14 h-14 bg-amber-100 rounded-full flex items-center justify-center">
+               <Lock size={28} className="text-amber-500" />
+             </div>
+             <h3 className="text-lg font-bold text-amber-900">Fees Not Yet Cleared</h3>
+             <p className="text-amber-700 text-sm max-w-sm mx-auto">
+               Your school fees have not been fully paid. Once cleared, your parent/guardian will receive a Result Access PIN that unlocks your results.
+             </p>
+           </div>
+         ) : feeCleared === true && !pinUnlocked ? (
+           <div className="bg-white border border-gray-200 rounded-xl p-8 max-w-sm mx-auto text-center space-y-5">
+             <div className="mx-auto w-14 h-14 bg-primary-50 rounded-full flex items-center justify-center">
+               <KeyRound size={28} className="text-primary-600" />
+             </div>
+             <div>
+               <h3 className="text-lg font-bold text-gray-900">Enter Result Access PIN</h3>
+               <p className="text-gray-500 text-sm mt-1">Your parent/guardian received this 8-character PIN in their payment receipt.</p>
+             </div>
+             <input
+               id="result-pin" name="result-pin"
+               type="text"
+               inputMode="text"
+               maxLength={8}
+               value={pinInput}
+               onChange={e => { setPinInput(e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase()); setPinError(''); setPinInfoMsg(''); }}
+               onKeyDown={e => e.key === 'Enter' && handleUnlockResults()}
+               placeholder="• • • • • • • •"
+               className="w-full text-center text-2xl tracking-[0.5em] font-bold border-2 border-gray-200 rounded-xl py-3 focus:border-primary-500 focus:outline-none"
+             />
+             {pinError && (
+               <div className="flex items-center gap-2 text-red-600 text-sm bg-red-50 rounded-lg px-3 py-2">
+                 <AlertCircle size={16} /> {pinError}
+               </div>
+             )}
+             {pinInfoMsg && (
+               <div className="flex items-center gap-2 text-blue-700 text-sm bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                 <AlertCircle size={16} /> {pinInfoMsg}
+               </div>
+             )}
+             <button
+               onClick={handleUnlockResults}
+               disabled={pinInput.length !== 8}
+               className="w-full py-3 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+             >
+               Unlock Results
+             </button>
+           </div>
+         ) : pinUnlocked && results.length > 0 ? (
+           <div className="overflow-x-auto rounded-xl border border-gray-200">
+             <table className="min-w-full text-sm">
+               <thead className="bg-gray-50 text-gray-500 uppercase text-xs">
+                 <tr>
+                   <th className="px-4 py-3 text-left">Subject</th>
+                   <th className="px-4 py-3 text-center">CA1</th>
+                   <th className="px-4 py-3 text-center">CA2</th>
+                   <th className="px-4 py-3 text-center">CA3</th>
+                   <th className="px-4 py-3 text-center">Exam</th>
+                   <th className="px-4 py-3 text-center">Total</th>
+                   <th className="px-4 py-3 text-center">Grade</th>
+                   <th className="px-4 py-3 text-left">Remarks</th>
+                 </tr>
+               </thead>
+               <tbody className="divide-y divide-gray-100 bg-white">
+                 {results.map(r => (
+                   <tr key={r.id} className="hover:bg-gray-50 transition-colors">
+                     <td className="px-4 py-3 font-medium text-gray-900">{r.subjectName}</td>
+                     <td className="px-4 py-3 text-center text-gray-600">{(r.details as any)?.ca1 ?? '—'}</td>
+                     <td className="px-4 py-3 text-center text-gray-600">{(r.details as any)?.ca2 ?? '—'}</td>
+                     <td className="px-4 py-3 text-center text-gray-600">{(r.details as any)?.ca3 ?? '—'}</td>
+                     <td className="px-4 py-3 text-center text-gray-600">{(r.details as any)?.exam ?? '—'}</td>
+                     <td className="px-4 py-3 text-center font-bold text-gray-900">{r.average}</td>
+                     <td className="px-4 py-3 text-center">
+                       <span className={`px-2 py-1 rounded-full text-xs font-bold ${r.grade?.startsWith('A') ? 'bg-emerald-100 text-emerald-700' : r.grade?.startsWith('B') ? 'bg-blue-100 text-blue-700' : r.grade?.startsWith('C') ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
+                         {r.grade}
+                       </span>
+                     </td>
+                     <td className="px-4 py-3 text-gray-500 italic text-xs">{r.remarks ?? '—'}</td>
+                   </tr>
+                 ))}
+               </tbody>
+             </table>
+           </div>
+         ) : pinUnlocked ? (
+           <div className="bg-gray-50 rounded-xl border border-gray-200 p-8 text-center text-gray-500">
+             <Ghost size={28} className="mx-auto mb-3 text-gray-300" />
+             <p>No published results yet.</p>
+           </div>
+         ) : null}
        </div>
 
        {/* Available Assessments Section */}

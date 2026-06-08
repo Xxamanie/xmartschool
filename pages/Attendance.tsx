@@ -78,6 +78,8 @@ const TermlyReport: React.FC<{ students: Student[] }> = ({ students }) => {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-3">
         <select
+          id="report-class"
+          name="report-class"
           value={selectedGrade}
           onChange={e => setSelectedGrade(e.target.value)}
           className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
@@ -236,13 +238,14 @@ export const Attendance: React.FC = () => {
   const uniqueGrades = useMemo(() => Array.from(new Set(students.map(s => s.grade))).sort(), [students]);
 
   const stats = useMemo(() => {
-    let present = 0, absent = 0, late = 0;
+    let present = 0, absent = 0, late = 0, excused = 0;
     Object.values(attendanceMap).forEach(s => {
       if (s === 'Present') present++;
-      if (s === 'Absent') absent++;
-      if (s === 'Late') late++;
+      else if (s === 'Absent') absent++;
+      else if (s === 'Late') late++;
+      else if (s === 'Excused') excused++;
     });
-    return { present, absent, late };
+    return { present, absent, late, excused };
   }, [attendanceMap]);
 
   return (
@@ -293,8 +296,10 @@ export const Attendance: React.FC = () => {
               </h3>
               <div className="space-y-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Select Class</label>
+                  <label htmlFor="attendance-class" className="block text-xs font-medium text-gray-500 mb-1">Select Class</label>
                   <select
+                    id="attendance-class"
+                    name="attendance-class"
                     value={selectedGrade}
                     onChange={e => setSelectedGrade(e.target.value)}
                     className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-primary-500 focus:border-primary-500"
@@ -304,8 +309,10 @@ export const Attendance: React.FC = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Date</label>
+                  <label htmlFor="attendance-date" className="block text-xs font-medium text-gray-500 mb-1">Date</label>
                   <input
+                    id="attendance-date"
+                    name="attendance-date"
                     type="date"
                     value={selectedDate}
                     onChange={e => setSelectedDate(e.target.value)}
@@ -319,7 +326,7 @@ export const Attendance: React.FC = () => {
               <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide flex items-center gap-2 mb-4">
                 <Users size={16} /> Class Summary: {selectedGrade}
               </h3>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <div className="p-3 bg-green-50 rounded-lg border border-green-100">
                   <p className="text-xs text-green-600 font-bold uppercase">Present</p>
                   <p className="text-2xl font-bold text-green-700">{stats.present}</p>
@@ -331,6 +338,10 @@ export const Attendance: React.FC = () => {
                 <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-100">
                   <p className="text-xs text-yellow-600 font-bold uppercase">Late</p>
                   <p className="text-2xl font-bold text-yellow-700">{stats.late}</p>
+                </div>
+                <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
+                  <p className="text-xs text-blue-600 font-bold uppercase">Excused</p>
+                  <p className="text-2xl font-bold text-blue-700">{stats.excused}</p>
                 </div>
               </div>
               {successMsg && (

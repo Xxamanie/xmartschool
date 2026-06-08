@@ -163,10 +163,11 @@ export const SchemeOfWork: React.FC = () => {
             <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                  <label htmlFor="sow-subject" className="block text-xs font-medium text-gray-700 mb-1">
                     Subject
                   </label>
-                  <select 
+                  <select
+                    id="sow-subject" name="sow-subject"
                     value={selectedSubject}
                     onChange={(e) => setSelectedSubject(e.target.value)}
                     className="block w-full pl-3 pr-8 py-2 text-sm border border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 rounded-lg"
@@ -182,10 +183,11 @@ export const SchemeOfWork: React.FC = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                  <label htmlFor="sow-term" className="block text-xs font-medium text-gray-700 mb-1">
                     Term
                   </label>
-                  <select 
+                  <select
+                    id="sow-term" name="sow-term"
                     value={selectedTerm}
                     onChange={(e) => setSelectedTerm(e.target.value)}
                     className="block w-full pl-3 pr-8 py-2 text-sm border border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 rounded-lg"
@@ -213,6 +215,7 @@ export const SchemeOfWork: React.FC = () => {
               >
                 <input
                   ref={inputRef}
+                  id="sow-file-upload" name="sow-file-upload"
                   type="file"
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                   onChange={handleChange}

@@ -1,8 +1,10 @@
-import React, { useEffect, useState } from 'react';
-import { BookOpen, Clock, MapPin, Users, MoreVertical, Plus, X, Check, Search, LayoutGrid, CheckCircle2, Tag, UserCheck, ChevronDown } from 'lucide-react';
+import React, { useEffect, useState, useRef } from 'react';
+import { BookOpen, Clock, MapPin, Users, Plus, X, Check, Search, LayoutGrid, CheckCircle2, Tag, UserCheck, ChevronDown, Pencil, Trash2 } from 'lucide-react';
 import { api } from '../services/api';
 import { Subject, UserRole, User } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { ToastContainer } from '../components/Toast';
+import { useToast } from '../src/utils/useToast';
 
 // Full Nigerian National Curriculum (Primary–SSS)
 const NIGERIAN_SUBJECTS: Record<string, string[]> = {
@@ -145,6 +147,7 @@ const shortLabel = (category: string): string => {
 
 export const Subjects: React.FC = () => {
   const { user } = useAuth();
+  const { toasts, toast, dismiss } = useToast();
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [teachers, setTeachers] = useState<User[]>([]);
   const [teacherMap, setTeacherMap] = useState<Record<string, string>>({});
@@ -156,6 +159,12 @@ export const Subjects: React.FC = () => {
   const [enrollLoading, setEnrollLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(SIDEBAR_GROUPS.map(g => g.label)));
+  const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
+  const [editForm, setEditForm] = useState({ name: '', teacherId: '' });
+  const [editSaving, setEditSaving] = useState(false);
+  const [deletingSubjectId, setDeletingSubjectId] = useState<string | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const toggleGroup = (label: string) => {
     setOpenGroups(prev => {
@@ -222,18 +231,55 @@ export const Subjects: React.FC = () => {
               api.createSubject({ name, teacherId: teacherToAssign })
           );
           await Promise.all(promises);
-          
+
           await fetchData();
           setShowEnrollModal(false);
           setSelectedForEnrollment(new Set());
           setSelectedTeacherId("");
-          alert('Subjects enrolled successfully!');
+          toast.success('Subjects enrolled successfully!');
       } catch (e) {
           console.error("Failed to enroll subjects", e);
-          alert(`Error enrolling subjects: ${(e as any)?.message || 'Unknown error'}`);
+          toast.error(`Error enrolling subjects: ${(e as any)?.message || 'Unknown error'}`);
       } finally {
           setEnrollLoading(false);
       }
+  };
+
+  const openEdit = (subject: Subject) => {
+    setEditingSubject(subject);
+    setEditForm({ name: subject.name, teacherId: subject.teacherId || '' });
+    setOpenMenuId(null);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingSubject) return;
+    setEditSaving(true);
+    const res = await api.updateSubject(editingSubject.id, {
+      name: editForm.name.trim() || undefined,
+      teacherId: editForm.teacherId || undefined,
+    });
+    setEditSaving(false);
+    if (res.ok) {
+      setSubjects(prev => prev.map(s => s.id === editingSubject.id ? res.data : s));
+      setEditingSubject(null);
+      toast.success('Subject updated.');
+    } else {
+      toast.error(res.message || 'Failed to update subject');
+    }
+  };
+
+  const handleDeleteSubject = async (subjectId: string) => {
+    if (!window.confirm('Remove this subject from your school? This cannot be undone.')) return;
+    setDeletingSubjectId(subjectId);
+    setOpenMenuId(null);
+    const res = await api.deleteSubject(subjectId);
+    setDeletingSubjectId(null);
+    if (res.ok) {
+      setSubjects(prev => prev.filter(s => s.id !== subjectId));
+      toast.success('Subject removed.');
+    } else {
+      toast.error(res.message || 'Failed to remove subject');
+    }
   };
 
   // Helper to check if subject is already enrolled in the school
@@ -282,6 +328,7 @@ export const Subjects: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <ToastContainer toasts={toasts} onDismiss={dismiss} />
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Subjects</h1>
@@ -328,9 +375,33 @@ export const Subjects: React.FC = () => {
                       <div className={`p-3 rounded-lg ${theme.main} ${theme.text}`}>
                         <BookOpen size={24} />
                       </div>
-                      <button className="text-gray-400 hover:text-gray-600">
-                        <MoreVertical size={20} />
-                      </button>
+                      {isAdmin && (
+                        <div className="relative" ref={openMenuId === subject.id ? menuRef : null}>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === subject.id ? null : subject.id); }}
+                            className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                          >
+                            ···
+                          </button>
+                          {openMenuId === subject.id && (
+                            <div className="absolute right-0 top-8 z-20 w-36 bg-white border border-gray-200 rounded-lg shadow-lg py-1 text-sm">
+                              <button
+                                onClick={() => openEdit(subject)}
+                                className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-gray-700"
+                              >
+                                <Pencil size={13} /> Edit
+                              </button>
+                              <button
+                                onClick={() => handleDeleteSubject(subject.id)}
+                                disabled={deletingSubjectId === subject.id}
+                                className="w-full flex items-center gap-2 px-3 py-2 hover:bg-red-50 text-red-600 disabled:opacity-50"
+                              >
+                                <Trash2 size={13} /> Remove
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     <h3 className="text-lg font-bold text-gray-900 mb-1">
@@ -391,6 +462,55 @@ export const Subjects: React.FC = () => {
                 <p className="text-sm mt-1">Use the "Enroll New Subject" button to add subjects from the Nigerian curriculum.</p>
              </div>
           )}
+        </div>
+      )}
+
+      {/* Edit Subject Modal */}
+      {editingSubject && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-gray-900">Edit Subject</h3>
+              <button onClick={() => setEditingSubject(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label htmlFor="edit-subject-name" className="block text-xs font-medium text-gray-600 mb-1">Subject Name</label>
+                <input
+                  id="edit-subject-name" name="edit-subject-name"
+                  type="text"
+                  value={editForm.name}
+                  onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+              <div>
+                <label htmlFor="edit-subject-teacher" className="block text-xs font-medium text-gray-600 mb-1">Assigned Teacher</label>
+                <select
+                  id="edit-subject-teacher" name="edit-subject-teacher"
+                  value={editForm.teacherId}
+                  onChange={e => setEditForm(f => ({ ...f, teacherId: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary-500"
+                >
+                  <option value="">Unassigned</option>
+                  {teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={handleSaveEdit}
+                disabled={editSaving || !editForm.name.trim()}
+                className="flex-1 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-60"
+              >
+                {editSaving ? 'Saving…' : 'Save Changes'}
+              </button>
+              <button onClick={() => setEditingSubject(null)}
+                className="flex-1 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50">
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -465,7 +585,8 @@ export const Subjects: React.FC = () => {
                          <div className="p-4 border-b border-gray-100">
                             <div className="relative">
                                 <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
-                                <input 
+                                <input
+                                    id="subject-search" name="subject-search"
                                     type="text"
                                     placeholder="Search specific subject..."
                                     value={searchTerm}
@@ -533,9 +654,10 @@ export const Subjects: React.FC = () => {
                          {/* Teacher Selection for Batch Enrollment */}
                          {selectedForEnrollment.size > 0 && (
                             <div className="flex items-center gap-2 border-l border-gray-300 pl-6">
-                                <label className="text-xs font-bold text-gray-500 uppercase">Assign Teacher:</label>
+                                <label htmlFor="batch-assign-teacher" className="text-xs font-bold text-gray-500 uppercase">Assign Teacher:</label>
                                 <div className="relative">
                                     <select
+                                        id="batch-assign-teacher" name="batch-assign-teacher"
                                         value={selectedTeacherId}
                                         onChange={(e) => setSelectedTeacherId(e.target.value)}
                                         className="appearance-none bg-gray-50 border border-gray-300 text-gray-700 text-sm rounded-lg focus:ring-primary-500 focus:border-primary-500 block w-full pl-3 pr-8 py-2 font-medium"

@@ -534,9 +534,10 @@ export const Dashboard: React.FC = () => {
           <div className="flex items-center gap-3">
             <div className="relative hidden md:block">
               <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input 
-                type="text" 
-                placeholder="Search students, teachers..." 
+              <input
+                id="dashboard-search" name="dashboard-search"
+                type="text"
+                placeholder="Search students, teachers..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 w-80 bg-white/80 backdrop-blur-sm"
@@ -888,18 +889,21 @@ export const Dashboard: React.FC = () => {
             {canManageCalendar ? (
               <form onSubmit={handleSaveEvent} className="space-y-4">
                 <input
+                  id="dash-event-title" name="dash-event-title"
                   value={eventTitle}
                   onChange={(e) => setEventTitle(e.target.value)}
                   placeholder="Event title"
                   className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
                 <input
+                  id="dash-event-location" name="dash-event-location"
                   value={eventLocation}
                   onChange={(e) => setEventLocation(e.target.value)}
                   placeholder="Location"
                   className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
                 <textarea
+                  id="dash-event-description" name="dash-event-description"
                   value={eventDescription}
                   onChange={(e) => setEventDescription(e.target.value)}
                   placeholder="Description"
@@ -908,12 +912,14 @@ export const Dashboard: React.FC = () => {
                 />
                 <div className="grid grid-cols-1 gap-3">
                   <input
+                    id="dash-event-start" name="dash-event-start"
                     type="datetime-local"
                     value={eventStartAt}
                     onChange={(e) => setEventStartAt(e.target.value)}
                     className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                   <input
+                    id="dash-event-end" name="dash-event-end"
                     type="datetime-local"
                     value={eventEndAt}
                     onChange={(e) => setEventEndAt(e.target.value)}

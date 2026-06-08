@@ -55,6 +55,8 @@ export interface Student {
   accessCode: string; // Unique Student Access Code
   enrolledSubjects?: string[];
   field?: 'science' | 'arts' | 'business' | 'general';
+  resultPin?: string;     // 8-char alphanumeric; set when fees are fully cleared for a term
+  resultPinTerm?: string; // the term this PIN covers, e.g. "First Term 2024/2025"
 }
 
 export interface Subject {

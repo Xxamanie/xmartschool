@@ -116,8 +116,9 @@ export const LiveClasses: React.FC = () => {
         <form onSubmit={handleCreate} className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="text-sm font-medium text-gray-700">Subject</label>
+              <label htmlFor="lc-subject" className="text-sm font-medium text-gray-700">Subject</label>
               <select
+                id="lc-subject" name="lc-subject"
                 value={form.subjectName}
                 onChange={(e) => setForm((s) => ({ ...s, subjectName: e.target.value }))}
                 className="mt-1 w-full border border-gray-300 rounded-lg p-2"
@@ -143,10 +144,11 @@ export const LiveClasses: React.FC = () => {
             </div>
 
             <div>
-              <label className="text-sm font-medium text-gray-700">Class/Group to Notify</label>
+              <label htmlFor="lc-class" className="text-sm font-medium text-gray-700">Class/Group to Notify</label>
               {addingClass ? (
                 <div className="mt-1 flex gap-2">
                   <input
+                    id="lc-new-class" name="lc-new-class"
                     autoFocus
                     type="text"
                     value={newClassName}
@@ -165,6 +167,7 @@ export const LiveClasses: React.FC = () => {
               ) : (
                 <div className="mt-1 flex gap-2">
                   <select
+                    id="lc-class" name="lc-class"
                     value={form.schoolClassId}
                     onChange={(e) => setForm((s) => ({ ...s, schoolClassId: e.target.value }))}
                     className="flex-1 border border-gray-300 rounded-lg p-2"
@@ -188,8 +191,9 @@ export const LiveClasses: React.FC = () => {
             </div>
 
             <div>
-              <label className="text-sm font-medium text-gray-700">Start Time</label>
+              <label htmlFor="lc-start-time" className="text-sm font-medium text-gray-700">Start Time</label>
               <input
+                id="lc-start-time" name="lc-start-time"
                 type="datetime-local"
                 value={form.scheduledTime}
                 onChange={(e) => setForm((s) => ({ ...s, scheduledTime: e.target.value }))}
@@ -199,13 +203,14 @@ export const LiveClasses: React.FC = () => {
             </div>
 
             <div>
-              <label className="text-sm font-medium text-gray-700">
+              <label htmlFor="lc-meeting-link" className="text-sm font-medium text-gray-700">
                 Meeting Link
                 <span className="ml-2 text-xs text-gray-400 font-normal">
                   optional — Whereby room created if <code className="bg-gray-100 px-1 rounded">WHEREBY_API_KEY</code> is set, else Jitsi
                 </span>
               </label>
               <input
+                id="lc-meeting-link" name="lc-meeting-link"
                 type="text"
                 value={form.meetingLink}
                 onChange={(e) => setForm((s) => ({ ...s, meetingLink: e.target.value }))}

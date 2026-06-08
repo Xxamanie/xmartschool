@@ -17,10 +17,11 @@ router.get(
 );
 
 const createSchema = z.object({
-  name: z.string().min(1),
-  code: z.string().optional(),
-  region: z.string().optional(),
-  adminName: z.string().optional(),
+  name: z.string().trim().min(1),
+  code: z.string().trim().optional(),
+  region: z.string().trim().optional(),
+  adminName: z.string().trim().optional(),
+  adminEmail: z.string().email().optional(),
   studentCount: z.number().optional(),
 });
 

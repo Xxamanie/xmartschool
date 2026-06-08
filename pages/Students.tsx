@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { StudentForm } from '../components/StudentForm';
 import { ToastContainer } from '../components/Toast';
 import { useToast } from '../src/utils/useToast';
-import { Search, Filter, MoreHorizontal, Plus, ArrowUp, ArrowDown, ArrowUpDown, Calendar, Crown, X, UserCheck, CheckCircle2, Trash2, Edit, BookOpen, Upload, Download, Baby, Link, Link2Off, Eye, EyeOff } from 'lucide-react';
+import { Search, Filter, MoreHorizontal, Plus, ArrowUp, ArrowDown, ArrowUpDown, Calendar, Crown, X, UserCheck, CheckCircle2, Trash2, Edit, BookOpen, Upload, Download, Baby, Link, Link2Off, Eye, EyeOff, RefreshCw } from 'lucide-react';
 
 export const Students: React.FC = () => {
   const { user, isCreator, effectiveSchoolId } = useAuth();
@@ -14,6 +14,7 @@ export const Students: React.FC = () => {
   const { toasts, toast, dismiss } = useToast();
 
   const [students, setStudents] = useState<Student[]>([]);
+  const [regeneratingPin, setRegeneratingPin] = useState<string | null>(null);
   const [teachers, setTeachers] = useState<User[]>([]);
   const [formMasters, setFormMasters] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -36,6 +37,13 @@ export const Students: React.FC = () => {
   const [parentPwVisible, setParentPwVisible] = useState(false);
   const [parentTempPw, setParentTempPw] = useState<string | null>(null);
   const [parentSaving, setParentSaving] = useState(false);
+  // Link / Unlink parent↔student
+  const [linkParentId, setLinkParentId] = useState('');
+  const [linkStudentId, setLinkStudentId] = useState('');
+  const [linkSaving, setLinkSaving] = useState(false);
+  const [unlinkParentId, setUnlinkParentId] = useState('');
+  const [unlinkStudentId, setUnlinkStudentId] = useState('');
+  const [unlinkSaving, setUnlinkSaving] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
   
   const [sortConfig, setSortConfig] = useState<{ key: keyof Student; direction: 'asc' | 'desc' }>({
@@ -233,6 +241,53 @@ export const Students: React.FC = () => {
       toast.success('Student deleted successfully!');
   };
 
+  const handleLinkParent = async () => {
+    if (!linkParentId || !linkStudentId) return;
+    setLinkSaving(true);
+    const res = await api.linkParentToStudent(linkParentId, linkStudentId);
+    setLinkSaving(false);
+    if (res.ok) {
+      toast.success('Student linked to parent.');
+      setLinkParentId('');
+      setLinkStudentId('');
+      loadParents();
+    } else {
+      toast.error(res.message || 'Failed to link.');
+    }
+  };
+
+  const handleUnlinkParent = async () => {
+    if (!unlinkParentId || !unlinkStudentId) return;
+    setUnlinkSaving(true);
+    const res = await api.unlinkParentFromStudent(unlinkParentId, unlinkStudentId);
+    setUnlinkSaving(false);
+    if (res.ok) {
+      toast.success('Student unlinked from parent.');
+      setUnlinkParentId('');
+      setUnlinkStudentId('');
+      loadParents();
+    } else {
+      toast.error(res.message || 'Failed to unlink.');
+    }
+  };
+
+  const handleRegeneratePin = async (studentId: string) => {
+    setRegeneratingPin(studentId);
+    try {
+      const res = await api.regenerateStudentPin(studentId);
+      if (res.ok) {
+        setStudents(prev => prev.map(s => s.id === studentId ? { ...s, resultPin: res.data.resultPin } : s));
+        toast.success('Result PIN regenerated. Parents have been notified.');
+      } else {
+        toast.error(res.message || 'Failed to regenerate PIN');
+      }
+    } catch {
+      toast.error('Could not regenerate PIN. Please try again.');
+    } finally {
+      setRegeneratingPin(null);
+    }
+  };
+
   const handleBulkDelete = async () => {
       if (selectedStudents.size === 0) return;
       const ids = Array.from(selectedStudents);
@@ -401,6 +456,7 @@ export const Students: React.FC = () => {
             <Search size={18} />
           </div>
           <input
+            id="student-search" name="student-search"
             type="text"
             placeholder="Search by name or grade..."
             className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
@@ -505,6 +561,9 @@ export const Students: React.FC = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Attendance
                 </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Result PIN
+                </th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
                 </th>
@@ -579,6 +638,27 @@ export const Students: React.FC = () => {
                           ></div>
                         </div>
                         {student.attendance}%
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <div className="flex items-center gap-2">
+                        {student.resultPin ? (
+                          <span className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg px-2.5 py-1 font-mono font-bold text-xs tracking-widest">
+                            {student.resultPin}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400 italic">Not cleared</span>
+                        )}
+                        {(isAdmin || user?.role === UserRole.TEACHER) && student.resultPin && (
+                          <button
+                            onClick={() => handleRegeneratePin(student.id)}
+                            disabled={regeneratingPin === student.id}
+                            className="text-gray-400 hover:text-primary-600 transition-colors disabled:opacity-40"
+                            title="Regenerate Result PIN"
+                          >
+                            <RefreshCw size={13} className={regeneratingPin === student.id ? 'animate-spin' : ''} />
+                          </button>
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -763,6 +843,7 @@ export const Students: React.FC = () => {
                                                     <UserCheck size={16} />
                                                 </div>
                                                 <select
+                                                    id={`form-master-${grade}`} name={`form-master-${grade}`}
                                                     value={assignedId}
                                                     onChange={(e) => handleAssignMaster(grade, e.target.value)}
                                                     className="pl-9 pr-8 py-2 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-500 focus:border-primary-500 block w-48 appearance-none"
@@ -914,23 +995,23 @@ export const Students: React.FC = () => {
                 <h3 className="text-sm font-bold text-gray-800">Add New Parent / Guardian</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Full Name *</label>
-                    <input type="text" value={parentForm.name} onChange={e => setParentForm(p => ({ ...p, name: e.target.value }))}
+                    <label htmlFor="parent-name" className="block text-xs font-medium text-gray-600 mb-1">Full Name *</label>
+                    <input id="parent-name" name="parent-name" type="text" value={parentForm.name} onChange={e => setParentForm(p => ({ ...p, name: e.target.value }))}
                       className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary-500" placeholder="Parent's full name" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Email Address *</label>
-                    <input type="email" value={parentForm.email} onChange={e => setParentForm(p => ({ ...p, email: e.target.value }))}
+                    <label htmlFor="parent-email" className="block text-xs font-medium text-gray-600 mb-1">Email Address *</label>
+                    <input id="parent-email" name="parent-email" type="email" value={parentForm.email} onChange={e => setParentForm(p => ({ ...p, email: e.target.value }))}
                       className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary-500" placeholder="parent@email.com" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Phone</label>
-                    <input type="tel" value={parentForm.phone} onChange={e => setParentForm(p => ({ ...p, phone: e.target.value }))}
+                    <label htmlFor="parent-phone" className="block text-xs font-medium text-gray-600 mb-1">Phone</label>
+                    <input id="parent-phone" name="parent-phone" type="tel" value={parentForm.phone} onChange={e => setParentForm(p => ({ ...p, phone: e.target.value }))}
                       className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary-500" placeholder="+2348012345678" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Link Children *</label>
-                    <select multiple value={parentForm.studentIds}
+                    <label htmlFor="parent-children" className="block text-xs font-medium text-gray-600 mb-1">Link Children *</label>
+                    <select id="parent-children" name="parent-children" multiple value={parentForm.studentIds}
                       onChange={e => setParentForm(p => ({ ...p, studentIds: Array.from(e.target.selectedOptions, o => o.value) }))}
                       className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-primary-500 h-24">
                       {students.map(s => <option key={s.id} value={s.id}>{s.name} ({s.grade})</option>)}
@@ -970,6 +1051,56 @@ export const Students: React.FC = () => {
                   </div>
                 )}
               </div>
+
+              {/* Link / Unlink parent ↔ student */}
+              {parents.length > 0 && (
+                <div className="border border-gray-200 rounded-xl p-4 space-y-4">
+                  <h3 className="text-sm font-bold text-gray-800">Link / Unlink Student</h3>
+
+                  {/* Link */}
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Add a child to a parent</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <select id="link-parent" name="link-parent" value={linkParentId} onChange={e => setLinkParentId(e.target.value)}
+                        className="border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-primary-500">
+                        <option value="">Select parent…</option>
+                        {parents.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                      <select id="link-student" name="link-student" value={linkStudentId} onChange={e => setLinkStudentId(e.target.value)}
+                        className="border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-primary-500">
+                        <option value="">Select student…</option>
+                        {students.map(s => <option key={s.id} value={s.id}>{s.name} ({s.grade})</option>)}
+                      </select>
+                    </div>
+                    <button onClick={handleLinkParent} disabled={!linkParentId || !linkStudentId || linkSaving}
+                      className="flex items-center gap-2 px-3 py-2 bg-emerald-600 text-white rounded-lg text-xs font-medium hover:bg-emerald-700 disabled:opacity-50">
+                      {linkSaving ? <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Link size={13} />}
+                      Link Student
+                    </button>
+                  </div>
+
+                  <div className="border-t border-gray-100 pt-4 space-y-2">
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Remove a child from a parent</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <select id="unlink-parent" name="unlink-parent" value={unlinkParentId} onChange={e => setUnlinkParentId(e.target.value)}
+                        className="border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-primary-500">
+                        <option value="">Select parent…</option>
+                        {parents.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                      <select id="unlink-student" name="unlink-student" value={unlinkStudentId} onChange={e => setUnlinkStudentId(e.target.value)}
+                        className="border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-primary-500">
+                        <option value="">Select student…</option>
+                        {students.map(s => <option key={s.id} value={s.id}>{s.name} ({s.grade})</option>)}
+                      </select>
+                    </div>
+                    <button onClick={handleUnlinkParent} disabled={!unlinkParentId || !unlinkStudentId || unlinkSaving}
+                      className="flex items-center gap-2 px-3 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg text-xs font-medium hover:bg-red-100 disabled:opacity-50">
+                      {unlinkSaving ? <span className="w-3 h-3 border-2 border-red-300 border-t-red-600 rounded-full animate-spin" /> : <Link2Off size={13} />}
+                      Remove Link
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -91,6 +91,8 @@ const SchoolPicker: React.FC<{
         <div className="absolute z-50 mt-1 w-full bg-white rounded-2xl border border-gray-100 shadow-xl overflow-hidden">
           <div className="p-2 border-b border-gray-100">
             <input
+              id="notification-search"
+              name="notification-search"
               autoFocus
               type="text"
               value={query}
@@ -495,8 +497,9 @@ const ComposeForm: React.FC = () => {
 
         {/* ── Title ── */}
         <div>
-          <label className="block text-[13px] font-semibold text-gray-700 mb-1.5">Title</label>
+          <label htmlFor="notif-title" className="block text-[13px] font-semibold text-gray-700 mb-1.5">Title</label>
           <input
+            id="notif-title" name="notif-title"
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -508,8 +511,9 @@ const ComposeForm: React.FC = () => {
 
         {/* ── Message ── */}
         <div>
-          <label className="block text-[13px] font-semibold text-gray-700 mb-1.5">Message</label>
+          <label htmlFor="notif-message" className="block text-[13px] font-semibold text-gray-700 mb-1.5">Message</label>
           <textarea
+            id="notif-message" name="notif-message"
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             placeholder="Write your message here…"

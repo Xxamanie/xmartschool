@@ -200,10 +200,11 @@ export const Classes: React.FC = () => {
 
       {/* Class Dropdown */}
       <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label htmlFor="class-select" className="block text-sm font-medium text-gray-700 mb-2">
           Select Class ({allClassesForDropdown.length} available)
         </label>
         <select
+          id="class-select" name="class-select"
           value={selectedClass || ''}
           onChange={(e) => {
     const value = e.target.value || null;
@@ -327,7 +328,8 @@ export const Classes: React.FC = () => {
                 <div className="p-4 border-b border-gray-100">
                     <div className="relative">
                         <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
-                        <input 
+                        <input
+                            id="enroll-search" name="enroll-search"
                             type="text"
                             placeholder="Search students by name or current grade..."
                             value={enrollSearchTerm}

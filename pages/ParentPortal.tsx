@@ -1,12 +1,129 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import {
   GraduationCap, TrendingUp, DollarSign, CalendarCheck, ChevronDown, ChevronUp,
   BookOpen, Award, AlertTriangle, CheckCircle2, Clock, CreditCard, Loader2,
-  User, Phone, Mail, FileText,
+  User, Phone, Mail, FileText, Receipt, Printer, KeyRound, Bell,
 } from 'lucide-react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { Student, ResultData, StudentFeeLedger } from '../types';
+
+// ── Receipt types ─────────────────────────────────────────────────────────────
+
+interface PaymentReceipt {
+  type: 'payment_receipt';
+  studentName: string;
+  schoolName: string;
+  paymentDate: string;
+  paymentRef?: string;
+  method?: string;
+  itemTitle: string;
+  amountPaid: number;
+  totalPayable: number;
+  totalPaid: number;
+  outstanding: number;
+  ledgerFully: boolean;
+  resultPin?: string;
+}
+
+const tryParseReceipt = (message: string): PaymentReceipt | null => {
+  try {
+    const parsed = JSON.parse(message);
+    return parsed?.type === 'payment_receipt' ? (parsed as PaymentReceipt) : null;
+  } catch {
+    return null;
+  }
+};
+
+const fmt = (n: number) => `₦${n.toLocaleString()}`;
+const fmtDate = (iso: string) => new Date(iso).toLocaleString('en-NG', { dateStyle: 'medium', timeStyle: 'short' });
+
+// ── Receipt Card ──────────────────────────────────────────────────────────────
+
+const ReceiptCard: React.FC<{ receipt: PaymentReceipt; notifId: string }> = ({ receipt, notifId }) => {
+  const printRef = useRef<HTMLDivElement>(null);
+
+  const handlePrint = () => {
+    const content = printRef.current;
+    if (!content) return;
+    const win = window.open('', '_blank', 'width=700,height=900');
+    if (!win) return;
+    win.document.write(`
+      <html><head><title>Payment Receipt</title>
+      <style>
+        body { font-family: Arial, sans-serif; padding: 32px; color: #111; }
+        h1 { font-size: 22px; margin-bottom: 4px; }
+        .sub { color: #666; font-size: 13px; margin-bottom: 24px; }
+        table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+        td { padding: 8px 4px; border-bottom: 1px solid #eee; font-size: 14px; }
+        td:last-child { text-align: right; font-weight: 600; }
+        .pin-box { background: #f0fdf4; border: 2px dashed #22c55e; border-radius: 12px; padding: 16px; margin-top: 20px; text-align: center; }
+        .pin-box p { margin: 0; font-size: 13px; color: #166534; }
+        .pin-box strong { display: block; font-size: 28px; letter-spacing: 8px; margin-top: 6px; color: #15803d; }
+        .footer { margin-top: 32px; font-size: 11px; color: #999; border-top: 1px solid #eee; padding-top: 12px; }
+      </style></head><body>
+      ${content.innerHTML}
+      </body></html>
+    `);
+    win.document.close();
+    win.focus();
+    win.print();
+    win.close();
+  };
+
+  return (
+    <div className="bg-white border border-emerald-200 rounded-xl overflow-hidden shadow-sm">
+      <div className="bg-emerald-600 px-5 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-2 text-white">
+          <Receipt size={16} />
+          <span className="font-semibold text-sm">Payment Receipt</span>
+        </div>
+        <button
+          onClick={handlePrint}
+          className="flex items-center gap-1.5 text-xs bg-white/20 hover:bg-white/30 text-white rounded-lg px-3 py-1.5 transition-colors"
+        >
+          <Printer size={13} /> Print / Download
+        </button>
+      </div>
+
+      {/* Printable content */}
+      <div ref={printRef} className="p-5 space-y-4">
+        <div>
+          <h2 className="text-base font-bold text-gray-900">{receipt.schoolName}</h2>
+          <p className="text-xs text-gray-500">Fee Payment Statement · {fmtDate(receipt.paymentDate)}</p>
+        </div>
+
+        <table className="w-full text-sm">
+          <tbody className="divide-y divide-gray-100">
+            <tr><td className="py-2 text-gray-500">Student</td><td className="py-2 text-right font-semibold text-gray-900">{receipt.studentName}</td></tr>
+            <tr><td className="py-2 text-gray-500">Item</td><td className="py-2 text-right text-gray-700">{receipt.itemTitle}</td></tr>
+            <tr><td className="py-2 text-gray-500">Amount Paid</td><td className="py-2 text-right text-emerald-700 font-bold">{fmt(receipt.amountPaid)}</td></tr>
+            <tr><td className="py-2 text-gray-500">Total Payable</td><td className="py-2 text-right text-gray-700">{fmt(receipt.totalPayable)}</td></tr>
+            <tr><td className="py-2 text-gray-500">Total Paid</td><td className="py-2 text-right text-gray-700">{fmt(receipt.totalPaid)}</td></tr>
+            <tr>
+              <td className="py-2 text-gray-500">Outstanding</td>
+              <td className={`py-2 text-right font-bold ${receipt.outstanding > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                {receipt.outstanding > 0 ? fmt(receipt.outstanding) : 'NIL — Fully Cleared ✓'}
+              </td>
+            </tr>
+            {receipt.paymentRef && <tr><td className="py-2 text-gray-500">Reference</td><td className="py-2 text-right text-gray-600 font-mono text-xs">{receipt.paymentRef}</td></tr>}
+            {receipt.method && <tr><td className="py-2 text-gray-500">Method</td><td className="py-2 text-right text-gray-600">{receipt.method}</td></tr>}
+          </tbody>
+        </table>
+
+        {receipt.resultPin && (
+          <div className="bg-emerald-50 border-2 border-dashed border-emerald-300 rounded-xl p-4 text-center space-y-1">
+            <div className="flex items-center justify-center gap-2 text-emerald-700 text-xs font-semibold uppercase tracking-wide">
+              <KeyRound size={14} /> Result Access PIN
+            </div>
+            <p className="text-3xl font-black tracking-[0.4em] text-emerald-800 py-1">{receipt.resultPin}</p>
+            <p className="text-xs text-emerald-600">Share this PIN with {receipt.studentName} to unlock their results. Keep it safe.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -210,11 +327,24 @@ export const ParentPortal: React.FC = () => {
   const { user } = useAuth();
   const [children, setChildren] = useState<ChildData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [receipts, setReceipts] = useState<Array<{ id: string; receipt: PaymentReceipt }>>([]);
 
   useEffect(() => {
-    api.getParentChildren().then(res => {
-      if (res.ok) setChildren(res.data);
-    }).finally(() => setLoading(false));
+    const load = async () => {
+      const [childRes, notifRes] = await Promise.all([
+        api.getParentChildren(),
+        api.getNotifications(),
+      ]);
+      if (childRes.ok) setChildren(childRes.data);
+      if (notifRes.ok) {
+        const parsed = (notifRes.data as any[])
+          .map((n: any) => ({ id: n.id, receipt: tryParseReceipt(n.message) }))
+          .filter((n): n is { id: string; receipt: PaymentReceipt } => n.receipt !== null);
+        setReceipts(parsed);
+      }
+      setLoading(false);
+    };
+    load();
   }, []);
 
   const totalOutstanding = useMemo(() =>
@@ -280,6 +410,22 @@ export const ParentPortal: React.FC = () => {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Payment Receipts */}
+      {receipts.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+            <Bell size={16} className="text-emerald-600" />
+            Payment Receipts
+            <span className="ml-1 text-xs font-semibold bg-emerald-100 text-emerald-700 rounded-full px-2 py-0.5">{receipts.length}</span>
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {receipts.map(({ id, receipt }) => (
+              <ReceiptCard key={id} notifId={id} receipt={receipt} />
+            ))}
+          </div>
         </div>
       )}
 

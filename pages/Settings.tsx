@@ -4,7 +4,7 @@ import { api } from '../services/api';
 import { supabaseAuthService } from '../src/services/supabaseAuthService';
 import {
   Save, User, Lock, Bell, Shield, CheckCircle2, AlertCircle,
-  Building2, Calendar, Plus, Trash2, Star, Palette, Eye, EyeOff,
+  Building2, Calendar, Plus, Trash2, Star, Palette, Eye, EyeOff, ClipboardList,
 } from 'lucide-react';
 import { School, SchoolTerm, UserRole } from '../types';
 
@@ -12,7 +12,7 @@ export const Settings: React.FC = () => {
   const { user, updateUser, effectiveSchoolId } = useAuth();
   const isAdmin = user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN;
 
-  type Tab = 'profile' | 'security' | 'notifications' | 'school' | 'terms';
+  type Tab = 'profile' | 'security' | 'notifications' | 'school' | 'terms' | 'audit';
   const [activeTab, setActiveTab] = useState<Tab>('profile');
   const [isLoading, setIsLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
@@ -126,7 +126,20 @@ export const Settings: React.FC = () => {
 
   useEffect(() => {
     if (activeTab === 'terms') loadTerms();
+    if (activeTab === 'audit') loadAuditLogs();
   }, [activeTab, effectiveSchoolId]);
+
+  // ── Audit Logs ────────────────────────────────────────────────────────────
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+
+  const loadAuditLogs = async () => {
+    if (!effectiveSchoolId) return;
+    setAuditLoading(true);
+    const res = await api.getAuditLogs(effectiveSchoolId, 200);
+    if (res.ok) setAuditLogs(res.data);
+    setAuditLoading(false);
+  };
 
   const handleCreateTerm = async () => {
     if (!effectiveSchoolId || !termForm.name || !termForm.session || !termForm.startDate || !termForm.endDate) {
@@ -238,6 +251,7 @@ export const Settings: React.FC = () => {
     { id: 'notifications' as Tab, label: 'Notifications', icon: Bell },
     ...(isAdmin ? [{ id: 'school' as Tab, label: 'School', icon: Building2 }] : []),
     ...(isAdmin ? [{ id: 'terms' as Tab, label: 'Terms', icon: Calendar }] : []),
+    ...(isAdmin ? [{ id: 'audit' as Tab, label: 'Activity Log', icon: ClipboardList }] : []),
   ];
 
   return (
@@ -283,23 +297,23 @@ export const Settings: React.FC = () => {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
-                  <input type="text" value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value })}
+                  <label htmlFor="profile-name" className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                  <input id="profile-name" name="name" type="text" autoComplete="name" value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value })}
                     className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
-                  <input type="email" value={profile.email} disabled
+                  <label htmlFor="profile-email" className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+                  <input id="profile-email" name="email" type="email" autoComplete="email" value={profile.email} disabled
                     className="w-full border border-gray-300 rounded-lg p-2.5 text-sm bg-gray-100 text-gray-500 cursor-not-allowed" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
-                  <input type="tel" value={profile.phone} onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
+                  <label htmlFor="profile-phone" className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+                  <input id="profile-phone" name="tel" type="tel" autoComplete="tel" value={profile.phone} onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
                     className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
                 </div>
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Bio</label>
-                  <textarea rows={4} value={profile.bio} onChange={(e) => setProfile({ ...profile, bio: e.target.value })}
+                  <label htmlFor="profile-bio" className="block text-sm font-medium text-gray-700 mb-1">Bio</label>
+                  <textarea id="profile-bio" name="bio" rows={4} value={profile.bio} onChange={(e) => setProfile({ ...profile, bio: e.target.value })}
                     className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none" />
                 </div>
               </div>
@@ -319,10 +333,13 @@ export const Settings: React.FC = () => {
 
               {!supabaseAuthService.isConfigured() && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Current Password</label>
+                  <label htmlFor="current-password" className="block text-sm font-medium text-gray-700 mb-1">Current Password</label>
                   <div className="relative">
                     <input
+                      id="current-password"
+                      name="current-password"
                       type={pwVisible ? 'text' : 'password'}
+                      autoComplete="current-password"
                       value={pwForm.current}
                       onChange={(e) => setPwForm({ ...pwForm, current: e.target.value })}
                       className="w-full border border-gray-300 rounded-lg p-2.5 pr-10 text-sm focus:ring-2 focus:ring-primary-500"
@@ -336,9 +353,12 @@ export const Settings: React.FC = () => {
               )}
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
+                <label htmlFor="new-password" className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
                 <input
+                  id="new-password"
+                  name="new-password"
                   type={pwVisible ? 'text' : 'password'}
+                  autoComplete="new-password"
                   value={pwForm.next}
                   onChange={(e) => setPwForm({ ...pwForm, next: e.target.value })}
                   className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary-500"
@@ -358,9 +378,12 @@ export const Settings: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Confirm New Password</label>
+                <label htmlFor="confirm-password" className="block text-sm font-medium text-gray-700 mb-1">Confirm New Password</label>
                 <input
+                  id="confirm-password"
+                  name="confirm-password"
                   type={pwVisible ? 'text' : 'password'}
+                  autoComplete="new-password"
                   value={pwForm.confirm}
                   onChange={(e) => setPwForm({ ...pwForm, confirm: e.target.value })}
                   className={`w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary-500 ${
@@ -409,6 +432,8 @@ export const Settings: React.FC = () => {
                       }`}
                     >
                       <input
+                        id={`notif-${key}`}
+                        name={`notif-${key}`}
                         type="checkbox"
                         checked={notifPrefs[key]}
                         onChange={(e) => setNotifPrefs(p => ({ ...p, [key]: e.target.checked }))}
@@ -449,49 +474,49 @@ export const Settings: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">School Name</label>
-                  <input type="text" value={branding.name} onChange={(e) => setBranding({ ...branding, name: e.target.value })}
+                  <input id="school-name" name="school-name" type="text" value={branding.name} onChange={(e) => setBranding({ ...branding, name: e.target.value })}
                     className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Admin Name</label>
-                  <input type="text" value={branding.adminName} onChange={(e) => setBranding({ ...branding, adminName: e.target.value })}
+                  <input id="admin-name" name="admin-name" type="text" value={branding.adminName} onChange={(e) => setBranding({ ...branding, adminName: e.target.value })}
                     className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Principal Name</label>
-                  <input type="text" value={branding.principalName} onChange={(e) => setBranding({ ...branding, principalName: e.target.value })}
+                  <input id="principal-name" name="principal-name" type="text" value={branding.principalName} onChange={(e) => setBranding({ ...branding, principalName: e.target.value })}
                     className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Contact</label>
-                  <input type="text" value={branding.contact} onChange={(e) => setBranding({ ...branding, contact: e.target.value })}
+                  <input id="school-contact" name="school-contact" type="text" value={branding.contact} onChange={(e) => setBranding({ ...branding, contact: e.target.value })}
                     className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
                 </div>
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
-                  <input type="text" value={branding.address} onChange={(e) => setBranding({ ...branding, address: e.target.value })}
+                  <input id="school-address" name="school-address" type="text" value={branding.address} onChange={(e) => setBranding({ ...branding, address: e.target.value })}
                     className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
                 </div>
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">School Motto</label>
-                  <input type="text" value={branding.motto} onChange={(e) => setBranding({ ...branding, motto: e.target.value })}
+                  <input id="school-motto" name="school-motto" type="text" value={branding.motto} onChange={(e) => setBranding({ ...branding, motto: e.target.value })}
                     className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Logo URL</label>
-                  <input type="url" value={branding.logoUrl} onChange={(e) => setBranding({ ...branding, logoUrl: e.target.value })}
+                  <input id="logo-url" name="logo-url" type="url" value={branding.logoUrl} onChange={(e) => setBranding({ ...branding, logoUrl: e.target.value })}
                     placeholder="https://..."
                     className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Principal Signature URL</label>
-                  <input type="url" value={branding.principalSignatureUrl} onChange={(e) => setBranding({ ...branding, principalSignatureUrl: e.target.value })}
+                  <input id="signature-url" name="signature-url" type="url" value={branding.principalSignatureUrl} onChange={(e) => setBranding({ ...branding, principalSignatureUrl: e.target.value })}
                     placeholder="https://..."
                     className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">School Stamp URL</label>
-                  <input type="url" value={branding.schoolStampUrl} onChange={(e) => setBranding({ ...branding, schoolStampUrl: e.target.value })}
+                  <input id="stamp-url" name="stamp-url" type="url" value={branding.schoolStampUrl} onChange={(e) => setBranding({ ...branding, schoolStampUrl: e.target.value })}
                     placeholder="https://..."
                     className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
                 </div>
@@ -500,17 +525,17 @@ export const Settings: React.FC = () => {
                     <Palette size={14} /> Theme Color
                   </label>
                   <div className="flex items-center gap-3">
-                    <input type="color" value={branding.themeColor}
+                    <input id="theme-color-picker" name="theme-color-picker" type="color" value={branding.themeColor}
                       onChange={(e) => setBranding({ ...branding, themeColor: e.target.value })}
                       className="h-10 w-14 rounded border border-gray-300 cursor-pointer" />
-                    <input type="text" value={branding.themeColor}
+                    <input id="theme-color-text" name="theme-color-text" type="text" value={branding.themeColor}
                       onChange={(e) => setBranding({ ...branding, themeColor: e.target.value })}
                       className="w-32 border border-gray-300 rounded-lg p-2.5 text-sm font-mono" />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Grading System</label>
-                  <select value={branding.gradingSystem} onChange={(e) => setBranding({ ...branding, gradingSystem: e.target.value as 'nigeria' | 'british' | 'american' })}
+                  <label htmlFor="grading-system" className="block text-sm font-medium text-gray-700 mb-1">Grading System</label>
+                  <select id="grading-system" name="grading-system" value={branding.gradingSystem} onChange={(e) => setBranding({ ...branding, gradingSystem: e.target.value as 'nigeria' | 'british' | 'american' })}
                     className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent">
                     <option value="nigeria">Nigerian (A1–F9)</option>
                     <option value="british">British (A*–F)</option>
@@ -539,20 +564,20 @@ export const Settings: React.FC = () => {
                   <h4 className="text-sm font-semibold text-gray-800">Create Term</h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Display Name</label>
-                      <input type="text" placeholder="First Term 2024/2025" value={termForm.name}
+                      <label htmlFor="term-name" className="block text-xs font-medium text-gray-600 mb-1">Display Name</label>
+                      <input id="term-name" name="term-name" type="text" placeholder="First Term 2024/2025" value={termForm.name}
                         onChange={(e) => setTermForm({ ...termForm, name: e.target.value })}
                         className="w-full border border-gray-300 rounded-lg p-2.5 text-sm" />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Session</label>
-                      <input type="text" placeholder="2024/2025" value={termForm.session}
+                      <label htmlFor="term-session" className="block text-xs font-medium text-gray-600 mb-1">Session</label>
+                      <input id="term-session" name="term-session" type="text" placeholder="2024/2025" value={termForm.session}
                         onChange={(e) => setTermForm({ ...termForm, session: e.target.value })}
                         className="w-full border border-gray-300 rounded-lg p-2.5 text-sm" />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Term</label>
-                      <select value={termForm.term} onChange={(e) => setTermForm({ ...termForm, term: e.target.value as any })}
+                      <label htmlFor="term-period" className="block text-xs font-medium text-gray-600 mb-1">Term</label>
+                      <select id="term-period" name="term-period" value={termForm.term} onChange={(e) => setTermForm({ ...termForm, term: e.target.value as any })}
                         className="w-full border border-gray-300 rounded-lg p-2.5 text-sm">
                         <option value="first">First</option>
                         <option value="second">Second</option>
@@ -560,14 +585,14 @@ export const Settings: React.FC = () => {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Start Date</label>
-                      <input type="date" value={termForm.startDate}
+                      <label htmlFor="term-start" className="block text-xs font-medium text-gray-600 mb-1">Start Date</label>
+                      <input id="term-start" name="term-start" type="date" value={termForm.startDate}
                         onChange={(e) => setTermForm({ ...termForm, startDate: e.target.value })}
                         className="w-full border border-gray-300 rounded-lg p-2.5 text-sm" />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">End Date</label>
-                      <input type="date" value={termForm.endDate}
+                      <label htmlFor="term-end" className="block text-xs font-medium text-gray-600 mb-1">End Date</label>
+                      <input id="term-end" name="term-end" type="date" value={termForm.endDate}
                         onChange={(e) => setTermForm({ ...termForm, endDate: e.target.value })}
                         className="w-full border border-gray-300 rounded-lg p-2.5 text-sm" />
                     </div>
@@ -627,6 +652,59 @@ export const Settings: React.FC = () => {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* ── Activity Log Tab ── */}
+          {activeTab === 'audit' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-semibold text-gray-900">Activity Log</h3>
+                <button onClick={loadAuditLogs} disabled={auditLoading}
+                  className="text-xs text-primary-600 hover:text-primary-800 font-medium px-3 py-1.5 border border-primary-200 rounded-lg hover:bg-primary-50 disabled:opacity-50">
+                  {auditLoading ? 'Loading…' : 'Refresh'}
+                </button>
+              </div>
+
+              {auditLoading && <div className="py-8 text-center text-sm text-gray-400">Loading activity log…</div>}
+              {!auditLoading && auditLogs.length === 0 && (
+                <div className="py-8 text-center text-sm text-gray-400">No activity recorded yet.</div>
+              )}
+
+              {!auditLoading && auditLogs.length > 0 && (
+                <div className="border border-gray-200 rounded-xl overflow-hidden">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider">
+                      <tr>
+                        <th className="px-4 py-3 text-left">Time</th>
+                        <th className="px-4 py-3 text-left">Actor</th>
+                        <th className="px-4 py-3 text-left">Action</th>
+                        <th className="px-4 py-3 text-left">Target</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {auditLogs.map((log: any, i: number) => (
+                        <tr key={log.id ?? i} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 whitespace-nowrap text-gray-500 text-xs">
+                            {new Date(log.createdAt).toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap font-medium text-gray-800">
+                            {log.actorName ?? log.actorId ?? '—'}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
+                              {log.action}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-gray-600 max-w-xs truncate">
+                            {log.targetName ?? log.targetId ?? log.details ?? '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
 

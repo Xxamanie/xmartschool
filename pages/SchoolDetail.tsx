@@ -274,6 +274,7 @@ export const SchoolDetail: React.FC = () => {
                     <Search size={16} />
                   </div>
                   <input
+                    id="sd-student-search" name="sd-student-search"
                     type="text"
                     placeholder="Search students..."
                     value={searchTerm}
@@ -326,6 +327,7 @@ export const SchoolDetail: React.FC = () => {
                     <Search size={16} />
                   </div>
                   <input
+                    id="sd-staff-search" name="sd-staff-search"
                     type="text"
                     placeholder="Search staff..."
                     value={searchTerm}

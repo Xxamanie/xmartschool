@@ -230,7 +230,7 @@ export const Login: React.FC = () => {
                 /* Staff Login Form */
                 <form onSubmit={handleStaffLogin} className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
                 <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                    <label htmlFor="staff-email" className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
                     Email Address
                     </label>
                     <div className="relative group">
@@ -238,7 +238,10 @@ export const Login: React.FC = () => {
                         <Mail size={18} />
                     </div>
                     <input
+                        id="staff-email"
+                        name="email"
                         type="email"
+                        autoComplete="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         className="block w-full pl-10 pr-3 py-3 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all bg-gray-50 focus:bg-white"
@@ -248,7 +251,7 @@ export const Login: React.FC = () => {
                 </div>
 
                 <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                    <label htmlFor="staff-password" className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
                     Password
                     </label>
                     <div className="relative group">
@@ -256,7 +259,10 @@ export const Login: React.FC = () => {
                         <Lock size={18} />
                     </div>
                     <input
+                        id="staff-password"
+                        name="password"
                         type="password"
+                        autoComplete="current-password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         className="block w-full pl-10 pr-3 py-3 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all bg-gray-50 focus:bg-white"
@@ -267,7 +273,7 @@ export const Login: React.FC = () => {
 
                 <div className="flex items-center justify-between">
                     <label className="flex items-center cursor-pointer">
-                        <input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+                        <input id="remember-me" name="remember-me" type="checkbox" className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
                         <span className="ml-2 text-sm text-gray-500">Remember me</span>
                     </label>
                     <button
@@ -315,7 +321,7 @@ export const Login: React.FC = () => {
                 /* Student Portal Login Form */
                 <form onSubmit={handleStudentLogin} className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
                 <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                    <label htmlFor="school-code" className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
                     School Code
                     </label>
                     <div className="relative group">
@@ -323,7 +329,10 @@ export const Login: React.FC = () => {
                         <Building2 size={18} />
                     </div>
                     <input
+                        id="school-code"
+                        name="school-code"
                         type="text"
+                        autoComplete="off"
                         value={schoolCode}
                         onChange={(e) => setSchoolCode(e.target.value)}
                         className="block w-full pl-10 pr-3 py-3 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all bg-gray-50 focus:bg-white font-mono"
@@ -333,7 +342,7 @@ export const Login: React.FC = () => {
                 </div>
 
                 <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                    <label htmlFor="student-code" className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
                     Student Access Code
                     </label>
                     <div className="relative group">
@@ -341,7 +350,10 @@ export const Login: React.FC = () => {
                         <KeyRound size={18} />
                     </div>
                     <input
+                        id="student-code"
+                        name="student-code"
                         type="text"
+                        autoComplete="off"
                         value={studentCode}
                         onChange={(e) => setStudentCode(e.target.value)}
                         className="block w-full pl-10 pr-3 py-3 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all bg-gray-50 focus:bg-white font-mono"

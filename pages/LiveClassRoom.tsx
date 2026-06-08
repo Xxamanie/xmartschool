@@ -306,6 +306,7 @@ export const LiveClassRoom: React.FC = () => {
             </div>
             <form onSubmit={handleSendMessage} className="flex gap-2">
               <input
+                id="lcr-message-input" name="lcr-message-input"
                 type="text"
                 value={messageInput}
                 onChange={(e) => setMessageInput(e.target.value)}

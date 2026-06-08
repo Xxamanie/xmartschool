@@ -6,12 +6,12 @@ import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { ToastContainer } from '../components/Toast';
 import { useToast } from '../src/utils/useToast';
-import { 
-  Building2, MapPin, Users, Plus, Search, 
-  CheckCircle2, XCircle, BarChart3, Crown, 
+import {
+  Building2, MapPin, Users, Plus, Search,
+  CheckCircle2, XCircle, BarChart3, Crown,
   LogIn, Trash2, Ban, RefreshCcw, Lock, Unlock,
   GraduationCap, TrendingUp, Activity, Filter, ExternalLink,
-  CalendarDays, PencilLine
+  CalendarDays, PencilLine, Copy, Check, Key, Mail, Eye
 } from 'lucide-react';
 
 // Helper function for role badges - Defined outside component for stability
@@ -26,6 +26,49 @@ const getRoleBadgeClasses = (role: string | undefined) => {
     default:
       return 'bg-gray-100 text-gray-800';
   }
+};
+
+const CredentialRow: React.FC<{
+  label: string; value: string; mono?: boolean; icon?: React.ReactNode; sensitive?: boolean;
+}> = ({ label, value, mono, icon, sensitive }) => {
+  const [copied, setCopied] = React.useState(false);
+  const [revealed, setRevealed] = React.useState(!sensitive);
+  const copy = () => {
+    navigator.clipboard.writeText(value);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <div className="flex items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-2">
+      <div className="flex items-center gap-2 min-w-0">
+        {icon && <span className="text-slate-400 shrink-0">{icon}</span>}
+        <div className="min-w-0">
+          <p className="text-xs text-slate-400">{label}</p>
+          <p className={`text-sm font-semibold text-slate-800 truncate ${mono ? 'font-mono' : ''}`}>
+            {revealed ? value : '••••••••••••'}
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-1 shrink-0">
+        {sensitive && (
+          <button onClick={() => setRevealed(r => !r)} className="p-1.5 text-slate-400 hover:text-slate-600 rounded transition-colors" title={revealed ? 'Hide' : 'Reveal'}>
+            <Eye size={14} />
+          </button>
+        )}
+        <button onClick={copy} className="p-1.5 text-slate-400 hover:text-slate-600 rounded transition-colors" title="Copy">
+          {copied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const CHARSET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const generateCodeFromName = (name: string): string => {
+  const initials = name.split(/\s+/).filter(Boolean)
+    .map(w => w[0].toUpperCase()).slice(0, 4).join('') || 'SCH';
+  const suffix = Array.from({ length: 4 }, () => CHARSET[Math.floor(Math.random() * CHARSET.length)]).join('');
+  return `${initials}-${suffix}`;
 };
 
 const toDateTimeInputValue = (value?: string) => {
@@ -50,8 +93,13 @@ export const SuperAdmin: React.FC = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [newSchoolName, setNewSchoolName] = useState('');
   const [newSchoolCode, setNewSchoolCode] = useState('');
+  const [codeAutoMode, setCodeAutoMode] = useState(true);
   const [newSchoolRegion, setNewSchoolRegion] = useState('');
   const [newSchoolAdminName, setNewSchoolAdminName] = useState('');
+  const [newSchoolAdminEmail, setNewSchoolAdminEmail] = useState('');
+  const [createdCredentials, setCreatedCredentials] = useState<{
+    schoolName: string; schoolCode: string; adminEmail: string; tempPassword: string;
+  } | null>(null);
   const [statusFilter, setStatusFilter] = useState<'All' | 'Active' | 'Inactive'>('All');
 
   // Announcement Actions State (Admin-only)
@@ -126,30 +174,38 @@ export const SuperAdmin: React.FC = () => {
   }, [selectedEventSchoolId]);
 
   const handleCreateSchool = async () => {
-    if (!newSchoolName.trim()) {
-      toast.warning('School name is required');
-      return;
+    if (!newSchoolName.trim()) { toast.warning('School name is required'); return; }
+    if (newSchoolAdminEmail.trim() && !newSchoolAdminName.trim()) {
+      toast.warning('Admin name is required when an email is provided'); return;
     }
-    try {
-        const res = await api.createSchool({
-          name: newSchoolName.trim(),
-          code: newSchoolCode.trim() || undefined,
-          region: newSchoolRegion.trim() || undefined,
-          adminName: newSchoolAdminName.trim() || undefined,
-          status: 'Active'
+    const res = await api.createSchool({
+      name: newSchoolName.trim(),
+      code: newSchoolCode.trim() || undefined,
+      region: newSchoolRegion.trim() || undefined,
+      adminName: newSchoolAdminName.trim() || undefined,
+      adminEmail: newSchoolAdminEmail.trim() || undefined,
+    });
+    if (res.ok) {
+      setSchools(prev => [...prev, res.data]);
+      setIsCreating(false);
+      setNewSchoolName('');
+      setNewSchoolCode('');
+      setCodeAutoMode(true);
+      setNewSchoolRegion('');
+      setNewSchoolAdminName('');
+      setNewSchoolAdminEmail('');
+      if (res.data.tempAdminPassword && res.data.adminEmail) {
+        setCreatedCredentials({
+          schoolName: res.data.name,
+          schoolCode: res.data.code || '',
+          adminEmail: res.data.adminEmail,
+          tempPassword: res.data.tempAdminPassword,
         });
-        if (res.ok) {
-            setSchools(prev => [...prev, res.data]);
-            setIsCreating(false);
-            setNewSchoolName('');
-            setNewSchoolCode('');
-            setNewSchoolRegion('');
-            setNewSchoolAdminName('');
-            toast.success('School created successfully!');
-        }
-    } catch (e) {
-        console.error('Failed to create school:', e);
-        toast.error(`Error creating school: ${(e as any)?.message || 'Unknown error'}`);
+      } else {
+        toast.success('School created successfully!');
+      }
+    } else {
+      toast.error(res.message || 'Failed to create school');
     }
   };
 
@@ -465,6 +521,38 @@ export const SuperAdmin: React.FC = () => {
           </button>
        </div>
 
+      {/* Credentials Banner — shown once after school creation with admin account */}
+      {createdCredentials && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="h-10 w-10 rounded-full bg-green-100 flex items-center justify-center">
+                <CheckCircle2 size={20} className="text-green-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">School Created Successfully</h3>
+                <p className="text-xs text-slate-500">Save these credentials — the password will not be shown again.</p>
+              </div>
+            </div>
+            <div className="space-y-3 mb-5">
+              <CredentialRow label="School Name" value={createdCredentials.schoolName} />
+              <CredentialRow label="School Code" value={createdCredentials.schoolCode} mono />
+              <CredentialRow label="Admin Email" value={createdCredentials.adminEmail} icon={<Mail size={14} />} />
+              <CredentialRow label="Temp Password" value={createdCredentials.tempPassword} mono icon={<Key size={14} />} sensitive />
+            </div>
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
+              Share the email and temporary password with the school administrator. They should change the password on first login.
+            </p>
+            <button
+              onClick={() => setCreatedCredentials(null)}
+              className="w-full px-4 py-2.5 bg-slate-900 text-white rounded-lg text-sm font-bold hover:bg-slate-800 transition-colors"
+            >
+              I've saved the credentials
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Schools Registry Tab */}
       {activeTab === 'schools' && (
       <div className="space-y-4 animate-in fade-in slide-in-from-left-2">
@@ -481,6 +569,7 @@ export const SuperAdmin: React.FC = () => {
                         <Filter size={14} />
                     </div>
                     <select
+                        id="school-status-filter" name="school-status-filter"
                         value={statusFilter}
                         onChange={(e) => setStatusFilter(e.target.value as 'All' | 'Active' | 'Inactive')}
                         className="pl-9 pr-8 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-sm appearance-none cursor-pointer hover:bg-slate-50 transition-colors"
@@ -515,30 +604,59 @@ export const SuperAdmin: React.FC = () => {
               <h3 className="text-sm font-bold text-slate-900 mb-4 uppercase tracking-wide">New Institution Details</h3>
               <div className="grid grid-cols-2 gap-4 mb-4">
                   <div>
-                     <label className="block text-xs font-medium text-slate-500 mb-1">School Name *</label>
-                     <input 
-                       type="text" 
+                     <label htmlFor="new-school-name" className="block text-xs font-medium text-slate-500 mb-1">School Name *</label>
+                     <input
+                       id="new-school-name" name="new-school-name"
+                       type="text"
                        value={newSchoolName}
-                       onChange={(e) => setNewSchoolName(e.target.value)}
+                       onChange={(e) => {
+                         const name = e.target.value;
+                         setNewSchoolName(name);
+                         if (codeAutoMode) setNewSchoolCode(name.trim() ? generateCodeFromName(name) : '');
+                       }}
                        className="block w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-amber-500 focus:border-transparent shadow-sm"
                        placeholder="e.g. International Heights Academy"
                        autoFocus
                      />
                   </div>
                   <div>
-                     <label className="block text-xs font-medium text-slate-500 mb-1">School Code</label>
-                     <input 
-                       type="text" 
-                       value={newSchoolCode}
-                       onChange={(e) => setNewSchoolCode(e.target.value)}
-                       className="block w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-amber-500 focus:border-transparent shadow-sm"
-                       placeholder="e.g. IHA-001"
-                     />
+                     <label className="block text-xs font-medium text-slate-500 mb-1">
+                       School Code
+                       {codeAutoMode && newSchoolCode && (
+                         <span className="ml-2 text-xs text-amber-600 font-normal">auto-generated</span>
+                       )}
+                     </label>
+                     <div className="relative">
+                       <input
+                         id="new-school-code" name="new-school-code"
+                         type="text"
+                         value={newSchoolCode}
+                         onChange={(e) => {
+                           setCodeAutoMode(false);
+                           setNewSchoolCode(e.target.value.toUpperCase());
+                         }}
+                         className="block w-full border border-slate-300 rounded-lg p-2.5 pr-10 focus:ring-2 focus:ring-amber-500 focus:border-transparent shadow-sm font-mono"
+                         placeholder="Auto-generated from name"
+                       />
+                       <button
+                         type="button"
+                         onClick={() => {
+                           const code = newSchoolName.trim() ? generateCodeFromName(newSchoolName) : '';
+                           setNewSchoolCode(code);
+                           setCodeAutoMode(true);
+                         }}
+                         className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 hover:text-amber-600 transition-colors"
+                         title="Regenerate code from name"
+                       >
+                         <RefreshCcw size={14} />
+                       </button>
+                     </div>
                   </div>
                   <div>
-                     <label className="block text-xs font-medium text-slate-500 mb-1">Region</label>
-                     <input 
-                       type="text" 
+                     <label htmlFor="new-school-region" className="block text-xs font-medium text-slate-500 mb-1">Region</label>
+                     <input
+                       id="new-school-region" name="new-school-region"
+                       type="text"
                        value={newSchoolRegion}
                        onChange={(e) => setNewSchoolRegion(e.target.value)}
                        className="block w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-amber-500 focus:border-transparent shadow-sm"
@@ -546,14 +664,29 @@ export const SuperAdmin: React.FC = () => {
                      />
                   </div>
                   <div>
-                     <label className="block text-xs font-medium text-slate-500 mb-1">Administrator Name</label>
-                     <input 
-                       type="text" 
+                     <label htmlFor="new-school-admin-name" className="block text-xs font-medium text-slate-500 mb-1">Administrator Name</label>
+                     <input
+                       id="new-school-admin-name" name="new-school-admin-name"
+                       type="text"
                        value={newSchoolAdminName}
                        onChange={(e) => setNewSchoolAdminName(e.target.value)}
                        className="block w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-amber-500 focus:border-transparent shadow-sm"
                        placeholder="e.g. John Doe"
                      />
+                  </div>
+                  <div className="sm:col-span-2">
+                     <label className="block text-xs font-medium text-slate-500 mb-1">
+                       Administrator Email <span className="text-slate-400 font-normal">(optional — creates a login account)</span>
+                     </label>
+                     <input
+                       id="new-school-admin-email" name="new-school-admin-email"
+                       type="email"
+                       value={newSchoolAdminEmail}
+                       onChange={(e) => setNewSchoolAdminEmail(e.target.value)}
+                       className="block w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-amber-500 focus:border-transparent shadow-sm"
+                       placeholder="e.g. admin@schoolname.edu"
+                     />
+                     <p className="mt-1 text-xs text-slate-400">A temporary password will be generated and shown once after creation.</p>
                   </div>
               </div>
               <div className="flex gap-4 justify-end">
@@ -564,7 +697,7 @@ export const SuperAdmin: React.FC = () => {
                     Create School
                   </button>
                   <button 
-                    onClick={() => setIsCreating(false)}
+                    onClick={() => { setIsCreating(false); setNewSchoolName(''); setNewSchoolCode(''); setCodeAutoMode(true); setNewSchoolRegion(''); setNewSchoolAdminName(''); setNewSchoolAdminEmail(''); }}
                     className="px-4 py-2.5 bg-white text-slate-600 border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
                   >
                     Cancel
@@ -696,8 +829,9 @@ export const SuperAdmin: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1">School</label>
+              <label htmlFor="event-school" className="block text-xs font-medium text-slate-500 mb-1">School</label>
               <select
+                id="event-school" name="event-school"
                 value={selectedEventSchoolId}
                 onChange={(e) => {
                   setSelectedEventSchoolId(e.target.value);
@@ -714,8 +848,9 @@ export const SuperAdmin: React.FC = () => {
 
             <form onSubmit={handleSaveEvent} className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1">Title</label>
+                <label htmlFor="event-title" className="block text-xs font-medium text-slate-500 mb-1">Title</label>
                 <input
+                  id="event-title" name="event-title"
                   value={eventTitle}
                   onChange={(e) => setEventTitle(e.target.value)}
                   className="block w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-amber-500 focus:border-transparent shadow-sm"
@@ -724,8 +859,9 @@ export const SuperAdmin: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1">Location</label>
+                <label htmlFor="event-location" className="block text-xs font-medium text-slate-500 mb-1">Location</label>
                 <input
+                  id="event-location" name="event-location"
                   value={eventLocation}
                   onChange={(e) => setEventLocation(e.target.value)}
                   className="block w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-amber-500 focus:border-transparent shadow-sm"
@@ -734,8 +870,9 @@ export const SuperAdmin: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1">Description</label>
+                <label htmlFor="event-description" className="block text-xs font-medium text-slate-500 mb-1">Description</label>
                 <textarea
+                  id="event-description" name="event-description"
                   value={eventDescription}
                   onChange={(e) => setEventDescription(e.target.value)}
                   rows={4}
@@ -746,8 +883,9 @@ export const SuperAdmin: React.FC = () => {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">Start</label>
+                  <label htmlFor="event-start" className="block text-xs font-medium text-slate-500 mb-1">Start</label>
                   <input
+                    id="event-start" name="event-start"
                     type="datetime-local"
                     value={eventStartAt}
                     onChange={(e) => setEventStartAt(e.target.value)}
@@ -755,8 +893,9 @@ export const SuperAdmin: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">End</label>
+                  <label htmlFor="event-end" className="block text-xs font-medium text-slate-500 mb-1">End</label>
                   <input
+                    id="event-end" name="event-end"
                     type="datetime-local"
                     value={eventEndAt}
                     onChange={(e) => setEventEndAt(e.target.value)}
@@ -878,8 +1017,9 @@ export const SuperAdmin: React.FC = () => {
 
             <form onSubmit={handlePublishAnnouncement} className="p-6 space-y-4">
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Title</label>
+                <label htmlFor="announcement-title" className="block text-xs font-medium text-slate-600 mb-1">Title</label>
                 <input
+                  id="announcement-title" name="announcement-title"
                   value={announcementTitle}
                   onChange={(e) => setAnnouncementTitle(e.target.value)}
                   className="block w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-amber-500 focus:border-transparent shadow-sm"
@@ -889,8 +1029,9 @@ export const SuperAdmin: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Message</label>
+                <label htmlFor="announcement-message" className="block text-xs font-medium text-slate-600 mb-1">Message</label>
                 <textarea
+                  id="announcement-message" name="announcement-message"
                   value={announcementMessage}
                   onChange={(e) => setAnnouncementMessage(e.target.value)}
                   rows={6}
@@ -970,9 +1111,10 @@ export const SuperAdmin: React.FC = () => {
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
                     <Search size={16} />
                   </div>
-                  <input 
-                    type="text" 
-                    placeholder="Search any user across platform..." 
+                  <input
+                    id="user-search" name="user-search"
+                    type="text"
+                    placeholder="Search any user across platform..."
                     value={userSearch}
                     onChange={(e) => setUserSearch(e.target.value)}
                     className="block w-full pl-10 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"

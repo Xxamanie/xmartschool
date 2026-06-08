@@ -39,6 +39,7 @@ export const Finance: React.FC = () => {
   const [showTemplateForm, setShowTemplateForm] = useState(false);
   const [templateForm, setTemplateForm] = useState({ name: '', term: '', lines: [{ title: '', key: '', defaultAmount: 0 }] });
   const [templateSaving, setTemplateSaving] = useState(false);
+  const [deletingTemplateId, setDeletingTemplateId] = useState<string | null>(null);
 
   // Payment modal
   const [paymentModal, setPaymentModal] = useState<{ itemId: string; title: string; payable: number } | null>(null);
@@ -50,7 +51,7 @@ export const Finance: React.FC = () => {
   // ── Load summary + terms on mount ─────────────────────────────────────────
 
   useEffect(() => {
-    if (!effectiveSchoolId) return;
+    if (!effectiveSchoolId) { setLoading(false); return; }
     const init = async () => {
       setLoading(true);
       const [sumRes, termRes, termsRes] = await Promise.all([
@@ -113,6 +114,19 @@ export const Finance: React.FC = () => {
       toast.error(res.message || 'Failed to create template.');
     }
     setTemplateSaving(false);
+  };
+
+  const handleDeleteTemplate = async (templateId: string) => {
+    if (!window.confirm('Delete this fee template? This cannot be undone.')) return;
+    setDeletingTemplateId(templateId);
+    const res = await api.deleteFeeTemplate(templateId);
+    if (res.ok) {
+      setTemplates((prev) => prev.filter((t) => t.id !== templateId));
+      toast.success('Template deleted.');
+    } else {
+      toast.error(res.message || 'Failed to delete template.');
+    }
+    setDeletingTemplateId(null);
   };
 
   const addTemplateLine = () => {
@@ -236,8 +250,10 @@ export const Finance: React.FC = () => {
         </div>
         {allTerms.length > 0 && (
           <div className="flex items-center gap-2">
-            <label className="text-sm text-gray-500">Viewing:</label>
+            <label htmlFor="finance-term" className="text-sm text-gray-500">Viewing:</label>
             <select
+              id="finance-term"
+              name="finance-term"
               value={selectedTerm}
               onChange={(e) => setSelectedTerm(e.target.value)}
               className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500"
@@ -486,14 +502,14 @@ export const Finance: React.FC = () => {
                   <h4 className="text-sm font-semibold text-gray-800">Create Fee Template</h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Template Name</label>
-                      <input type="text" placeholder="e.g. First Term Fees" value={templateForm.name}
+                      <label htmlFor="template-name" className="block text-xs font-medium text-gray-600 mb-1">Template Name</label>
+                      <input id="template-name" name="template-name" type="text" placeholder="e.g. First Term Fees" value={templateForm.name}
                         onChange={(e) => setTemplateForm({ ...templateForm, name: e.target.value })}
                         className="w-full border border-gray-300 rounded-lg p-2.5 text-sm" />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Term</label>
-                      <input type="text" placeholder="e.g. First Term 2024/2025" value={templateForm.term}
+                      <label htmlFor="template-term" className="block text-xs font-medium text-gray-600 mb-1">Term</label>
+                      <input id="template-term" name="template-term" type="text" placeholder="e.g. First Term 2024/2025" value={templateForm.term}
                         onChange={(e) => setTemplateForm({ ...templateForm, term: e.target.value })}
                         className="w-full border border-gray-300 rounded-lg p-2.5 text-sm" />
                     </div>
@@ -508,10 +524,10 @@ export const Finance: React.FC = () => {
                     <div className="space-y-2">
                       {templateForm.lines.map((line, i) => (
                         <div key={i} className="flex gap-2 items-center">
-                          <input type="text" placeholder="Title (e.g. Tuition Fee)" value={line.title}
+                          <input id={`line-title-${i}`} name={`line-title-${i}`} type="text" placeholder="Title (e.g. Tuition Fee)" value={line.title}
                             onChange={(e) => updateTemplateLine(i, 'title', e.target.value)}
                             className="flex-1 border border-gray-300 rounded-lg p-2 text-sm" />
-                          <input type="number" placeholder="Amount (₦)" value={line.defaultAmount || ''}
+                          <input id={`line-amount-${i}`} name={`line-amount-${i}`} type="number" placeholder="Amount (₦)" value={line.defaultAmount || ''}
                             onChange={(e) => updateTemplateLine(i, 'defaultAmount', parseFloat(e.target.value) || 0)}
                             className="w-32 border border-gray-300 rounded-lg p-2 text-sm" />
                           {templateForm.lines.length > 1 && (
@@ -552,9 +568,23 @@ export const Finance: React.FC = () => {
                         <p className="text-sm font-semibold text-gray-900">{t.name}</p>
                         <p className="text-xs text-gray-500">{t.term}</p>
                       </div>
-                      <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
-                        {t.lines?.length ?? 0} line{t.lines?.length !== 1 ? 's' : ''}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                          {t.lines?.length ?? 0} line{t.lines?.length !== 1 ? 's' : ''}
+                        </span>
+                        {isAdmin && (
+                          <button
+                            onClick={() => handleDeleteTemplate(t.id)}
+                            disabled={deletingTemplateId === t.id}
+                            className="text-gray-400 hover:text-red-500 transition-colors disabled:opacity-40"
+                            title="Delete template"
+                          >
+                            {deletingTemplateId === t.id
+                              ? <Loader2 size={14} className="animate-spin" />
+                              : <Trash2 size={14} />}
+                          </button>
+                        )}
+                      </div>
                     </div>
                     {t.lines?.length > 0 && (
                       <div className="mt-3 divide-y divide-gray-50">
@@ -594,14 +624,14 @@ export const Finance: React.FC = () => {
             </p>
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Amount (₦)</label>
-                <input type="number" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)}
+                <label htmlFor="payment-amount" className="block text-xs font-medium text-gray-600 mb-1">Amount (₦)</label>
+                <input id="payment-amount" name="payment-amount" type="number" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)}
                   placeholder={`Max ₦${paymentModal.payable.toLocaleString()}`}
                   className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary-500" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Payment Method</label>
-                <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}
+                <label htmlFor="payment-method" className="block text-xs font-medium text-gray-600 mb-1">Payment Method</label>
+                <select id="payment-method" name="payment-method" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}
                   className="w-full border border-gray-300 rounded-lg p-2.5 text-sm">
                   <option value="cash">Cash</option>
                   <option value="transfer">Bank Transfer</option>
@@ -610,8 +640,8 @@ export const Finance: React.FC = () => {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Reference (optional)</label>
-                <input type="text" value={paymentRef} onChange={(e) => setPaymentRef(e.target.value)}
+                <label htmlFor="payment-ref" className="block text-xs font-medium text-gray-600 mb-1">Reference (optional)</label>
+                <input id="payment-ref" name="payment-ref" type="text" value={paymentRef} onChange={(e) => setPaymentRef(e.target.value)}
                   placeholder="Receipt / transaction ref"
                   className="w-full border border-gray-300 rounded-lg p-2.5 text-sm" />
               </div>

@@ -101,8 +101,9 @@ export const StudentForm: React.FC<StudentFormProps> = ({ student, onSubmit, onC
 
       {/* Name */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
+        <label htmlFor="student-name" className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
         <input
+          id="student-name" name="name"
           type="text"
           required
           value={formData.name}
@@ -114,8 +115,9 @@ export const StudentForm: React.FC<StudentFormProps> = ({ student, onSubmit, onC
 
       {/* Gender */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Gender *</label>
+        <label htmlFor="student-gender" className="block text-sm font-medium text-gray-700 mb-1">Gender *</label>
         <select
+          id="student-gender" name="gender"
           required
           value={formData.gender}
           onChange={(e) => handleChange('gender', e.target.value)}
@@ -128,10 +130,11 @@ export const StudentForm: React.FC<StudentFormProps> = ({ student, onSubmit, onC
 
       {/* Grade / Class */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Grade / Class *</label>
+        <label htmlFor="student-grade" className="block text-sm font-medium text-gray-700 mb-1">Grade / Class *</label>
         {addingClass ? (
           <div className="flex gap-2">
             <input
+              id="new-class-name" name="new-class-name"
               autoFocus
               type="text"
               value={newClassName}
@@ -162,6 +165,7 @@ export const StudentForm: React.FC<StudentFormProps> = ({ student, onSubmit, onC
         ) : (
           <div className="flex gap-2">
             <select
+              id="student-grade" name="grade"
               required
               value={formData.grade}
               onChange={(e) => handleChange('grade', e.target.value)}
@@ -189,8 +193,9 @@ export const StudentForm: React.FC<StudentFormProps> = ({ student, onSubmit, onC
 
       {/* Status */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Status *</label>
+        <label htmlFor="student-status" className="block text-sm font-medium text-gray-700 mb-1">Status *</label>
         <select
+          id="student-status" name="status"
           required
           value={formData.status}
           onChange={(e) => handleChange('status', e.target.value)}
@@ -205,8 +210,9 @@ export const StudentForm: React.FC<StudentFormProps> = ({ student, onSubmit, onC
       {/* GPA + Attendance */}
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">GPA</label>
+          <label htmlFor="student-gpa" className="block text-sm font-medium text-gray-700 mb-1">GPA</label>
           <input
+            id="student-gpa" name="gpa"
             type="number"
             step="0.1"
             min="0"
@@ -217,8 +223,9 @@ export const StudentForm: React.FC<StudentFormProps> = ({ student, onSubmit, onC
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Attendance (%)</label>
+          <label htmlFor="student-attendance" className="block text-sm font-medium text-gray-700 mb-1">Attendance (%)</label>
           <input
+            id="student-attendance" name="attendance"
             type="number"
             min="0"
             max="100"

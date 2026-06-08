@@ -12,9 +12,9 @@ const app = express();
 
 const allowedOrigins = new Set([
   ...env.corsOrigins,
-  'http://localhost:3000',
-  'http://localhost:4000',
-  'http://localhost:5173',
+  ...(env.nodeEnv !== 'production'
+    ? ['http://localhost:3000', 'http://localhost:4000', 'http://localhost:5173']
+    : []),
 ]);
 
 app.set('trust proxy', 1);

@@ -26,6 +26,7 @@ import { financeRouter } from './modules/finance';
 import { termsRouter } from './modules/terms';
 import { auditRouter } from './modules/audit';
 import { parentsRouter } from './modules/parents';
+import { aiRouter } from './modules/ai';
 
 export const registerRoutes = (app: Express) => {
 
@@ -57,5 +58,6 @@ export const registerRoutes = (app: Express) => {
   app.use('/api/terms', termsRouter);
   app.use('/api/audit', auditRouter);
   app.use('/api/parents', parentsRouter);
+  app.use('/api/ai', aiRouter);
 };
 

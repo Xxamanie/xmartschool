@@ -80,12 +80,13 @@ const InlineTeacherForm: React.FC<InlineTeacherFormProps> = ({ teacher, onSubmit
       <div className="flex-1 space-y-4 overflow-y-auto">
         <div className="space-y-3 sm:space-y-4">
           <div>
-            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Full Name</label>
+            <label htmlFor="teacher-name" className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Full Name</label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
                 <UserIcon size={14} className="sm:w-4 sm:h-4" />
               </div>
               <input
+                id="teacher-name" name="teacher-name"
                 type="text"
                 value={formData.name}
                 onChange={(e) => handleChange('name', e.target.value)}
@@ -99,12 +100,13 @@ const InlineTeacherForm: React.FC<InlineTeacherFormProps> = ({ teacher, onSubmit
           </div>
 
           <div>
-            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Email Address</label>
+            <label htmlFor="teacher-email" className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Email Address</label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
                 <Mail size={14} className="sm:w-4 sm:h-4" />
               </div>
               <input
+                id="teacher-email" name="teacher-email"
                 type="email"
                 value={formData.email}
                 onChange={(e) => handleChange('email', e.target.value)}
@@ -118,12 +120,13 @@ const InlineTeacherForm: React.FC<InlineTeacherFormProps> = ({ teacher, onSubmit
           </div>
 
           <div>
-            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+            <label htmlFor="teacher-phone" className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Phone Number</label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
                 <Phone size={14} className="sm:w-4 sm:h-4" />
               </div>
               <input
+                id="teacher-phone" name="teacher-phone"
                 type="tel"
                 value={formData.phone}
                 onChange={(e) => handleChange('phone', e.target.value)}
@@ -137,12 +140,13 @@ const InlineTeacherForm: React.FC<InlineTeacherFormProps> = ({ teacher, onSubmit
           </div>
 
           <div>
-            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Role</label>
+            <label htmlFor="teacher-role" className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Role</label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
                 <Briefcase size={14} className="sm:w-4 sm:h-4" />
               </div>
               <select
+                id="teacher-role" name="teacher-role"
                 value={formData.role}
                 onChange={(e) => handleChange('role', e.target.value)}
                 className="pl-9 pr-8 py-2 sm:py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent block w-full appearance-none"
@@ -154,8 +158,9 @@ const InlineTeacherForm: React.FC<InlineTeacherFormProps> = ({ teacher, onSubmit
           </div>
 
           <div>
-            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Gender</label>
+            <label htmlFor="teacher-gender" className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Gender</label>
             <select
+              id="teacher-gender" name="teacher-gender"
               value={formData.gender}
               onChange={(e) => handleChange('gender', e.target.value)}
               className="px-3 py-2 sm:py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent block w-full"
@@ -167,8 +172,9 @@ const InlineTeacherForm: React.FC<InlineTeacherFormProps> = ({ teacher, onSubmit
           </div>
 
           <div>
-            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Bio (Optional)</label>
+            <label htmlFor="teacher-bio" className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Bio (Optional)</label>
             <textarea
+              id="teacher-bio" name="teacher-bio"
               value={formData.bio}
               onChange={(e) => handleChange('bio', e.target.value)}
               rows={3}
@@ -399,6 +405,7 @@ export const Teachers: React.FC = () => {
             <Search size={18} />
           </div>
           <input
+            id="teacher-search" name="teacher-search"
             type="text"
             placeholder="Search by name, email, or phone..."
             className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"

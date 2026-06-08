@@ -324,6 +324,7 @@ export const StaffRoom: React.FC = () => {
                 ))}
               </div>
               <input
+                id="sr-media-url" name="sr-media-url"
                 type="url"
                 value={mediaUrl}
                 onChange={(e) => setMediaUrl(e.target.value)}
@@ -355,6 +356,7 @@ export const StaffRoom: React.FC = () => {
             <div className="flex-1 flex items-center gap-2 bg-gray-100 rounded-xl px-4 py-2.5 border border-transparent focus-within:border-primary-400 focus-within:bg-white transition-colors">
               <input
                 ref={inputRef}
+                id="sr-message-input" name="sr-message-input"
                 type="text"
                 value={text}
                 onChange={(e) => setText(e.target.value)}

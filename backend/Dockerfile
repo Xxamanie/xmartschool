@@ -16,5 +16,9 @@ WORKDIR /usr/src/app
 COPY ["package.json", "package-lock.json*", "./"]
 RUN npm install --production --silent
 COPY --from=build /usr/src/app/dist ./dist
+COPY --from=build /usr/src/app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=build /usr/src/app/prisma ./prisma
 EXPOSE 4000
-CMD ["node", "dist/src/server.js"]
+RUN chown -R node /usr/src/app
+USER node
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/src/server.js"]

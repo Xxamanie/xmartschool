@@ -35,10 +35,11 @@ export const CreateClassForm: React.FC<CreateClassFormProps> = ({
   return (
     <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-4">
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label htmlFor="class-name" className="block text-sm font-medium text-gray-700 mb-1">
           Class Name *
         </label>
         <input
+          id="class-name" name="class-name"
           type="text"
           required
           value={className}

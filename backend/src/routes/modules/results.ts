@@ -11,15 +11,62 @@ const router = Router();
 const listQuery = z.object({
   studentId: z.string().optional(),
   term: z.string().optional(),
+  pin: z.string().optional(),
 });
 
 router.get(
   '/',
   requireAuth,
   asyncHandler(async (req, res) => {
-    const { studentId, term } = listQuery.parse(req.query);
+    const { studentId, term, pin } = listQuery.parse(req.query);
     const effectiveStudentId =
       req.auth?.role === UserRole.STUDENT ? req.auth.userId : studentId;
+
+    // ── Fee-clearance + term-bound PIN gate for students ─────────────────
+    if (req.auth?.role === UserRole.STUDENT) {
+      const student = await prisma.student.findUnique({
+        where: { id: req.auth.userId },
+        select: { resultPin: true, resultPinTerm: true } as any,
+      });
+      const storedPin: string | null = (student as any)?.resultPin ?? null;
+      const pinTerm: string | null = (student as any)?.resultPinTerm ?? null;
+
+      if (!storedPin) {
+        res.status(403).json({
+          ok: false, data: null,
+          feeStatus: 'not_cleared',
+          message: 'Your school fees have not been cleared. Please contact your school to enable result access.',
+        });
+        return;
+      }
+
+      if (!pin || pin !== storedPin) {
+        res.status(403).json({
+          ok: false, data: null,
+          feeStatus: 'pin_required',
+          message: 'Please enter your Result Access PIN to view your results.',
+        });
+        return;
+      }
+
+      // PIN correct — now check that published results exist for this PIN's term
+      const publishedCount = await prisma.result.count({
+        where: {
+          studentId: req.auth.userId,
+          status: 'Published',
+          ...(pinTerm ? { term: pinTerm } : {}),
+        },
+      });
+      if (publishedCount === 0) {
+        res.status(403).json({
+          ok: false, data: null,
+          feeStatus: 'results_not_published',
+          message: 'Results for your current term have not been published yet. Please check back later.',
+        });
+        return;
+      }
+    }
+
     const response = await appService.getResults(
       req.auth?.schoolId,
       effectiveStudentId,

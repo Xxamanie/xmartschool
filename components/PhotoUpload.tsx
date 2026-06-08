@@ -147,6 +147,7 @@ export const PhotoUpload: React.FC<PhotoUploadProps> = ({
       {/* Hidden file input */}
       <input
         ref={fileRef}
+        id="photo-upload" name="photo-upload"
         type="file"
         accept="image/*"
         className="hidden"

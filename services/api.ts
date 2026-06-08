@@ -476,15 +476,39 @@ export const api = {
     }
   },
 
-  getResults: async (studentId?: string): Promise<ApiResponse<ResultData[]>> => {
+  getResults: async (studentId?: string, pin?: string): Promise<ApiResponse<ResultData[]>> => {
     try {
-      const url = studentId ? `/results?studentId=${studentId}` : '/results';
+      const params = new URLSearchParams();
+      if (studentId) params.set('studentId', studentId);
+      if (pin) params.set('pin', pin);
+      const url = `/results${params.toString() ? `?${params}` : ''}`;
       const response = await apiClient.get(url);
       const data = extractData(response) || [];
       return wrapResponse(data);
-    } catch (error) {
-      console.error('Failed to get results:', error);
+    } catch (error: any) {
+      const feeStatus = error?.response?.data?.feeStatus;
+      if (feeStatus) {
+        return { ok: false, data: [], message: error.response.data.message, feeStatus } as any;
+      }
       return wrapError(error, [], 'Failed to load results');
+    }
+  },
+
+  getStudentProfile: async (): Promise<ApiResponse<{ id: string; name: string; feeCleared: boolean }>> => {
+    try {
+      const response = await apiClient.get('/students/my-profile');
+      return normalizeApiResponse(response);
+    } catch (error) {
+      return wrapError(error, { id: '', name: '', feeCleared: false });
+    }
+  },
+
+  regenerateStudentPin: async (studentId: string): Promise<ApiResponse<{ resultPin: string }>> => {
+    try {
+      const response = await apiClient.post(`/students/${studentId}/regenerate-pin`, {});
+      return normalizeApiResponse(response);
+    } catch (error) {
+      return wrapError(error, { resultPin: '' }, 'Failed to regenerate PIN');
     }
   },
 
@@ -520,23 +544,21 @@ export const api = {
     }
   },
 
-  createSchool: async (schoolData: { name: string; code?: string; region?: string; adminName?: string; status?: string }): Promise<ApiResponse<School>> => {
+  createSchool: async (schoolData: {
+    name: string; code?: string; region?: string;
+    adminName?: string; adminEmail?: string; status?: string;
+  }): Promise<ApiResponse<School & { tempAdminPassword?: string; adminEmail?: string }>> => {
     try {
-      const payload = {
+      const response = await apiClient.post('/schools', {
         name: schoolData.name,
-        code: schoolData.code || `SCH${Date.now().toString().slice(-6)}`,
-        region: schoolData.region || 'Default Region',
-        adminName: schoolData.adminName || 'School Administrator',
-        status: schoolData.status || 'Active',
-        studentCount: 0
-      };
-      console.log('[createSchool] Payload:', payload);
-      const response = await apiClient.post('/schools', payload);
+        code: schoolData.code || undefined,
+        region: schoolData.region || undefined,
+        adminName: schoolData.adminName || undefined,
+        adminEmail: schoolData.adminEmail || undefined,
+      });
       const data = extractData(response);
-      console.log('[createSchool] Response:', data);
       return wrapResponse(data, 'School created successfully');
     } catch (error) {
-      console.error('Failed to create school:', error);
       return wrapError(error, {} as School, 'Failed to create school');
     }
   },
@@ -1160,6 +1182,15 @@ export const api = {
     } catch (error) {
       console.error('Failed to create fee template:', error);
       return wrapError(error, null, 'Failed to create template');
+    }
+  },
+
+  deleteFeeTemplate: async (templateId: string): Promise<ApiResponse<boolean>> => {
+    try {
+      await apiClient.delete(`/finance/templates/${templateId}`);
+      return wrapResponse(true, 'Template deleted');
+    } catch (error) {
+      return wrapError(error, false, 'Failed to delete template');
     }
   },
 

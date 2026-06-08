@@ -6,7 +6,7 @@ import {
   Download, Search, FileText, TrendingUp, Award, CheckCircle2, Wand2, Loader2,
   ArrowUpDown, ArrowUp, ArrowDown, Printer, X, GraduationCap, Camera, Calendar, Users, Eye
 } from 'lucide-react';
-import { GoogleGenAI } from "@google/genai";
+import apiClient from '../src/utils/api';
 import { ToastContainer } from '../components/Toast';
 import { useToast } from '../src/utils/useToast';
 import { api } from '../services/api';
@@ -225,16 +225,13 @@ export const Results: React.FC = () => {
   const handleGenerateRemark = async (result: DynamicResultData) => {
     setLoadingRemarkId(result.id);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      
-      const prompt = `Generate a concise (max 15 words), professional, and encouraging report card remark for a high school student named ${result.studentName} who scored an average of ${result.average}%. The grade is ${result.grade}.`;
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: prompt,
+      const response = await apiClient.post('/ai/generate-remark', {
+        studentName: result.studentName,
+        average: result.average,
+        grade: result.grade,
       });
 
-      const remark = response.text;
+      const remark: string = response.data?.data ?? response.data;
       
       setResults(prev => prev.map(r => r.id === result.id ? { ...r, remarks: remark } : r));
     } catch (error) {
@@ -876,9 +873,10 @@ export const Results: React.FC = () => {
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
                       <Search size={16} />
                     </div>
-                    <input 
-                      type="text" 
-                      placeholder="Search students..." 
+                    <input
+                      id="results-search" name="results-search"
+                      type="text"
+                      placeholder="Search students..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       className="block w-full pl-10 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
@@ -1101,8 +1099,9 @@ export const Results: React.FC = () => {
 
             <div className="p-6 space-y-5">
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Term Selector</label>
+                <label htmlFor="result-term-filter" className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Term Selector</label>
                 <select
+                  id="result-term-filter" name="result-term-filter"
                   value={selectedTermFilter}
                   onChange={(e) => {
                     setSelectedTermFilter(e.target.value);
@@ -1118,8 +1117,9 @@ export const Results: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Class Selector</label>
+                <label htmlFor="result-class-filter" className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Class Selector</label>
                 <select
+                  id="result-class-filter" name="result-class-filter"
                   value={selectedClassFilter}
                   onChange={(e) => setSelectedClassFilter(e.target.value)}
                   className="block w-full border border-gray-300 rounded-lg px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
