@@ -130,7 +130,7 @@ export const StudentForm: React.FC<StudentFormProps> = ({ student, onSubmit, onC
 
       {/* Grade / Class */}
       <div>
-        <label htmlFor="student-grade" className="block text-sm font-medium text-gray-700 mb-1">Grade / Class *</label>
+        <label htmlFor={addingClass ? "new-class-name" : "student-grade"} className="block text-sm font-medium text-gray-700 mb-1">Grade / Class *</label>
         {addingClass ? (
           <div className="flex gap-2">
             <input

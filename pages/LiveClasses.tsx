@@ -144,7 +144,7 @@ export const LiveClasses: React.FC = () => {
             </div>
 
             <div>
-              <label htmlFor="lc-class" className="text-sm font-medium text-gray-700">Class/Group to Notify</label>
+              <label htmlFor={addingClass ? "lc-new-class" : "lc-class"} className="text-sm font-medium text-gray-700">Class/Group to Notify</label>
               {addingClass ? (
                 <div className="mt-1 flex gap-2">
                   <input

@@ -570,6 +570,7 @@ export const SuperAdmin: React.FC = () => {
                     </div>
                     <select
                         id="school-status-filter" name="school-status-filter"
+                        aria-label="Filter schools by status"
                         value={statusFilter}
                         onChange={(e) => setStatusFilter(e.target.value as 'All' | 'Active' | 'Inactive')}
                         className="pl-9 pr-8 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-sm appearance-none cursor-pointer hover:bg-slate-50 transition-colors"
@@ -620,7 +621,7 @@ export const SuperAdmin: React.FC = () => {
                      />
                   </div>
                   <div>
-                     <label className="block text-xs font-medium text-slate-500 mb-1">
+                     <label htmlFor="new-school-code" className="block text-xs font-medium text-slate-500 mb-1">
                        School Code
                        {codeAutoMode && newSchoolCode && (
                          <span className="ml-2 text-xs text-amber-600 font-normal">auto-generated</span>
@@ -675,12 +676,13 @@ export const SuperAdmin: React.FC = () => {
                      />
                   </div>
                   <div className="sm:col-span-2">
-                     <label className="block text-xs font-medium text-slate-500 mb-1">
+                     <label htmlFor="new-school-admin-email" className="block text-xs font-medium text-slate-500 mb-1">
                        Administrator Email <span className="text-slate-400 font-normal">(optional — creates a login account)</span>
                      </label>
                      <input
                        id="new-school-admin-email" name="new-school-admin-email"
                        type="email"
+                       autoComplete="off"
                        value={newSchoolAdminEmail}
                        onChange={(e) => setNewSchoolAdminEmail(e.target.value)}
                        className="block w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-amber-500 focus:border-transparent shadow-sm"
