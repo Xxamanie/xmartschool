@@ -99,6 +99,8 @@ export interface Student {
   accessCode: string;
   avatar?: string;
   enrolledSubjects?: string[];
+  resultPin?: string;
+  resultPinTerm?: string;
 }
 
 export interface Subject {

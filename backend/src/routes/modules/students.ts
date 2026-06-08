@@ -59,8 +59,8 @@ router.get(
 router.get(
   '/form-masters',
   requireAuth,
-  asyncHandler(async (_req, res) => {
-    const response = await appService.getClassMasters();
+  asyncHandler(async (req, res) => {
+    const response = await appService.getClassMasters(req.auth!.schoolId!);
     res.json(response);
   }),
 );
@@ -76,7 +76,7 @@ router.post(
   requireRole(UserRole.ADMIN, UserRole.SUPER_ADMIN),
   asyncHandler(async (req, res) => {
     const { grade, teacherId } = assignSchema.parse(req.body);
-    const response = await appService.assignClassMaster(grade, teacherId);
+    const response = await appService.assignClassMaster(grade, teacherId, req.auth!.schoolId!);
     res.json(response);
   }),
 );
