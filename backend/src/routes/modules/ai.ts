@@ -1,15 +1,15 @@
 import { Router } from 'express';
-import { GoogleGenAI, Type } from '@google/genai';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { requireAuth } from '../../middleware/auth';
 import { env } from '../../config/env';
 
 const router = Router();
 
-const getAi = () => {
+const getAi = async () => {
   if (!env.geminiApiKey) {
     throw new Error('AI features are not configured on this server');
   }
+  const { GoogleGenAI } = await import('@google/genai');
   return new GoogleGenAI({ apiKey: env.geminiApiKey });
 };
 
@@ -39,7 +39,8 @@ router.post(
     const formatInstructions = formatMap[type] ?? formatMap['multiple-choice'];
     const prompt = `Create ${count} ${difficulty} level questions about "${topic}". ${formatInstructions}`;
 
-    const ai = getAi();
+    const { Type } = await import('@google/genai');
+    const ai = await getAi();
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: prompt,
@@ -90,7 +91,7 @@ router.post(
 
     const prompt = `Generate a concise (max 15 words), professional, and encouraging report card remark for a high school student named ${studentName} who scored an average of ${average}%. The grade is ${grade}.`;
 
-    const ai = getAi();
+    const ai = await getAi();
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: prompt,
