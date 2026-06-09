@@ -498,6 +498,14 @@ export const appService = {
 
     const user = await prisma.user.findFirst({ where: { email: normalized } });
     if (!user) {
+      // When demo auth is enabled, fall back to in-memory demo accounts so
+      // seed emails work even when the DB has no matching row.
+      if (env.enableDemoAuth) {
+        const demoUser = getDemoUserByEmail(normalized);
+        if (demoUser) {
+          return success(withSession(demoUser), 'Demo login successful');
+        }
+      }
       return failure('Invalid credentials', {} as User);
     }
 
