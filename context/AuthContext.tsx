@@ -106,7 +106,8 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
             const demoUser = restoreDemoSession();
             if (demoUser) {
               setUser(demoUser);
-              setAuthMode('demo');
+              // Supabase IS configured — keep authMode as 'supabase' so the
+              // banner is accurate and the next login still tries Supabase first.
             } else {
               setUser(null);
             }
@@ -160,21 +161,23 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
     setError(null);
 
     try {
-      const isSupabaseConfigured =
-        authMode === 'supabase' && supabaseUrl !== 'your-project-ref.supabase.co';
+      // Check Supabase availability directly so a stale authMode state
+      // doesn't prevent Supabase from being tried on subsequent logins.
+      const isSupabaseAvailable =
+        supabaseAuthService.isConfigured() && supabaseUrl !== 'your-project-ref.supabase.co';
 
-      if (password && isSupabaseConfigured) {
+      if (password && isSupabaseAvailable) {
         try {
           const supabaseUser = await supabaseAuthService.login(email, password);
           setUser(supabaseUser);
+          setAuthMode('supabase');
           return;
         } catch (supabaseError: any) {
-          if (demoAuthEnabled) {
-            console.warn('Supabase login failed, falling back to demo mode:', supabaseError.message);
-            setAuthMode('demo');
-          } else {
+          if (!demoAuthEnabled) {
             throw new Error(supabaseError.message || 'Invalid email or password');
           }
+          // demoAuthEnabled: fall through to API login without touching authMode
+          console.warn('Supabase login failed, trying API login:', supabaseError.message);
         }
       }
 
@@ -186,7 +189,10 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
       if (response.ok) {
         persistDemoSession(response.data);
         setUser(response.data);
-        setAuthMode('demo');
+        // Only mark demo mode when Supabase is genuinely absent
+        if (!isSupabaseAvailable) {
+          setAuthMode('demo');
+        }
       } else {
         throw new Error(response.message || 'Login failed');
       }

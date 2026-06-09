@@ -4,7 +4,7 @@ import { asyncHandler } from '../../utils/asyncHandler';
 import { appService } from '../../services/appService';
 import { requireRole } from '../../middleware/auth';
 import { UserRole } from '../../types';
-import { getEffectiveSchoolId } from '../../utils/tenant';
+import { enforceTenantQuery, getEffectiveSchoolId } from '../../utils/tenant';
 
 const router = Router();
 
@@ -14,6 +14,7 @@ const listQuery = z.object({
 
 router.get(
   '/',
+  enforceTenantQuery,
   asyncHandler(async (req, res) => {
     const { schoolId } = listQuery.parse(req.query);
     const effectiveSchoolId = schoolId ?? getEffectiveSchoolId(req);

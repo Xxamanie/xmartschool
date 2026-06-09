@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { appService } from '../../services/appService';
+import { requireRole } from '../../middleware/auth';
 import { UserRole } from '../../types';
 
 const router = Router();
@@ -21,15 +22,28 @@ router.get(
 // Get or create a conversation thread
 router.post(
   '/',
+  requireRole(UserRole.ADMIN, UserRole.TEACHER, UserRole.SUPER_ADMIN),
   asyncHandler(async (req, res) => {
     const schema = z.object({
-      schoolId: z.string().min(1),
+      schoolId: z.string().min(1).optional(),
       studentId: z.string().min(1),
       teacherId: z.string().min(1),
       subjectId: z.string().optional(),
     });
     const payload = schema.parse(req.body);
-    const response = await appService.getOrCreateConversation(payload);
+    const effectiveSchoolId = req.auth?.role === UserRole.SUPER_ADMIN
+      ? (payload.schoolId ?? '')
+      : (req.auth?.schoolId ?? '');
+    if (!effectiveSchoolId) {
+      res.status(400).json({ ok: false, data: null, message: 'schoolId is required' });
+      return;
+    }
+    const response = await appService.getOrCreateConversation({
+      ...payload,
+      schoolId: effectiveSchoolId,
+      actorId: req.auth?.userId,
+      actorRole: req.auth?.role,
+    });
     res.json(response);
   }),
 );
@@ -49,7 +63,7 @@ router.get(
 router.post(
   '/:conversationId/messages',
   asyncHandler(async (req, res) => {
-    const schema = z.object({ content: z.string().min(1) });
+    const schema = z.object({ content: z.string().min(1).max(5000) });
     const { content } = schema.parse(req.body);
     const userId = req.auth?.userId as string;
     const role = req.auth?.role as UserRole;

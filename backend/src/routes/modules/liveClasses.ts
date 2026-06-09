@@ -81,15 +81,13 @@ router.post(
   }),
 );
 
+const messageSchema = z.object({ message: z.string().min(1).max(2000) });
+
 router.post(
   '/:liveClassId/messages',
   asyncHandler(async (req, res) => {
     const { liveClassId } = req.params;
-    const { message } = req.body;
-    if (!message) {
-      res.status(400).json({ ok: false, message: 'message required' });
-      return;
-    }
+    const { message } = messageSchema.parse(req.body);
     const response = await appService.sendLiveClassMessage(liveClassId, req.auth!.userId, req.auth!.role, message);
     res.json(response);
   }),
@@ -99,7 +97,7 @@ router.get(
   '/:liveClassId/messages',
   asyncHandler(async (req, res) => {
     const { liveClassId } = req.params;
-    const response = await appService.getLiveClassMessages(liveClassId);
+    const response = await appService.getLiveClassMessages(liveClassId, req.auth!.userId, req.auth!.role);
     res.json(response);
   }),
 );
@@ -108,7 +106,7 @@ router.get(
   '/:liveClassId/participants',
   asyncHandler(async (req, res) => {
     const { liveClassId } = req.params;
-    const response = await appService.getLiveClassParticipants(liveClassId);
+    const response = await appService.getLiveClassParticipants(liveClassId, req.auth!.userId, req.auth!.role);
     res.json(response);
   }),
 );

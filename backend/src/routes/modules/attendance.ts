@@ -8,7 +8,7 @@ import { UserRole } from '../../types';
 const router = Router();
 
 const getSchema = z.object({
-  date: z.string().min(1),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format, expected YYYY-MM-DD'),
   grade: z.string().optional(),
 });
 
@@ -27,10 +27,11 @@ router.get(
   '/summaries',
   requireAuth,
   asyncHandler(async (req, res) => {
-    const schema = z.object({ ids: z.string().min(1) });
+    const schema = z.object({ ids: z.string().min(1).max(5000) });
     const { ids } = schema.parse(req.query);
-    const studentIds = ids.split(',').map((s) => s.trim()).filter(Boolean);
-    const response = await appService.getStudentsAttendanceSummaries(studentIds);
+    const studentIds = ids.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 100);
+    const schoolId = req.auth?.role === UserRole.SUPER_ADMIN ? undefined : req.auth?.schoolId;
+    const response = await appService.getStudentsAttendanceSummaries(studentIds, schoolId);
     res.json(response);
   }),
 );
@@ -42,7 +43,9 @@ router.get(
   asyncHandler(async (req, res) => {
     const schema = z.object({ studentId: z.string().min(1) });
     const { studentId } = schema.parse(req.query);
-    const response = await appService.getStudentAttendanceSummary(studentId);
+    const effectiveStudentId = req.auth?.role === UserRole.STUDENT ? req.auth.userId : studentId;
+    const schoolId = req.auth?.role === UserRole.SUPER_ADMIN ? undefined : req.auth?.schoolId;
+    const response = await appService.getStudentAttendanceSummary(effectiveStudentId, schoolId);
     res.json(response);
   }),
 );
@@ -51,9 +54,9 @@ const markSchema = z.array(
   z.object({
     studentId: z.string().min(1),
     status: z.enum(['Present', 'Absent', 'Late', 'Excused']),
-    date: z.string().min(1),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format'),
   }),
-);
+).min(1).max(500);
 
 const parseAttendancePayload = (body: unknown) => {
   if (Array.isArray(body)) return markSchema.parse(body);

@@ -2,11 +2,6 @@ import { Student, Subject, ApiResponse, SchemeSubmission, Assessment, ResultData
 import apiClient, { buildSchoolScopedConfig } from '../src/utils/api';
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-const isDemoForced = import.meta.env.VITE_ENABLE_DEMO_AUTH === 'true';
-
-const demoAuthEnabled = isDemoForced || !(supabaseUrl && supabaseAnonKey && supabaseUrl !== 'your-project-ref.supabase.co');
 
 interface AttendanceRecord {
     studentId: string;
@@ -296,24 +291,7 @@ export const api = {
       }
       throw new Error(normalized.message || 'Login failed');
     } catch (error) {
-      if (!demoAuthEnabled) {
-        return wrapError(error, {} as User, 'Login failed');
-      }
-
-      console.warn('Backend login failed, using demo fallback:', error);
-      
-      // Demo/fallback authentication with better error handling
-      await delay(800); // Simulate network delay
-      
-      if (email === 'creator@smartschool.edu') {
-        return wrapResponse({ id: 'sa_001', name: 'SmartSchool Creator', email, role: UserRole.SUPER_ADMIN, avatar: `https://ui-avatars.com/api/?name=Creator&background=0F172A&color=fff` } as User, 'Demo login successful');
-      } else if (email.includes('admin')) {
-        return wrapResponse({ id: 'admin1', name: 'School Principal', email, role: UserRole.ADMIN, avatar: `https://ui-avatars.com/api/?name=School+Principal&background=random` } as User, 'Demo login successful');
-      } else if (email.includes('teacher') || email.includes('alex')) {
-        return wrapResponse({ id: 'teacher1', name: 'Alex Johnson', email, role: UserRole.TEACHER, avatar: `https://ui-avatars.com/api/?name=Alex+Johnson&background=random` } as User, 'Demo login successful');
-      } else {
-        return wrapError(error, {} as User, 'Invalid credentials. Try: creator@smartschool.edu, admin@school.edu, or teacher@school.edu');
-      }
+      return wrapError(error, {} as User, 'Login failed. Please check your credentials and try again.');
     }
   },
 
@@ -329,28 +307,7 @@ export const api = {
       }
       throw new Error(normalized.message || 'Verification failed');
     } catch (error) {
-      if (!demoAuthEnabled) {
-        return wrapError(error, {} as User, 'Student verification failed');
-      }
-
-      console.warn('Backend student verification failed, using demo fallback:', error);
-      
-      // Demo student verification
-      await delay(600);
-      
-      if (schoolCode === 'SPR-001' && studentCode === 'STU-2024-001') {
-        const studentUser: User = {
-          id: 'student1',
-          name: 'Emma Wilson',
-          email: 'emma.wilson@student.edu',
-          role: UserRole.STUDENT,
-          schoolId: 'school1',
-          avatar: `https://ui-avatars.com/api/?name=Emma+Wilson&background=random`
-        };
-        return wrapResponse(studentUser, 'Demo student login successful');
-      } else {
-        return wrapError(error, {} as User, 'Invalid school code or student access code. Try: SPR-001 / STU-2024-001');
-      }
+      return wrapError(error, {} as User, 'Student verification failed. Please check your school code and access code.');
     }
   },
 

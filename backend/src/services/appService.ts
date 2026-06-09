@@ -258,12 +258,12 @@ const computeRemarks = (score: number): string => {
 // 8-char alphanumeric PIN (uppercase letters + digits, ambiguous chars excluded)
 const CHARSET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const generateResultPin = (): string =>
-  Array.from({ length: 8 }, () => CHARSET[Math.floor(Math.random() * CHARSET.length)]).join('');
+  Array.from(crypto.randomBytes(8), b => CHARSET[b % CHARSET.length]).join('');
 
 const generateAccessCode = async (schoolCode: string): Promise<string> => {
   const year = new Date().getFullYear();
   for (let i = 0; i < 10; i++) {
-    const rand = String(Math.floor(1000 + Math.random() * 9000));
+    const rand = crypto.randomInt(1000, 10000).toString();
     const code = `${schoolCode}-${year}-${rand}`;
     const exists = await prisma.student.count({ where: { accessCode: code } });
     if (!exists) return code;
@@ -358,21 +358,21 @@ const mapResultModel = (result: PrismaResultModel & { student?: PrismaStudentMod
   details: (result.details as Record<string, number | undefined> | undefined) ?? undefined,
 });
 
-const mapExamQuestionModel = (question: PrismaExamQuestionModel): ExamQuestion => ({
+const mapExamQuestionModel = (question: PrismaExamQuestionModel, includeAnswer = false): ExamQuestion => ({
   id: question.id,
   type: question.type as ExamQuestion['type'],
   text: question.text,
   options: (question.options as string[] | null) ?? undefined,
-  correctAnswer: question.correctAnswer,
+  correctAnswer: includeAnswer ? question.correctAnswer : undefined,
   points: question.points,
 });
 
-const mapExamModel = (exam: PrismaExamModel & { questions: PrismaExamQuestionModel[] }): ActiveExam => ({
+const mapExamModel = (exam: PrismaExamModel & { questions: PrismaExamQuestionModel[] }, includeAnswers = false): ActiveExam => ({
   id: exam.id,
   title: exam.title,
   status: exam.status as ActiveExam['status'],
   duration: exam.duration,
-  questions: exam.questions.map(mapExamQuestionModel),
+  questions: exam.questions.map(q => mapExamQuestionModel(q, includeAnswers)),
   teacherId: exam.teacherId ?? undefined,
 });
 
@@ -485,9 +485,11 @@ export const appService = {
   // Email + password login using bcrypt hash stored in User.password
   login: async (email: string, password: string): Promise<ApiResponse<User>> => {
     if (!password.trim()) {
-      const demoUser = getDemoUserByEmail(email.toLowerCase());
-      if (demoUser) {
-        return success(withSession(demoUser), 'Demo login successful');
+      if (env.enableDemoAuth) {
+        const demoUser = getDemoUserByEmail(email.toLowerCase());
+        if (demoUser) {
+          return success(withSession(demoUser), 'Demo login successful');
+        }
       }
       return failure('Password is required', {} as User);
     }
@@ -548,7 +550,15 @@ export const appService = {
     }));
   },
 
-  updateUserProfile: async (userId: string, updates: Partial<User>): Promise<ApiResponse<User>> => {
+  updateUserProfile: async (userId: string, updates: Partial<User>, actorSchoolId?: string): Promise<ApiResponse<User>> => {
+
+    if (actorSchoolId) {
+      const target = await prisma.user.findUnique({ where: { id: userId }, select: { schoolId: true } });
+      if (!target) return failure('User not found', {} as User);
+      if (target.schoolId && target.schoolId !== actorSchoolId) {
+        return failure('Cannot update a user from another school', {} as User);
+      }
+    }
 
     const profileUpdates: Prisma.UserUpdateInput = {
       ...(updates.name !== undefined ? { name: updates.name } : {}),
@@ -601,7 +611,7 @@ export const appService = {
         .map((w: string) => w[0].toUpperCase()).slice(0, 4).join('');
       const CHARSET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
       for (let i = 0; i < 20; i++) {
-        const suffix = Array.from({ length: 4 }, () => CHARSET[Math.floor(Math.random() * CHARSET.length)]).join('');
+        const suffix = Array.from(crypto.randomBytes(4), b => CHARSET[b % CHARSET.length]).join('');
         const candidate = `${initials}-${suffix}`;
         const conflict = await prisma.school.findUnique({ where: { code: candidate } });
         if (!conflict) return candidate;
@@ -924,8 +934,9 @@ export const appService = {
     return success(students.map(mapStudentModel));
   },
 
-  getStudentById: async (studentId: string): Promise<ApiResponse<Student>> => {
-    const student = await prisma.student.findUnique({ where: { id: studentId } });
+  getStudentById: async (studentId: string, schoolId?: string): Promise<ApiResponse<Student>> => {
+    const where = schoolId ? { id: studentId, schoolId } : { id: studentId };
+    const student = await prisma.student.findFirst({ where });
     return student
       ? success(mapStudentModel(student))
       : failure('Student not found', {} as Student);
@@ -1006,28 +1017,29 @@ export const appService = {
     const existingCode = await prisma.student.findFirst({ where: { accessCode } });
     if (existingCode) return failure('Access code already in use', {} as Student);
 
-    const created = await prisma.student.create({
-      data: {
-        name: data.name.trim(),
-        gender: data.gender,
-        grade: data.grade,
-        enrollmentDate: data.enrollmentDate ? new Date(data.enrollmentDate) : new Date(),
-        status: (data.status as any) ?? 'Active',
-        gpa: data.gpa ?? 0,
-        attendance: data.attendance ?? 0,
-        accessCode,
-        avatar: (data as any).avatar?.trim() || '',
-        schoolId: targetSchoolId,
-        schoolClassId: data.schoolClassId ?? null,
-        field: data.field ?? 'general',
-        enrolledSubjects: data.enrolledSubjects ?? [],
-      },
-    });
-
-    await prisma.school.update({
-      where: { id: targetSchoolId },
-      data: { studentCount: { increment: 1 } },
-    });
+    const [created] = await prisma.$transaction([
+      prisma.student.create({
+        data: {
+          name: data.name.trim(),
+          gender: data.gender,
+          grade: data.grade,
+          enrollmentDate: data.enrollmentDate ? new Date(data.enrollmentDate) : new Date(),
+          status: (data.status as any) ?? 'Active',
+          gpa: data.gpa ?? 0,
+          attendance: data.attendance ?? 0,
+          accessCode,
+          avatar: (data as any).avatar?.trim() || '',
+          schoolId: targetSchoolId,
+          schoolClassId: data.schoolClassId ?? null,
+          field: data.field ?? 'general',
+          enrolledSubjects: data.enrolledSubjects ?? [],
+        },
+      }),
+      prisma.school.update({
+        where: { id: targetSchoolId },
+        data: { studentCount: { increment: 1 } },
+      }),
+    ]);
 
     // Auto-generate fee ledger if a current-term template exists for this school
     const currentTerm = await (prisma as any).schoolTerm.findFirst({
@@ -1308,15 +1320,15 @@ export const appService = {
         select: { id: true },
       });
       if (!isMaster) {
-        // Regular teacher: must have a TeacherAssignment for every subject they're saving
-        for (const subjectId of uniqueSubjectIds) {
-          const assigned = await prisma.teacherAssignment.findFirst({
-            where: { teacherId, subjectId },
-            select: { id: true },
-          });
-          if (!assigned) {
-            return failure(`Not authorised to save assessments for subject ${subjectId}`, { success: false });
-          }
+        // Regular teacher: batch-fetch all assignments for their subjects in one query
+        const assigned = await prisma.teacherAssignment.findMany({
+          where: { teacherId, subjectId: { in: uniqueSubjectIds } },
+          select: { subjectId: true },
+        });
+        const assignedSubjectIds = new Set(assigned.map(a => a.subjectId));
+        const unauthorized = uniqueSubjectIds.find(id => !assignedSubjectIds.has(id));
+        if (unauthorized) {
+          return failure(`Not authorised to save assessments for subject ${unauthorized}`, { success: false });
         }
       }
     }
@@ -1424,8 +1436,14 @@ export const appService = {
 
   publishResults: async (schoolId: string | undefined, newResults: ResultData[], actorUserId?: string): Promise<ApiResponse<{ success: boolean }>> => {
 
+    const uniqueStudentIds = [...new Set(newResults.map(r => r.studentId))];
+    const studentsById = await prisma.student.findMany({
+      where: { id: { in: uniqueStudentIds } },
+      select: { id: true, schoolId: true },
+    }).then(rows => new Map(rows.map(s => [s.id, s])));
+
     for (const result of newResults) {
-      const student = await prisma.student.findUnique({ where: { id: result.studentId } });
+      const student = studentsById.get(result.studentId);
       if (!student) {
         return failure('Student not found', { success: false });
       }
@@ -1507,7 +1525,7 @@ export const appService = {
             const notification = await prisma.notification.create({
               data: {
                 title: `Results published — ${(student as any).name}`,
-                message: `${(student as any).name}'s academic results for ${termLabel} have been published by ${school?.name ?? 'your school'}. Share their Result Access PIN (${(student as any).resultPin ?? 'N/A'}) with them to unlock their results.`,
+                message: `${(student as any).name}'s academic results for ${termLabel} have been published by ${school?.name ?? 'your school'}. The student can log in and use their Result Access PIN to view their results.`,
                 audience: 'specific_users' as any,
                 sourceRole: 'ADMIN',
                 schoolId,
@@ -1542,17 +1560,17 @@ export const appService = {
     return success({ success: true }, 'Results published successfully');
   },
 
-  getExams: async (): Promise<ApiResponse<ActiveExam[]>> => {
+  getExams: async (includeAnswers = false): Promise<ApiResponse<ActiveExam[]>> => {
     const exams = await prisma.exam.findMany({ include: { questions: true } });
-    return success(exams.map(mapExamModel));
+    return success(exams.map(e => mapExamModel(e, includeAnswers)));
   },
 
-  getAvailableExams: async (): Promise<ApiResponse<ActiveExam[]>> => {
+  getAvailableExams: async (includeAnswers = false): Promise<ApiResponse<ActiveExam[]>> => {
     const exams = await prisma.exam.findMany({
       where: { status: 'active' },
       include: { questions: true },
     });
-    return success(exams.map(mapExamModel));
+    return success(exams.map(e => mapExamModel(e, includeAnswers)));
   },
 
   updateExamQuestions: async (
@@ -1560,7 +1578,20 @@ export const appService = {
     title: string,
     examId?: string,
     teacherId?: string,
+    callerSchoolId?: string,
   ): Promise<ApiResponse<ActiveExam>> => {
+    if (examId && callerSchoolId) {
+      const existing = await prisma.exam.findUnique({
+        where: { id: examId },
+        include: { teacher: { select: { schoolId: true } } },
+      });
+      if (!existing) return failure('Exam not found', {} as ActiveExam);
+      const examSchoolId = (existing as any).teacher?.schoolId;
+      if (examSchoolId && examSchoolId !== callerSchoolId) {
+        return failure('Cannot modify an exam belonging to another school', {} as ActiveExam);
+      }
+    }
+
     const questionPayload = questions.map((question) => ({
       type: question.type,
       text: question.text,
@@ -1582,7 +1613,7 @@ export const appService = {
         },
         include: { questions: true },
       });
-      return success(mapExamModel(updated));
+      return success(mapExamModel(updated, true));
     }
 
     const created = await prisma.exam.create({
@@ -1597,11 +1628,23 @@ export const appService = {
       },
       include: { questions: true },
     });
-    return success(mapExamModel(created));
+    return success(mapExamModel(created, true));
   },
 
-  setExamStatus: async (id: string, status: 'scheduled' | 'active' | 'ended'): Promise<ApiResponse<boolean>> => {
+  setExamStatus: async (id: string, status: 'scheduled' | 'active' | 'ended', callerSchoolId?: string): Promise<ApiResponse<boolean>> => {
     try {
+      if (callerSchoolId) {
+        const existing = await prisma.exam.findUnique({
+          where: { id },
+          include: { teacher: { select: { schoolId: true } } },
+        });
+        if (!existing) return failure('Exam not found', false as unknown as boolean);
+        const examSchoolId = (existing as any).teacher?.schoolId;
+        if (examSchoolId && examSchoolId !== callerSchoolId) {
+          return failure('Cannot modify an exam belonging to another school', false as unknown as boolean);
+        }
+      }
+
       const exam = await prisma.exam.update({
         where: { id },
         data: { status },
@@ -1690,16 +1733,23 @@ export const appService = {
   submitExam: async (
     studentId: string,
     answers: Record<string, string>,
-    score: number,
     examId?: string,
   ): Promise<ApiResponse<boolean>> => {
     const exam = examId
-      ? await prisma.exam.findUnique({ where: { id: examId } })
-      : await prisma.exam.findFirst({ where: { status: 'active' } });
+      ? await prisma.exam.findUnique({ where: { id: examId }, include: { questions: true } })
+      : await prisma.exam.findFirst({ where: { status: 'active' }, include: { questions: true } });
 
     if (!exam) {
       return failure('No active exam found', false as unknown as boolean);
     }
+
+    const questions = (exam as any).questions as Array<{ id: string; correctAnswer: string | null; points: number }>;
+    const totalPoints = questions.reduce((sum, q) => sum + q.points, 0);
+    const earnedPoints = questions.reduce((sum, q) => {
+      const studentAnswer = answers[q.id];
+      return sum + (studentAnswer !== undefined && q.correctAnswer !== null && studentAnswer === q.correctAnswer ? q.points : 0);
+    }, 0);
+    const score = totalPoints > 0 ? Math.round((earnedPoints / totalPoints) * 100) : 0;
 
     await prisma.examSession.upsert({
       where: { examId_studentId: { examId: exam.id, studentId } },
@@ -2149,11 +2199,16 @@ export const appService = {
   // ── Private Conversations (student ↔ teacher) ────────────────────────────
 
   listConversations: async (userId: string, role: UserRole, schoolId?: string): Promise<ApiResponse<any[]>> => {
-    const where = role === UserRole.TEACHER
-      ? { teacherId: userId, ...(schoolId ? { schoolId } : {}) }
-      : role === UserRole.STUDENT
-      ? { studentId: userId }
-      : {};
+    const where =
+      role === UserRole.SUPER_ADMIN
+        ? {}
+        : role === UserRole.TEACHER
+        ? { teacherId: userId, ...(schoolId ? { schoolId } : {}) }
+        : role === UserRole.STUDENT
+        ? { studentId: userId }
+        : role === UserRole.ADMIN && schoolId
+        ? { schoolId }
+        : { id: 'no-match' };
     const rows = await prisma.privateConversation.findMany({
       where,
       include: {
@@ -2193,8 +2248,23 @@ export const appService = {
     studentId: string;
     teacherId: string;
     subjectId?: string;
+    actorId?: string;
+    actorRole?: UserRole;
   }): Promise<ApiResponse<any>> => {
-    const { schoolId, studentId, teacherId, subjectId } = params;
+    const { schoolId, studentId, teacherId, subjectId, actorId, actorRole } = params;
+
+    if (actorRole !== UserRole.SUPER_ADMIN) {
+      const [teacher, student] = await Promise.all([
+        prisma.user.findFirst({ where: { id: teacherId, schoolId }, select: { id: true } }),
+        prisma.student.findFirst({ where: { id: studentId, schoolId }, select: { id: true } }),
+      ]);
+      if (!teacher) return failure('Teacher not found in your school', null);
+      if (!student) return failure('Student not found in your school', null);
+      if (actorRole === UserRole.TEACHER && actorId !== teacherId) {
+        return failure('Teachers can only create conversations for themselves', null);
+      }
+    }
+
     const existing = await prisma.privateConversation.findFirst({
       where: { studentId, teacherId, subjectId: subjectId ?? null },
     });
@@ -2458,7 +2528,9 @@ export const appService = {
     }
   },
 
-  getLiveClassMessages: async (liveClassId: string): Promise<ApiResponse<any[]>> => {
+  getLiveClassMessages: async (liveClassId: string, userId: string, role: UserRole): Promise<ApiResponse<any[]>> => {
+    const denied = await checkLiveClassAccess(liveClassId, userId, role);
+    if (denied) return { ...denied, data: [] };
     try {
       const messages = await prisma.liveClassMessage.findMany({
         where: { liveClassId },
@@ -2471,7 +2543,9 @@ export const appService = {
     }
   },
 
-  getLiveClassParticipants: async (liveClassId: string): Promise<ApiResponse<any[]>> => {
+  getLiveClassParticipants: async (liveClassId: string, userId: string, role: UserRole): Promise<ApiResponse<any[]>> => {
+    const denied = await checkLiveClassAccess(liveClassId, userId, role);
+    if (denied) return { ...denied, data: [] };
     try {
       const participants = await prisma.liveClassParticipant.findMany({
         where: { liveClassId, leftAt: null },
@@ -2617,15 +2691,21 @@ export const appService = {
   setTeacherAssignments: async (
     teacherId: string,
     assignments: { subjectId: string; schoolClassId: string }[],
+    schoolId?: string,
   ): Promise<ApiResponse<TeacherAssignment[]>> => {
-    // Replace all assignments for this teacher
-    await prisma.teacherAssignment.deleteMany({ where: { teacherId } });
-    if (assignments.length > 0) {
-      await prisma.teacherAssignment.createMany({
-        data: assignments.map(a => ({ teacherId, subjectId: a.subjectId, schoolClassId: a.schoolClassId })),
-        skipDuplicates: true,
-      });
+    if (schoolId) {
+      const teacher = await prisma.user.findFirst({ where: { id: teacherId, schoolId }, select: { id: true } });
+      if (!teacher) return failure('Teacher not found in your school', []);
     }
+    await prisma.$transaction(async (tx) => {
+      await tx.teacherAssignment.deleteMany({ where: { teacherId } });
+      if (assignments.length > 0) {
+        await tx.teacherAssignment.createMany({
+          data: assignments.map(a => ({ teacherId, subjectId: a.subjectId, schoolClassId: a.schoolClassId })),
+          skipDuplicates: true,
+        });
+      }
+    });
     return appService.getTeacherAssignments(teacherId);
   },
 
@@ -2635,7 +2715,12 @@ export const appService = {
     studentId: string,
     field: string,
     enrolledSubjects: string[],
+    schoolId?: string,
   ): Promise<ApiResponse<Student>> => {
+    if (schoolId) {
+      const student = await prisma.student.findFirst({ where: { id: studentId, schoolId }, select: { id: true } });
+      if (!student) return failure('Student not found in your school', {} as Student);
+    }
     try {
       const updated = await prisma.student.update({
         where: { id: studentId },
@@ -2649,7 +2734,11 @@ export const appService = {
 
   // ── Attendance Summary ───────────────────────────────────────────────────
 
-  getStudentAttendanceSummary: async (studentId: string): Promise<ApiResponse<{ present: number; absent: number; late: number; excused: number; total: number }>> => {
+  getStudentAttendanceSummary: async (studentId: string, schoolId?: string): Promise<ApiResponse<{ present: number; absent: number; late: number; excused: number; total: number }>> => {
+    if (schoolId) {
+      const student = await prisma.student.findFirst({ where: { id: studentId, schoolId }, select: { id: true } });
+      if (!student) return failure('Student not found', { present: 0, absent: 0, late: 0, excused: 0, total: 0 });
+    }
     const groups = await prisma.attendanceRecord.groupBy({
       by: ['status'],
       where: { studentId },
@@ -2669,11 +2758,19 @@ export const appService = {
 
   getStudentsAttendanceSummaries: async (
     studentIds: string[],
+    schoolId?: string,
   ): Promise<ApiResponse<Record<string, { present: number; absent: number; late: number; excused: number; total: number }>>> => {
     if (studentIds.length === 0) return success({});
+    const validIds = schoolId
+      ? (await prisma.student.findMany({
+          where: { id: { in: studentIds }, schoolId },
+          select: { id: true },
+        })).map((s) => s.id)
+      : studentIds;
+    if (validIds.length === 0) return success({});
     const groups = await prisma.attendanceRecord.groupBy({
       by: ['studentId', 'status'],
-      where: { studentId: { in: studentIds } },
+      where: { studentId: { in: validIds } },
       _count: { id: true },
     });
     const map: Record<string, { present: number; absent: number; late: number; excused: number; total: number }> = {};
@@ -2777,20 +2874,35 @@ export const appService = {
     if (!template) return failure('Fee template not found', { created: 0, skipped: 0 });
     if (template.schoolId !== params.schoolId) return failure('Template does not belong to this school', { created: 0, skipped: 0 });
 
+    // Validate that all requested students actually belong to this school
+    const validStudents = await prisma.student.findMany({
+      where: { id: { in: params.studentIds }, schoolId: params.schoolId },
+      select: { id: true },
+    });
+    const validStudentIds = new Set(validStudents.map(s => s.id));
+    const invalidCount = params.studentIds.length - validStudentIds.size;
+    if (invalidCount > 0) {
+      return failure(`${invalidCount} student(s) do not belong to this school`, { created: 0, skipped: 0 });
+    }
+
+    // Batch-query existing ledgers to avoid N+1
+    const existingLedgers = await (prisma as any).studentFeeLedger.findMany({
+      where: {
+        schoolId: params.schoolId,
+        studentId: { in: params.studentIds },
+        term: params.term,
+        scopeType: params.scopeType,
+        scopeId: params.scopeId,
+      },
+      select: { studentId: true },
+    });
+    const alreadyHasLedger = new Set(existingLedgers.map((l: any) => l.studentId));
+
     let created = 0;
     let skipped = 0;
 
     for (const studentId of params.studentIds) {
-      const exists = await (prisma as any).studentFeeLedger.findFirst({
-        where: {
-          schoolId: params.schoolId,
-          studentId,
-          term: params.term,
-          scopeType: params.scopeType,
-          scopeId: params.scopeId,
-        },
-      });
-      if (exists) { skipped++; continue; }
+      if (alreadyHasLedger.has(studentId)) { skipped++; continue; }
 
       await (prisma as any).studentFeeLedger.create({
         data: {
@@ -2881,22 +2993,31 @@ export const appService = {
       }
     }
 
-    const alreadyPaid: number = item.payments.reduce((sum: number, p: { amount: number }) => sum + p.amount, 0);
-    if (alreadyPaid + params.amount > item.payableAmount) {
-      return failure(
-        `Payment of ${params.amount} would exceed the payable amount. Already paid: ${alreadyPaid}, payable: ${item.payableAmount}`,
-        {} as StudentFeePayment,
-      );
-    }
+    const payment = await (prisma as any).$transaction(async (tx: any) => {
+      const freshItem = await tx.studentFeeLedgerItem.findUnique({
+        where: { id: params.ledgerItemId },
+        include: { payments: { select: { amount: true } } },
+      });
+      if (!freshItem) throw new Error('Ledger item not found');
 
-    const payment = await (prisma as any).studentFeePayment.create({
-      data: {
-        ledgerItemId: params.ledgerItemId,
-        amount: params.amount,
-        method: params.method ?? null,
-        paymentRef: params.paymentRef ?? null,
-        clientRef: params.clientRef ?? null,
-      },
+      const alreadyPaid: number = freshItem.payments.reduce((sum: number, p: { amount: number }) => sum + p.amount, 0);
+      if (alreadyPaid + params.amount > freshItem.payableAmount) {
+        throw new Error(
+          `Payment of ${params.amount} would exceed the payable amount. Already paid: ${alreadyPaid}, payable: ${freshItem.payableAmount}`,
+        );
+      }
+
+      return tx.studentFeePayment.create({
+        data: {
+          ledgerItemId: params.ledgerItemId,
+          amount: params.amount,
+          method: params.method ?? null,
+          paymentRef: params.paymentRef ?? null,
+          clientRef: params.clientRef ?? null,
+        },
+      });
+    }).catch((err: Error) => {
+      throw err;
     });
 
     await appService.writeAuditLog({
@@ -3128,8 +3249,16 @@ export const appService = {
       },
     });
 
-    // Link to students
+    // Link to students — validate all belong to the same school first
     if (payload.studentIds.length > 0) {
+      const validStudents = await prisma.student.findMany({
+        where: { id: { in: payload.studentIds }, schoolId: payload.schoolId },
+        select: { id: true },
+      });
+      if (validStudents.length !== payload.studentIds.length) {
+        await prisma.user.delete({ where: { id: parent.id } });
+        return failure('One or more students do not belong to this school', {} as User);
+      }
       await prisma.parentStudent.createMany({
         data: payload.studentIds.map(studentId => ({ parentId: parent.id, studentId })),
         skipDuplicates: true,
@@ -3199,7 +3328,15 @@ export const appService = {
     return success(children);
   },
 
-  linkParentToStudent: async (parentId: string, studentId: string): Promise<ApiResponse<boolean>> => {
+  linkParentToStudent: async (parentId: string, studentId: string, schoolId?: string): Promise<ApiResponse<boolean>> => {
+    if (schoolId) {
+      const [parent, student] = await Promise.all([
+        prisma.user.findFirst({ where: { id: parentId, schoolId }, select: { id: true } }),
+        prisma.student.findFirst({ where: { id: studentId, schoolId }, select: { id: true } }),
+      ]);
+      if (!parent) return failure('Parent not found in your school', false);
+      if (!student) return failure('Student not found in your school', false);
+    }
     await prisma.parentStudent.upsert({
       where: { parentId_studentId: { parentId, studentId } },
       update: {},
@@ -3208,7 +3345,15 @@ export const appService = {
     return success(true);
   },
 
-  unlinkParentFromStudent: async (parentId: string, studentId: string): Promise<ApiResponse<boolean>> => {
+  unlinkParentFromStudent: async (parentId: string, studentId: string, schoolId?: string): Promise<ApiResponse<boolean>> => {
+    if (schoolId) {
+      const [parent, student] = await Promise.all([
+        prisma.user.findFirst({ where: { id: parentId, schoolId }, select: { id: true } }),
+        prisma.student.findFirst({ where: { id: studentId, schoolId }, select: { id: true } }),
+      ]);
+      if (!parent) return failure('Parent not found in your school', false);
+      if (!student) return failure('Student not found in your school', false);
+    }
     await prisma.parentStudent.delete({ where: { parentId_studentId: { parentId, studentId } } });
     return success(true);
   },

@@ -4,6 +4,7 @@ import { asyncHandler } from '../../utils/asyncHandler';
 import { appService } from '../../services/appService';
 import { requireRole } from '../../middleware/auth';
 import { UserRole } from '../../types';
+import { enforceTenantQuery } from '../../utils/tenant';
 
 const router = Router();
 
@@ -18,7 +19,8 @@ router.put(
   asyncHandler(async (req, res) => {
     const { studentId } = req.params;
     const { field, enrolledSubjects } = fieldSchema.parse(req.body);
-    const response = await appService.setStudentField(studentId, field, enrolledSubjects);
+    const actorSchoolId = req.auth?.role === UserRole.SUPER_ADMIN ? undefined : req.auth?.schoolId;
+    const response = await appService.setStudentField(studentId, field, enrolledSubjects, actorSchoolId);
     res.json(response);
   }),
 );

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { requireAuth } from '../../middleware/auth';
 import { env } from '../../config/env';
@@ -17,17 +18,14 @@ router.post(
   '/generate-questions',
   requireAuth,
   asyncHandler(async (req, res) => {
-    const { topic, type, difficulty, count } = req.body as {
-      topic: string;
-      type: string;
-      difficulty: string;
-      count: number;
-    };
+    const { topic, type, difficulty, count } = z.object({
+      topic: z.string().trim().min(1).max(500),
+      type: z.string().trim().max(50).optional().default('multiple-choice'),
+      difficulty: z.string().trim().max(50).optional().default('medium'),
+      count: z.number().int().min(1).max(20).optional().default(5),
+    }).parse(req.body);
 
-    if (!topic?.trim()) {
-      res.status(400).json({ ok: false, data: null, message: 'topic is required' });
-      return;
-    }
+    const safeCount = count;
 
     const formatMap: Record<string, string> = {
       'multiple-choice': "Format: Multiple Choice. Provide exactly 4 distinct options for each question. The 'correctAnswer' must be one of the options.",
@@ -37,7 +35,7 @@ router.post(
     };
 
     const formatInstructions = formatMap[type] ?? formatMap['multiple-choice'];
-    const prompt = `Create ${count} ${difficulty} level questions about "${topic}". ${formatInstructions}`;
+    const prompt = `Create ${safeCount} ${difficulty} level questions about "${topic}". ${formatInstructions}`;
 
     const { Type } = await import('@google/genai');
     const ai = await getAi();
@@ -69,7 +67,13 @@ router.post(
       return;
     }
 
-    const questions = JSON.parse(text);
+    let questions: unknown;
+    try {
+      questions = JSON.parse(text);
+    } catch {
+      res.status(502).json({ ok: false, data: null, message: 'AI returned malformed response' });
+      return;
+    }
     res.json({ ok: true, data: questions, message: 'Questions generated' });
   }),
 );
@@ -78,16 +82,11 @@ router.post(
   '/generate-remark',
   requireAuth,
   asyncHandler(async (req, res) => {
-    const { studentName, average, grade } = req.body as {
-      studentName: string;
-      average: number;
-      grade: string;
-    };
-
-    if (!studentName?.trim()) {
-      res.status(400).json({ ok: false, data: null, message: 'studentName is required' });
-      return;
-    }
+    const { studentName, average, grade } = z.object({
+      studentName: z.string().trim().min(1).max(200),
+      average: z.number().min(0).max(100),
+      grade: z.string().trim().min(1).max(20),
+    }).parse(req.body);
 
     const prompt = `Generate a concise (max 15 words), professional, and encouraging report card remark for a high school student named ${studentName} who scored an average of ${average}%. The grade is ${grade}.`;
 

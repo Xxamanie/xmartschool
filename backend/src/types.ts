@@ -156,8 +156,9 @@ export interface ExamQuestionInput {
   points: number;
 }
 
-export interface ExamQuestion extends ExamQuestionInput {
+export interface ExamQuestion extends Omit<ExamQuestionInput, 'correctAnswer'> {
   id: string;
+  correctAnswer?: string;
 }
 
 export interface ActiveExam {

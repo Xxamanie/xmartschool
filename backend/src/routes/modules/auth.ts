@@ -78,7 +78,8 @@ router.put(
       return;
     }
 
-    const response = await appService.updateUserProfile(userId, updates);
+    const actorSchoolId = requester.role === UserRole.SUPER_ADMIN ? undefined : requester.schoolId;
+    const response = await appService.updateUserProfile(userId, updates, actorSchoolId);
     res.json(response);
   }),
 );

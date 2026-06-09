@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import crypto from 'crypto';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { appService } from '../../services/appService';
 import { requireAuth, requireRole, requireSchoolContext } from '../../middleware/auth';
@@ -88,7 +89,8 @@ router.get(
   requireAuth,
   asyncHandler(async (req, res) => {
     const { id } = idParam.parse(req.params);
-    const response = await appService.getStudentById(id);
+    const schoolId = req.auth?.role === UserRole.SUPER_ADMIN ? undefined : req.auth?.schoolId;
+    const response = await appService.getStudentById(id, schoolId);
     res.json(response);
   }),
 );
@@ -183,6 +185,7 @@ router.delete(
 router.post(
   '/:id/regenerate-pin',
   requireAuth,
+  requireRole(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.TEACHER),
   asyncHandler(async (req, res) => {
     const { id: studentId } = idParam.parse(req.params);
     const actorRole = req.auth?.role;
@@ -219,7 +222,7 @@ router.post(
     }
 
     const CHARSET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    const newPin = Array.from({ length: 8 }, () => CHARSET[Math.floor(Math.random() * CHARSET.length)]).join('');
+    const newPin = Array.from(crypto.randomBytes(8), b => CHARSET[b % CHARSET.length]).join('');
 
     const updated = await prisma.student.update({
       where: { id: studentId },

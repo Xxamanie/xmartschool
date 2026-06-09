@@ -17,7 +17,7 @@ router.get(
 
 const uploadSchema = z.object({
   fileName: z.string().min(1),
-  fileUrl: z.string().optional().default(''),
+  fileUrl: z.union([z.string().url(), z.literal('')]).optional().default(''),
   term: z.string().min(1),
   subject: z.string().min(1),
   year: z.string().optional().default(new Date().getFullYear().toString()),

@@ -34,11 +34,13 @@ router.get(
       schoolId: z.string().optional(),
       classId: z.string().optional(),
     });
-    const { audience, schoolId, classId } = schema.parse(req.query);
-    // For class_students preview, pass classId as the schoolId param (service uses it as classId)
+    const { audience, schoolId: querySchoolId, classId } = schema.parse(req.query);
+    const effectiveSchoolId = req.auth?.role === UserRole.SUPER_ADMIN
+      ? (querySchoolId ?? req.auth?.schoolId)
+      : req.auth?.schoolId;
     const response = await appService.previewNotificationRecipients({
       audience,
-      schoolId: audience === 'class_students' ? classId : schoolId,
+      schoolId: audience === 'class_students' ? classId : effectiveSchoolId,
       senderId: req.auth?.userId as string,
     });
     res.json(response);
@@ -50,15 +52,24 @@ router.post(
   requireRole(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.TEACHER),
   asyncHandler(async (req, res) => {
     const payload = sendSchema.parse(req.body);
+
+    if (payload.audience === 'all' && req.auth?.role !== UserRole.SUPER_ADMIN) {
+      res.status(403).json({ ok: false, data: null, message: 'Only super admins can broadcast to all schools' });
+      return;
+    }
+
+    const effectiveSchoolId = req.auth?.role === UserRole.SUPER_ADMIN
+      ? payload.schoolId
+      : req.auth?.schoolId;
+
     const response = await appService.createNotification({
       title: payload.title,
       message: payload.message,
       audience: payload.audience,
-      // for class_students, pass classId as first element of userIds
       userIds: payload.audience === 'class_students' && payload.classId
         ? [payload.classId]
         : payload.userIds,
-      schoolId: payload.schoolId,
+      schoolId: effectiveSchoolId,
       source: payload.source,
       senderId: req.auth?.userId as string,
       senderRole: req.auth?.role as UserRole,

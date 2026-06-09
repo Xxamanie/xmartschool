@@ -40,7 +40,8 @@ router.put(
   requireRole(UserRole.ADMIN, UserRole.SUPER_ADMIN),
   asyncHandler(async (req, res) => {
     const { teacherId, assignments } = setSchema.parse(req.body);
-    const response = await appService.setTeacherAssignments(teacherId, assignments);
+    const actorSchoolId = req.auth?.role === UserRole.SUPER_ADMIN ? undefined : req.auth?.schoolId;
+    const response = await appService.setTeacherAssignments(teacherId, assignments, actorSchoolId);
     res.json(response);
   }),
 );

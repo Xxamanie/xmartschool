@@ -69,7 +69,8 @@ router.post(
   asyncHandler(async (req, res) => {
     const { parentId } = z.object({ parentId: z.string().min(1) }).parse(req.params);
     const { studentId } = z.object({ studentId: z.string().min(1) }).parse(req.body);
-    const response = await appService.linkParentToStudent(parentId, studentId);
+    const actorSchoolId = req.auth?.role === UserRole.SUPER_ADMIN ? undefined : req.auth?.schoolId;
+    const response = await appService.linkParentToStudent(parentId, studentId, actorSchoolId);
     res.json(response);
   }),
 );
@@ -83,7 +84,8 @@ router.delete(
       parentId: z.string().min(1),
       studentId: z.string().min(1),
     }).parse(req.params);
-    const response = await appService.unlinkParentFromStudent(parentId, studentId);
+    const actorSchoolId = req.auth?.role === UserRole.SUPER_ADMIN ? undefined : req.auth?.schoolId;
+    const response = await appService.unlinkParentFromStudent(parentId, studentId, actorSchoolId);
     res.json(response);
   }),
 );

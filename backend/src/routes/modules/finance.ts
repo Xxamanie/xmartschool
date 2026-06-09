@@ -4,7 +4,7 @@ import { prisma } from '../../lib/prisma';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { requireAuth, requireRole } from '../../middleware/auth';
 import { appService } from '../../services/appService';
-import { getEffectiveSchoolId } from '../../utils/tenant';
+import { getEffectiveSchoolId, enforceTenantQuery } from '../../utils/tenant';
 import { UserRole } from '../../types';
 
 const router = Router();
@@ -31,6 +31,7 @@ const createTemplateSchema = z.object({
 router.get(
   '/templates',
   requireAuth,
+  enforceTenantQuery,
   asyncHandler(async (req, res) => {
     const querySchema = z.object({
       schoolId: z.string().min(1),
@@ -57,8 +58,17 @@ router.post(
   '/templates',
   requireRole(UserRole.ADMIN, UserRole.SUPER_ADMIN),
   asyncHandler(async (req, res) => {
-    const { schoolId, term, name, scopeType, scopeId, lines } =
+    const { schoolId: bodySchoolId, term, name, scopeType, scopeId, lines } =
       createTemplateSchema.parse(req.body);
+
+    const schoolId = req.auth?.role === UserRole.SUPER_ADMIN
+      ? bodySchoolId
+      : req.auth?.schoolId;
+
+    if (!schoolId) {
+      res.status(400).json({ ok: false, data: null, message: 'schoolId is required' });
+      return;
+    }
 
     const template = await prisma.feeTemplate.create({
       data: {

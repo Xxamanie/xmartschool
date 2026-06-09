@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { GraduationCap, Loader2, Lock, Mail, KeyRound, Building2, UserCircle2, CheckCircle2, AlertCircle, Wifi, WifiOff } from 'lucide-react';
+import { GraduationCap, Loader2, Lock, Mail, KeyRound, Building2, UserCircle2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useClickSound } from '../src/utils/useClickSound';
 import { supabaseAuthService } from '../src/services/supabaseAuthService';
@@ -16,7 +16,7 @@ const CAPABILITIES = [
 ];
 
 export const Login: React.FC = () => {
-  const { login, loginStudent, isAuthenticated, isLoading, authMode, error: authError } = useAuth();
+  const { login, loginStudent, isAuthenticated, isLoading, error: authError } = useAuth();
   const { playSound } = useClickSound();
   const navigate = useNavigate();
   const [error, setError] = useState('');
@@ -99,32 +99,7 @@ export const Login: React.FC = () => {
     }
   };
 
-  const getAuthModeDisplay = () => {
-    switch (authMode) {
-      case 'supabase':
-        return {
-          icon: <Wifi size={14} className="text-green-500" />,
-          text: 'Connected to Supabase',
-          color: 'text-green-600 bg-green-50 border-green-200'
-        };
-      case 'demo':
-        return {
-          icon: <WifiOff size={14} className="text-amber-500" />,
-          text: 'Demo Mode - Supabase not configured',
-          color: 'text-amber-600 bg-amber-50 border-amber-200'
-        };
-      default:
-        return {
-          icon: <AlertCircle size={14} className="text-gray-500" />,
-          text: 'Initializing...',
-          color: 'text-gray-600 bg-gray-50 border-gray-200'
-        };
-    }
-  };
-
-  const authModeInfo = getAuthModeDisplay();
-
-  return (
+return (
     <div className="min-h-screen bg-black flex relative overflow-hidden">
       {/* Background Decoration for Left Side */}
       <div className="absolute top-0 left-0 w-full lg:w-2/3 h-full overflow-hidden z-0 pointer-events-none">
@@ -192,15 +167,7 @@ export const Login: React.FC = () => {
          </div>
 
          <div className="max-w-sm mx-auto w-full">
-             {/* Auth Mode Indicator */}
-             {authMode !== 'unknown' && (
-               <div className={`mb-6 p-3 rounded-lg border text-xs font-medium flex items-center gap-2 ${authModeInfo.color}`}>
-                 {authModeInfo.icon}
-                 {authModeInfo.text}
-               </div>
-             )}
-
-             <div className="mb-10">
+<div className="mb-10">
                 <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back</h2>
                 <p className="text-gray-500">Please enter your details to sign in.</p>
              </div>

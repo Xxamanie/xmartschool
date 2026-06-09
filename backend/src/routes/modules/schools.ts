@@ -10,6 +10,7 @@ const router = Router();
 router.get(
   '/',
   requireAuth,
+  requireRole(UserRole.ADMIN, UserRole.SUPER_ADMIN),
   asyncHandler(async (_req, res) => {
     const response = await appService.getSchools();
     res.json(response);

@@ -2,8 +2,11 @@ import rateLimit from 'express-rate-limit';
 import { Request } from 'express';
 
 const resolveClientIp = (req: Request) => {
-  const forwardedFor = req.ip || req.socket.remoteAddress || 'unknown';
-  return forwardedFor;
+  const xff = req.headers['x-forwarded-for'];
+  if (typeof xff === 'string') {
+    return xff.split(',')[0].trim();
+  }
+  return req.ip || req.socket.remoteAddress || 'unknown';
 };
 
 const schoolAwareKeyGenerator = (req: Request) => {

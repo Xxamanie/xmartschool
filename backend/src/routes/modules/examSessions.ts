@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { appService } from '../../services/appService';
+import { requireRole } from '../../middleware/auth';
 import { UserRole } from '../../types';
 
 const router = Router();
@@ -17,6 +18,7 @@ router.get(
 
 router.post(
   '/',
+  requireRole(UserRole.STUDENT, UserRole.ADMIN, UserRole.SUPER_ADMIN),
   asyncHandler(async (req, res) => {
     const { examId, studentId } = z.object({
       examId: z.string().min(1),
@@ -31,6 +33,7 @@ router.post(
 
 router.patch(
   '/:examId/:studentId/progress',
+  requireRole(UserRole.STUDENT, UserRole.ADMIN, UserRole.SUPER_ADMIN),
   asyncHandler(async (req, res) => {
     const { examId, studentId } = z.object({
       examId: z.string().min(1),
@@ -50,22 +53,23 @@ router.patch(
 
 router.post(
   '/submit',
+  requireRole(UserRole.STUDENT, UserRole.ADMIN, UserRole.SUPER_ADMIN),
   asyncHandler(async (req, res) => {
-    const { examId, studentId, answers, score } = z.object({
+    const { examId, studentId, answers } = z.object({
       examId: z.string().optional(),
       studentId: z.string().min(1),
       answers: z.record(z.string()),
-      score: z.number().min(0),
     }).parse(req.body);
 
     const effectiveStudentId = req.auth?.role === UserRole.STUDENT ? req.auth.userId : studentId;
-    const response = await appService.submitExam(effectiveStudentId, answers, score, examId);
+    const response = await appService.submitExam(effectiveStudentId, answers, examId);
     res.json(response);
   }),
 );
 
 router.delete(
   '/:examId/:studentId',
+  requireRole(UserRole.ADMIN, UserRole.SUPER_ADMIN),
   asyncHandler(async (req, res) => {
     const { examId, studentId } = z.object({
       examId: z.string().min(1),

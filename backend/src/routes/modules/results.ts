@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import crypto from 'crypto';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { appService } from '../../services/appService';
 import { requireAuth, requireRole } from '../../middleware/auth';
@@ -40,7 +41,10 @@ router.get(
         return;
       }
 
-      if (!pin || pin !== storedPin) {
+      const pinMatch = storedPin && pin
+        ? crypto.timingSafeEqual(Buffer.from(pin), Buffer.from(storedPin))
+        : false;
+      if (!pinMatch) {
         res.status(403).json({
           ok: false, data: null,
           feeStatus: 'pin_required',
@@ -126,6 +130,22 @@ router.patch(
   asyncHandler(async (req, res) => {
     const { id } = z.object({ id: z.string().min(1) }).parse(req.params);
     const { status } = z.object({ status: z.enum(['Published', 'Draft', 'withheld']) }).parse(req.body);
+
+    if (req.auth?.role !== UserRole.SUPER_ADMIN) {
+      const existing = await prisma.result.findUnique({
+        where: { id },
+        include: { student: { select: { schoolId: true } } },
+      });
+      if (!existing) {
+        res.status(404).json({ ok: false, data: null, message: 'Result not found' });
+        return;
+      }
+      if (existing.student.schoolId !== req.auth?.schoolId) {
+        res.status(403).json({ ok: false, data: null, message: 'Cannot modify results from another school' });
+        return;
+      }
+    }
+
     await prisma.result.update({ where: { id }, data: { status } });
     res.json({ ok: true, data: true });
   }),

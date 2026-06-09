@@ -10,7 +10,7 @@ const router = Router();
 const frameSchema = z.object({
   examId: z.string().min(1),
   studentId: z.string().min(1),
-  frameData: z.string().min(1),
+  frameData: z.string().min(1).max(2_000_000),
 });
 
 router.post(

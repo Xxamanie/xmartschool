@@ -52,7 +52,8 @@ registerRoutes(app);
 
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error('[UnhandledError]', err);
-  res.status(500).json({ ok: false, data: null, message: err.message || 'Internal Server Error' });
+  const message = env.nodeEnv === 'production' ? 'Internal Server Error' : (err.message || 'Internal Server Error');
+  res.status(500).json({ ok: false, data: null, message });
 });
 
 app.use('*', (_req, res) => {
