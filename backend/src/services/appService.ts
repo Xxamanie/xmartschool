@@ -207,7 +207,7 @@ const mapLedgerModel = (ledger: any): StudentFeeLedger => {
 
 const mapStudentModel = (student: PrismaStudentModel): Student => ({
   id: student.id,
-  name: student.name,
+  name: student.name ?? '',
   gender: student.gender as Student['gender'],
   grade: student.grade,
   enrollmentDate: toISODate(student.enrollmentDate),
@@ -751,7 +751,10 @@ export const appService = {
   },
 
   getAllUsers: async (): Promise<ApiResponse<User[]>> => {
-    const [users, students] = await Promise.all([prisma.user.findMany(), prisma.student.findMany()]);
+    const [users, students] = await Promise.all([
+      prisma.user.findMany({ take: 2000, orderBy: { name: 'asc' } }),
+      prisma.student.findMany({ take: 2000, orderBy: { name: 'asc' } }),
+    ]);
 
     const studentAsUsers: User[] = students.map((student: PrismaStudentModel) => ({
       id: student.id,
@@ -768,8 +771,8 @@ export const appService = {
 
   getUsersBySchoolId: async (schoolId: string): Promise<ApiResponse<User[]>> => {
     const [users, students] = await Promise.all([
-      prisma.user.findMany({ where: { schoolId } }),
-      prisma.student.findMany({ where: { schoolId } }),
+      prisma.user.findMany({ where: { schoolId }, take: 2000, orderBy: { name: 'asc' } }),
+      prisma.student.findMany({ where: { schoolId }, take: 2000, orderBy: { name: 'asc' } }),
     ]);
 
     const studentAsUsers: User[] = students.map((student: PrismaStudentModel) => ({
@@ -938,6 +941,7 @@ export const appService = {
     const students = await prisma.student.findMany({
       where: schoolId ? { schoolId } : undefined,
       orderBy: { name: 'asc' },
+      take: 5000,
     });
     return success(students.map(mapStudentModel));
   },
@@ -1152,6 +1156,7 @@ export const appService = {
       where: schoolId ? { subject: { schoolId } } : undefined,
       orderBy: { uploadDate: 'desc' },
       include: { subject: true },
+      take: 500,
     });
     return success(schemes.map(mapSchemeModel));
   },
@@ -1682,7 +1687,19 @@ export const appService = {
     return success(sessions.map(mapExamSessionModel));
   },
 
-  startExamSession: async (examId: string, studentId: string): Promise<ApiResponse<ExamSession>> => {
+  startExamSession: async (examId: string, studentId: string, callerSchoolId?: string): Promise<ApiResponse<ExamSession>> => {
+    if (callerSchoolId) {
+      const exam = await prisma.exam.findUnique({
+        where: { id: examId },
+        include: { teacher: { select: { schoolId: true } } },
+      });
+      if (!exam) return failure('Exam not found', {} as ExamSession);
+      const examSchoolId = (exam as any).teacher?.schoolId;
+      if (examSchoolId && examSchoolId !== callerSchoolId) {
+        return failure('Exam does not belong to your school', {} as ExamSession);
+      }
+    }
+
     let session = await prisma.examSession.findUnique({
       where: { examId_studentId: { examId, studentId } },
     });
@@ -3371,6 +3388,7 @@ export const appService = {
       where: { schoolId, role: UserRole.PARENT },
       include: { parentLinks: { select: { id: true } } },
       orderBy: { name: 'asc' },
+      take: 2000,
     });
     return success(parents.map(p => ({
       ...mapUserModel(p),

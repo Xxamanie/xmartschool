@@ -96,7 +96,8 @@ router.post(
       res.status(400).json({ ok: false, data: null, message: 'studentId required' });
       return;
     }
-    const response = await appService.startExamSession(id, effectiveStudentId);
+    const callerSchoolId = req.auth?.role === UserRole.SUPER_ADMIN ? undefined : req.auth?.schoolId;
+    const response = await appService.startExamSession(id, effectiveStudentId, callerSchoolId);
     res.json(response);
   }),
 );

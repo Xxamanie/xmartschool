@@ -2,13 +2,14 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { appService } from '../../services/appService';
-import { requireRole } from '../../middleware/auth';
+import { requireAuth, requireRole } from '../../middleware/auth';
 import { UserRole } from '../../types';
 
 const router = Router();
 
 router.get(
   '/',
+  requireAuth,
   asyncHandler(async (req, res) => {
     const auth = req.auth;
     const response = await appService.getLiveClasses(
@@ -45,6 +46,7 @@ router.post(
 
 router.post(
   '/:liveClassId/join',
+  requireAuth,
   asyncHandler(async (req, res) => {
     const { liveClassId } = req.params;
     const response = await appService.joinLiveClass(liveClassId, req.auth!.userId, req.auth!.role);
@@ -54,6 +56,7 @@ router.post(
 
 router.post(
   '/:liveClassId/leave',
+  requireAuth,
   asyncHandler(async (req, res) => {
     const { liveClassId } = req.params;
     const response = await appService.leaveLiveClass(liveClassId, req.auth!.userId);
@@ -63,6 +66,7 @@ router.post(
 
 router.post(
   '/:liveClassId/participant-status',
+  requireAuth,
   asyncHandler(async (req, res) => {
     const { liveClassId } = req.params;
     const { cameraOn, microphoneOn } = req.body;
@@ -73,6 +77,7 @@ router.post(
 
 router.post(
   '/:liveClassId/raise-hand',
+  requireAuth,
   asyncHandler(async (req, res) => {
     const { liveClassId } = req.params;
     const { raised } = req.body;
@@ -85,6 +90,7 @@ const messageSchema = z.object({ message: z.string().min(1).max(2000) });
 
 router.post(
   '/:liveClassId/messages',
+  requireAuth,
   asyncHandler(async (req, res) => {
     const { liveClassId } = req.params;
     const { message } = messageSchema.parse(req.body);
@@ -95,6 +101,7 @@ router.post(
 
 router.get(
   '/:liveClassId/messages',
+  requireAuth,
   asyncHandler(async (req, res) => {
     const { liveClassId } = req.params;
     const response = await appService.getLiveClassMessages(liveClassId, req.auth!.userId, req.auth!.role);
@@ -104,6 +111,7 @@ router.get(
 
 router.get(
   '/:liveClassId/participants',
+  requireAuth,
   asyncHandler(async (req, res) => {
     const { liveClassId } = req.params;
     const response = await appService.getLiveClassParticipants(liveClassId, req.auth!.userId, req.auth!.role);
@@ -111,16 +119,15 @@ router.get(
   }),
 );
 
+const recordingStartSchema = z.object({ recordingUrl: z.string().url().max(2048) });
+
 router.post(
   '/:liveClassId/recording/start',
+  requireAuth,
   requireRole(UserRole.ADMIN, UserRole.TEACHER, UserRole.SUPER_ADMIN),
   asyncHandler(async (req, res) => {
     const { liveClassId } = req.params;
-    const { recordingUrl } = req.body;
-    if (!recordingUrl) {
-      res.status(400).json({ ok: false, message: 'recordingUrl required' });
-      return;
-    }
+    const { recordingUrl } = recordingStartSchema.parse(req.body);
     const response = await appService.startLiveClassRecording(liveClassId, recordingUrl);
     res.json(response);
   }),
@@ -128,6 +135,7 @@ router.post(
 
 router.post(
   '/:liveClassId/recording/stop',
+  requireAuth,
   requireRole(UserRole.ADMIN, UserRole.TEACHER, UserRole.SUPER_ADMIN),
   asyncHandler(async (req, res) => {
     const { liveClassId } = req.params;

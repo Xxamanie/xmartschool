@@ -9,6 +9,7 @@ const router = Router();
 
 router.get(
   '/',
+  requireRole(UserRole.ADMIN, UserRole.TEACHER, UserRole.SUPER_ADMIN),
   asyncHandler(async (req, res) => {
     const { examId } = z.object({ examId: z.string().min(1) }).parse(req.query);
     const response = await appService.getExamSessions(examId);
@@ -26,7 +27,8 @@ router.post(
     }).parse(req.body);
 
     const effectiveStudentId = req.auth?.role === UserRole.STUDENT ? req.auth.userId : studentId;
-    const response = await appService.startExamSession(examId, effectiveStudentId);
+    const callerSchoolId = req.auth?.role === UserRole.SUPER_ADMIN ? undefined : req.auth?.schoolId;
+    const response = await appService.startExamSession(examId, effectiveStudentId, callerSchoolId);
     res.json(response);
   }),
 );
@@ -42,7 +44,9 @@ router.patch(
 
     const { progress, answers } = z.object({
       progress: z.number().min(0).max(100),
-      answers: z.record(z.string()).optional(),
+      answers: z.record(z.string().max(2000)).superRefine((val, ctx) => {
+        if (Object.keys(val).length > 500) ctx.addIssue({ code: 'too_big', maximum: 500, type: 'array', inclusive: true, message: 'Too many answer keys' });
+      }).optional(),
     }).parse(req.body);
 
     const effectiveStudentId = req.auth?.role === UserRole.STUDENT ? req.auth.userId : studentId;
@@ -58,7 +62,9 @@ router.post(
     const { examId, studentId, answers } = z.object({
       examId: z.string().optional(),
       studentId: z.string().min(1),
-      answers: z.record(z.string()),
+      answers: z.record(z.string().max(2000)).superRefine((val, ctx) => {
+        if (Object.keys(val).length > 500) ctx.addIssue({ code: 'too_big', maximum: 500, type: 'array', inclusive: true, message: 'Too many answer keys' });
+      }),
     }).parse(req.body);
 
     const effectiveStudentId = req.auth?.role === UserRole.STUDENT ? req.auth.userId : studentId;
