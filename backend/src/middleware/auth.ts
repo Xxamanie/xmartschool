@@ -32,7 +32,14 @@ const resolveRequestAuth = async (token: string) => {
     return null;
   }
 
-  const { data, error } = await supabaseAdmin.auth.getUser(token);
+  let supabaseData: Awaited<ReturnType<typeof supabaseAdmin.auth.getUser>>;
+  try {
+    supabaseData = await supabaseAdmin.auth.getUser(token);
+  } catch {
+    // Network error, Supabase project paused, etc.
+    return null;
+  }
+  const { data, error } = supabaseData;
   if (error || !data.user) {
     return null;
   }

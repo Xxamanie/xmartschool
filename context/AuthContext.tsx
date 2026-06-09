@@ -142,8 +142,16 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
 
     initAuth();
 
+    const handleSessionExpired = () => {
+      clearDemoSession();
+      setUser(null);
+      setIsLoading(false);
+    };
+    window.addEventListener('auth:session-expired', handleSessionExpired);
+
     return () => {
       if (unsubscribe) unsubscribe();
+      window.removeEventListener('auth:session-expired', handleSessionExpired);
     };
   }, []);
 

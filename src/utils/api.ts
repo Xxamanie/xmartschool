@@ -54,6 +54,14 @@ apiClient.interceptors.response.use(
       console.error('[API] Request timeout');
     } else if (error.response) {
       console.error(`[API] Error ${error.response.status}:`, error.response.data);
+      if (error.response.status === 401) {
+        // Session expired or invalid — clear stale credentials so the login
+        // page is shown on the next navigation instead of a silent empty state.
+        window.localStorage.removeItem(DEMO_AUTH_TOKEN_KEY);
+        window.localStorage.removeItem(DEMO_AUTH_USER_KEY);
+        // Dispatch a custom event so AuthContext can react without a hard redirect.
+        window.dispatchEvent(new CustomEvent('auth:session-expired'));
+      }
     } else if (error.request) {
       console.error('[API] Network error - no response received');
     } else {
