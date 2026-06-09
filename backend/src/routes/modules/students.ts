@@ -241,7 +241,7 @@ router.post(
         const notification = await prisma.notification.create({
           data: {
             title: `Result Access PIN updated — ${(updated as any).name}`,
-            message: `The Result Access PIN for ${(updated as any).name} (${pinTerm}) has been regenerated. New PIN: ${newPin}. Share this with your ward to access their results.`,
+            message: `The Result Access PIN for ${(updated as any).name} (${pinTerm}) has been regenerated. Please contact the school office to collect the new PIN.`,
             audience: 'specific_users' as any,
             sourceRole: actorRole as any,
             schoolId: schoolId ?? null,

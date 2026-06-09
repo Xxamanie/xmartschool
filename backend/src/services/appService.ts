@@ -11,7 +11,6 @@ import {
   ExamQuestion as PrismaExamQuestionModel,
   ExamSession as PrismaExamSessionModel,
   AttendanceRecord as PrismaAttendanceRecordModel,
-  ClassMaster as PrismaClassMasterModel,
   StaffMessage as PrismaStaffMessageModel,
 } from '@prisma/client';
 import {
@@ -47,7 +46,6 @@ import {
   TeacherAssignment,
 } from '../types';
 
-const wait = async (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const success = async <T>(data: T, message?: string): Promise<ApiResponse<T>> => ({
   ok: true,
@@ -212,8 +210,8 @@ const mapStudentModel = (student: PrismaStudentModel): Student => ({
   grade: student.grade,
   enrollmentDate: toISODate(student.enrollmentDate),
   status: student.status as Student['status'],
-  gpa: student.gpa,
-  attendance: student.attendance,
+  gpa: student.gpa ?? 0,
+  attendance: student.attendance ?? 0,
   schoolId: student.schoolId,
   accessCode: student.accessCode,
   avatar: (student as any).avatar || undefined,
@@ -351,8 +349,8 @@ const mapResultModel = (result: PrismaResultModel & { student?: PrismaStudentMod
   studentId: result.studentId,
   subjectName: result.subjectName,
   term: (result as any).term ?? 'current',
-  average: result.average,
-  grade: result.grade,
+  average: result.average ?? 0,
+  grade: result.grade ?? '',
   status: result.status as ResultData['status'],
   remarks: result.remarks ?? undefined,
   details: (result.details as Record<string, number | undefined> | undefined) ?? undefined,
@@ -3123,7 +3121,6 @@ export const appService = {
             totalPaid,
             outstanding,
             ledgerFully: fullyCleared,
-            ...(fullyCleared && resultPin ? { resultPin } : {}),
           };
 
           const notification = await prisma.notification.create({

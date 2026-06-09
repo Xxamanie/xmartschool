@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { appService } from '../../services/appService';
-import { requireRole } from '../../middleware/auth';
+import { requireAuth, requireRole } from '../../middleware/auth';
 import { UserRole } from '../../types';
 
 const router = Router();
@@ -10,6 +10,7 @@ const router = Router();
 // List conversations for the authenticated user
 router.get(
   '/',
+  requireAuth,
   asyncHandler(async (req, res) => {
     const userId = req.auth?.userId as string;
     const role = req.auth?.role as UserRole;
@@ -51,6 +52,7 @@ router.post(
 // Get messages in a conversation
 router.get(
   '/:conversationId/messages',
+  requireAuth,
   asyncHandler(async (req, res) => {
     const userId = req.auth?.userId as string;
     const role = req.auth?.role as UserRole;
@@ -62,6 +64,7 @@ router.get(
 // Send a message in a conversation
 router.post(
   '/:conversationId/messages',
+  requireAuth,
   asyncHandler(async (req, res) => {
     const schema = z.object({ content: z.string().min(1).max(5000) });
     const { content } = schema.parse(req.body);

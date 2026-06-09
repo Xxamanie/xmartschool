@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { appService } from '../../services/appService';
-import { requireRole } from '../../middleware/auth';
+import { requireAuth, requireRole } from '../../middleware/auth';
 import { UserRole } from '../../types';
 
 const router = Router();
@@ -19,6 +19,7 @@ const sendSchema = z.object({
 
 router.get(
   '/',
+  requireAuth,
   asyncHandler(async (req, res) => {
     const response = await appService.listNotifications(req.auth?.userId as string, req.auth?.role as UserRole);
     res.json(response);
@@ -80,6 +81,7 @@ router.post(
 
 router.patch(
   '/:notificationId/read',
+  requireAuth,
   asyncHandler(async (req, res) => {
     const userId = req.auth?.userId as string;
     const response = await appService.markNotificationRead(req.params.notificationId, userId);
