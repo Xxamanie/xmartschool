@@ -3,6 +3,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import hpp from 'hpp';
+import { ZodError } from 'zod';
 import { env } from './config/env';
 import { registerRoutes } from './routes';
 import { apiRateLimiter } from './middleware/rateLimit';
@@ -50,9 +51,22 @@ app.use('/api', apiRateLimiter);
 
 registerRoutes(app);
 
-app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error('[UnhandledError]', err);
-  const message = env.nodeEnv === 'production' ? 'Internal Server Error' : (err.message || 'Internal Server Error');
+app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  // ZodError → 400 with field-level messages
+  if (err instanceof ZodError) {
+    const message = err.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; ');
+    res.status(400).json({ ok: false, data: null, message });
+    return;
+  }
+
+  // Safe logging — avoid crashing util.inspect on complex error objects (e.g. Prisma errors)
+  const errMessage = err instanceof Error ? err.message : String(err);
+  const errStack   = err instanceof Error ? err.stack  : undefined;
+  console.error('[UnhandledError]', errMessage, errStack);
+
+  const message = env.nodeEnv === 'production'
+    ? 'Internal Server Error'
+    : (errMessage || 'Internal Server Error');
   res.status(500).json({ ok: false, data: null, message });
 });
 
