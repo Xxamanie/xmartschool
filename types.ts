@@ -2,6 +2,7 @@
 
 export enum UserRole {
   SUPER_ADMIN = 'SUPER_ADMIN', // The Creator
+  GROUP_OWNER = 'GROUP_OWNER', // Owner of a multi-branch school group
   ADMIN = 'ADMIN', // School Administrator
   TEACHER = 'TEACHER',
   STUDENT = 'STUDENT',
@@ -16,6 +17,7 @@ export interface User {
   authToken?: string;
   avatar?: string;
   schoolId?: string;
+  groupId?: string;
   gender?: 'Male' | 'Female';
   phone?: string;
   bio?: string;
@@ -345,4 +347,37 @@ export interface AttendanceSummary {
   late: number;
   excused: number;
   total: number;
+}
+
+export interface FeeTemplateLine {
+  id: string;
+  templateId: string;
+  title: string;
+  key: string;
+  order: number;
+  defaultAmount: number;
+  createdAt: string;
+}
+
+export interface FeeTemplate {
+  id: string;
+  schoolId: string;
+  term: string;
+  name: string;
+  scopeType?: string;
+  scopeId?: string;
+  createdAt: string;
+  updatedAt: string;
+  lines: FeeTemplateLine[];
+}
+
+export interface AuditLogEntry {
+  id: string;
+  schoolId?: string;
+  userId?: string;
+  action: string;
+  entity: string;
+  entityId?: string;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
 }

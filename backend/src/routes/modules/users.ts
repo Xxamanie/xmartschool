@@ -18,6 +18,30 @@ router.get(
   }),
 );
 
+const searchQuerySchema = z.object({
+  search: z.string().trim().max(120).optional(),
+  page: z.coerce.number().int().min(1).optional(),
+  pageSize: z.coerce.number().int().min(1).max(100).optional(),
+});
+
+// Server-side searchable, paginated listing for the Creator dashboard.
+// SUPER_ADMIN sees all schools; everyone else is scoped to their own school.
+router.get(
+  '/search',
+  requireAuth,
+  requireRole(UserRole.ADMIN, UserRole.SUPER_ADMIN),
+  asyncHandler(async (req, res) => {
+    const { search, page, pageSize } = searchQuerySchema.parse(req.query);
+    const response = await appService.listUsers({
+      schoolId: req.auth?.role === UserRole.SUPER_ADMIN ? undefined : req.auth?.schoolId,
+      search,
+      page,
+      pageSize,
+    });
+    res.json(response);
+  }),
+);
+
 const userPayloadSchema = z.object({
   name: z.string().trim().min(1),
   email: z.string().email(),
@@ -25,7 +49,10 @@ const userPayloadSchema = z.object({
   role: z.enum([UserRole.ADMIN, UserRole.TEACHER]).optional(),
   gender: z.enum(['Male', 'Female']).optional(),
   bio: z.string().trim().max(1000).optional(),
-  avatar: z.string().url().max(2048).optional(),
+  // Avatars are stored as either a regular URL or a compressed data: URL
+  // (see components/PhotoUpload.tsx), so allow a much larger length than a
+  // typical URL.
+  avatar: z.string().url().max(2_000_000).optional(),
   schoolId: z.string().optional(),
 });
 

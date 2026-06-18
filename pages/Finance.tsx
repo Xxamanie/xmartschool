@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { SchoolTerm, StudentFeeLedger, UserRole } from '../types';
+import { SchoolTerm, StudentFeeLedger, UserRole, FeeTemplate } from '../types';
 import { ToastContainer } from '../components/Toast';
 import { useToast } from '../src/utils/useToast';
 
@@ -34,7 +34,7 @@ export const Finance: React.FC = () => {
   const [ledgersLoading, setLedgersLoading] = useState(false);
 
   // Templates
-  const [templates, setTemplates] = useState<any[]>([]);
+  const [templates, setTemplates] = useState<FeeTemplate[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [showTemplateForm, setShowTemplateForm] = useState(false);
   const [templateForm, setTemplateForm] = useState({ name: '', term: '', lines: [{ title: '', key: '', defaultAmount: 0 }] });
@@ -561,7 +561,7 @@ export const Finance: React.FC = () => {
                 <div className="py-8 text-center text-sm text-gray-400">No fee templates yet.</div>
               )}
               <div className="space-y-3">
-                {templates.map((t: any) => (
+                {templates.map((t) => (
                   <div key={t.id} className="border border-gray-200 rounded-xl p-4">
                     <div className="flex items-start justify-between">
                       <div>
@@ -588,7 +588,7 @@ export const Finance: React.FC = () => {
                     </div>
                     {t.lines?.length > 0 && (
                       <div className="mt-3 divide-y divide-gray-50">
-                        {t.lines.map((line: any) => (
+                        {t.lines.map((line) => (
                           <div key={line.id} className="flex justify-between py-1.5 text-xs text-gray-600">
                             <span>{line.title}</span>
                             <span className="font-medium">₦{Number(line.defaultAmount).toLocaleString()}</span>
@@ -596,7 +596,7 @@ export const Finance: React.FC = () => {
                         ))}
                         <div className="flex justify-between py-1.5 text-xs font-semibold text-gray-900 pt-2">
                           <span>Total</span>
-                          <span>₦{t.lines.reduce((s: number, l: any) => s + Number(l.defaultAmount), 0).toLocaleString()}</span>
+                          <span>₦{t.lines.reduce((s: number, l) => s + Number(l.defaultAmount), 0).toLocaleString()}</span>
                         </div>
                       </div>
                     )}

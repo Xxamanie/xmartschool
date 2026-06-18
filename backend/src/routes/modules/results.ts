@@ -113,16 +113,9 @@ router.post(
   }),
 );
 
-router.post(
-  '/publish',
-  requireRole(UserRole.ADMIN, UserRole.SUPER_ADMIN),
-  asyncHandler(async (req, res) => {
-    const payload = publishSchema.parse(req.body);
-    const results = Array.isArray(payload) ? payload : payload.results;
-    const response = await appService.publishResults(req.auth?.schoolId, results as any, req.auth?.userId);
-    res.json(response);
-  }),
-);
+// Note: `POST /publish` used to be a duplicate of `POST /` below (same
+// handler, same schema). The frontend only calls `POST /results`, so the
+// duplicate route has been removed.
 
 router.patch(
   '/:id/status',

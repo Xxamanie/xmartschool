@@ -4,18 +4,9 @@ import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { UserRole } from '../types';
 import type { PrivateConversation, PrivateConversationMessage } from '../types';
+import { avatarColor } from '../src/utils/colorHash';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-const AVATAR_COLORS = [
-  'bg-violet-500', 'bg-blue-500', 'bg-emerald-500', 'bg-orange-500',
-  'bg-pink-500', 'bg-indigo-500', 'bg-teal-500', 'bg-red-500',
-];
-
-const avatarColor = (id: string) =>
-  AVATAR_COLORS[
-    [...id].reduce((acc, c) => acc + c.charCodeAt(0), 0) % AVATAR_COLORS.length
-  ];
 
 const formatTime = (iso: string) =>
   new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });

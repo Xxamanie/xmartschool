@@ -1,5 +1,6 @@
 export enum UserRole {
   SUPER_ADMIN = 'SUPER_ADMIN',
+  GROUP_OWNER = 'GROUP_OWNER',
   ADMIN = 'ADMIN',
   TEACHER = 'TEACHER',
   STUDENT = 'STUDENT',
@@ -14,6 +15,7 @@ export interface User {
   authToken?: string;
   avatar?: string;
   schoolId?: string;
+  groupId?: string;
   gender?: 'Male' | 'Female';
   phone?: string;
   bio?: string;
@@ -290,5 +292,16 @@ export interface ApiResponse<T> {
   ok: boolean;
   data: T;
   message?: string;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  schoolId?: string;
+  userId?: string;
+  action: string;
+  entity: string;
+  entityId?: string;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
 }
 

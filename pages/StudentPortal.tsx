@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { ResultData, ActiveExam, School } from '../types';
+import { ResultData, ActiveExam, School, Student, AttendanceSummary, SchoolTerm } from '../types';
 import { FileCheck, Award, Calendar, Timer, ArrowRight, CheckCircle, BookOpen, ChevronRight, X, Ghost, Lock, KeyRound, AlertCircle } from 'lucide-react';
 
 export const StudentPortal: React.FC = () => {
@@ -10,6 +10,9 @@ export const StudentPortal: React.FC = () => {
   const [results, setResults] = useState<ResultData[]>([]);
   const [availableExams, setAvailableExams] = useState<ActiveExam[]>([]);
   const [school, setSchool] = useState<School | null>(null);
+  const [studentRecord, setStudentRecord] = useState<Student | null>(null);
+  const [attendanceSummary, setAttendanceSummary] = useState<AttendanceSummary | null>(null);
+  const [currentTerm, setCurrentTerm] = useState<SchoolTerm | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Fee / PIN gate state
@@ -43,10 +46,12 @@ export const StudentPortal: React.FC = () => {
     const fetchMyData = async () => {
       if (!user?.id) return;
       try {
-        const [resProfile, resExams, resSchools] = await Promise.all([
+        const [resProfile, resExams, resSchools, resStudent, resAttendance] = await Promise.all([
           api.getStudentProfile(),
           api.getAvailableExams(),
           api.getSchools(),
+          api.getStudent(user.id),
+          api.getStudentAttendanceSummary(user.id),
         ]);
 
         if (resProfile.ok) {
@@ -55,7 +60,13 @@ export const StudentPortal: React.FC = () => {
         if (resExams.ok) setAvailableExams(resExams.data);
         if (resSchools.ok && user.schoolId) {
           setSchool(resSchools.data.find(s => s.id === user.schoolId) ?? null);
+          const resTerms = await api.getTerms(user.schoolId);
+          if (resTerms.ok) {
+            setCurrentTerm(resTerms.data.find(t => t.isCurrent) ?? null);
+          }
         }
+        if (resStudent.ok) setStudentRecord(resStudent.data);
+        if (resAttendance.ok) setAttendanceSummary(resAttendance.data);
       } catch (e) {
         console.error(e);
       } finally {
@@ -420,7 +431,9 @@ export const StudentPortal: React.FC = () => {
                    <img src={user?.avatar} alt="Student" className="w-20 h-20 rounded-full border-4 border-white/30" />
                    <div>
                       <h1 className="text-2xl font-bold">{user?.name}</h1>
-                      <p className="text-indigo-100">Class of 2024 • Grade 10</p>
+                      <p className="text-indigo-100">
+                        {[school?.name, studentRecord?.grade].filter(Boolean).join(' • ')}
+                      </p>
                    </div>
                 </div>
                 <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 min-w-[150px] text-center">
@@ -435,7 +448,11 @@ export const StudentPortal: React.FC = () => {
                 <div className="p-2 bg-green-50 text-green-600 rounded-lg"><Award size={20} /></div>
                 <div>
                    <p className="text-xs text-gray-500 uppercase font-semibold">Attendance</p>
-                   <p className="text-lg font-bold text-gray-900">98%</p>
+                   <p className="text-lg font-bold text-gray-900">
+                     {attendanceSummary && attendanceSummary.total > 0
+                       ? `${Math.round((attendanceSummary.present / attendanceSummary.total) * 100)}%`
+                       : '—'}
+                   </p>
                 </div>
              </div>
              <div className="flex items-center gap-3 py-2 md:pl-6">
@@ -449,7 +466,9 @@ export const StudentPortal: React.FC = () => {
                 <div className="p-2 bg-purple-50 text-purple-600 rounded-lg"><Calendar size={20} /></div>
                 <div>
                    <p className="text-xs text-gray-500 uppercase font-semibold">Current Term</p>
-                   <p className="text-lg font-bold text-gray-900">Term 1, 2024</p>
+                   <p className="text-lg font-bold text-gray-900">
+                     {currentTerm ? `${currentTerm.name} · ${currentTerm.session}` : '—'}
+                   </p>
                 </div>
              </div>
           </div>

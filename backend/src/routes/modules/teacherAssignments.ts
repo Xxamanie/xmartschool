@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { appService } from '../../services/appService';
 import { requireRole } from '../../middleware/auth';
+import { prisma } from '../../lib/prisma';
 import { UserRole } from '../../types';
 
 const router = Router();
@@ -14,6 +15,24 @@ router.get(
     // classId query fetches all assignments for a class (used by Timetable)
     if (req.query.classId) {
       const classId = z.string().min(1).parse(req.query.classId);
+
+      // Verify the requesting user has access to this class's school before
+      // returning assignment data (teacher/subject names) for it.
+      if (req.auth!.role !== UserRole.SUPER_ADMIN) {
+        const schoolClass = await prisma.schoolClass.findUnique({
+          where: { id: classId },
+          select: { schoolId: true },
+        });
+        if (!schoolClass) {
+          res.status(404).json({ ok: false, data: null, message: 'Class not found' });
+          return;
+        }
+        if (schoolClass.schoolId !== req.auth!.schoolId) {
+          res.status(403).json({ ok: false, data: null, message: 'Cannot access assignments from another school' });
+          return;
+        }
+      }
+
       const response = await appService.getClassAssignments(classId);
       res.json(response);
       return;

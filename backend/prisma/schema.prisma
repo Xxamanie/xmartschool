@@ -9,6 +9,7 @@ generator client {
 
 enum UserRole {
   SUPER_ADMIN
+  GROUP_OWNER
   ADMIN
   TEACHER
   STUDENT
@@ -64,10 +65,25 @@ enum NotificationAudience {
 }
 
 
+// A SchoolGroup represents a multi-branch owner's portfolio. Schools may
+// optionally belong to a group; a GROUP_OWNER user is linked to the group and
+// can view/manage every school in it from one account.
+model SchoolGroup {
+  id        String   @id @default(cuid())
+  name      String
+  ownerId   String?  // User.id of the group owner (informational)
+  createdAt DateTime @default(now())
+  schools   School[]
+  members   User[]   @relation("GroupMembers")
+  memberships Membership[] @relation("GroupMemberships")
+}
+
 model School {
   id           String        @id @default(cuid())
   name         String
   code         String?       @unique
+  groupId      String?
+  group        SchoolGroup?  @relation(fields: [groupId], references: [id])
   region       String?
   adminName    String?
   status       SchoolStatus  @default(Active)
@@ -81,6 +97,7 @@ model School {
   principalName String       @default("")
   principalSignatureUrl String @default("")
   schoolStampUrl String      @default("")
+  deletedAt    DateTime?
   users        User[]
   students     Student[]
   subjects     Subject[]
@@ -90,6 +107,7 @@ model School {
   feeTemplates FeeTemplate[]
   feeLedgers   StudentFeeLedger[]
   terms        SchoolTerm[]
+  memberships  Membership[]
 }
 
 
@@ -102,6 +120,8 @@ role        UserRole
 avatar      String?
 schoolId    String?
 school      School?  @relation(fields: [schoolId], references: [id])
+groupId     String?
+group       SchoolGroup? @relation("GroupMembers", fields: [groupId], references: [id])
 gender      String?
 phone       String?
 bio         String?
@@ -113,6 +133,7 @@ teacherAssignments TeacherAssignment[]
 
 notificationRecipients NotificationRecipient[]
 parentLinks   ParentStudent[] @relation("ParentLinks")
+memberships   Membership[]    @relation("UserMemberships")
 }
 
 model Student {
@@ -635,6 +656,26 @@ model SchoolTerm {
 // A parent account is a User with role = PARENT.
 // They are linked to one or more students via this table.
 // Admins create parent accounts and link them to students.
+// Flexible role membership: lets one user hold roles across many schools or a
+// group (e.g. an owner of several branches, a teacher at two campuses, a parent
+// with children in different schools). Additive — existing single-school
+// `User.schoolId` / `User.groupId` continue to work; memberships are unioned on
+// top by getAccessibleSchoolIds.
+model Membership {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation("UserMemberships", fields: [userId], references: [id], onDelete: Cascade)
+  schoolId  String?
+  school    School?  @relation(fields: [schoolId], references: [id])
+  groupId   String?
+  group     SchoolGroup? @relation("GroupMemberships", fields: [groupId], references: [id])
+  role      UserRole
+  createdAt DateTime @default(now())
+
+  @@unique([userId, schoolId, role])
+  @@index([userId])
+}
+
 model ParentStudent {
   id        String  @id @default(cuid())
   parentId  String  // User.id (role = PARENT)

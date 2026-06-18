@@ -5,8 +5,9 @@ import { useAuth } from '../context/AuthContext';
 import { useStaffRoom } from '../context/StaffRoomContext';
 import {
   Send, Image, Mic, Video, Paperclip, Hash, Users,
-  Smile, X, ChevronRight,
+  X, ChevronRight,
 } from 'lucide-react';
+import { colorForString } from '../src/utils/colorHash';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -16,10 +17,7 @@ const AVATAR_COLORS = [
   'bg-cyan-500', 'bg-amber-500',
 ];
 
-const avatarColor = (id: string) =>
-  AVATAR_COLORS[
-    [...id].reduce((acc, c) => acc + c.charCodeAt(0), 0) % AVATAR_COLORS.length
-  ];
+const avatarColor = (id: string) => colorForString(id, AVATAR_COLORS);
 
 const initials = (name: string) =>
   name
@@ -364,9 +362,6 @@ export const StaffRoom: React.FC = () => {
                 placeholder="Message #staff-room…"
                 className="flex-1 bg-transparent text-sm outline-none text-gray-800 placeholder-gray-400"
               />
-              <button type="button" className="text-gray-400 hover:text-amber-500 transition-colors flex-shrink-0">
-                <Smile size={18} />
-              </button>
             </div>
 
             <button

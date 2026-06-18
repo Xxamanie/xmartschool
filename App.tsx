@@ -20,6 +20,7 @@ const Assessments = React.lazy(() => import('./pages/Assessments').then((module)
 const Results = React.lazy(() => import('./pages/Results').then((module) => ({ default: module.Results })));
 const Teachers = React.lazy(() => import('./pages/Teachers').then((module) => ({ default: module.Teachers })));
 const SuperAdmin = React.lazy(() => import('./pages/SuperAdmin').then((module) => ({ default: module.SuperAdmin })));
+const GroupPortal = React.lazy(() => import('./pages/GroupPortal').then((module) => ({ default: module.GroupPortal })));
 const StudentPortal = React.lazy(() => import('./pages/StudentPortal').then((module) => ({ default: module.StudentPortal })));
 const Settings = React.lazy(() => import('./pages/Settings').then((module) => ({ default: module.Settings })));
 const SchoolDetail = React.lazy(() => import('./pages/SchoolDetail').then((module) => ({ default: module.SchoolDetail })));
@@ -98,6 +99,13 @@ const AppContent: React.FC = () => {
                   <SuperAdmin />
                </ProtectedRoute>
             } />
+
+            {/* Group Owner portfolio */}
+            <Route path="group" element={
+               <ProtectedRoute allowedRoles={[UserRole.GROUP_OWNER]}>
+                  <GroupPortal />
+               </ProtectedRoute>
+            } />
             <Route path="schools/:schoolId" element={
                <ProtectedRoute allowedRoles={[UserRole.SUPER_ADMIN]}>
                   <SchoolDetail />
@@ -160,6 +168,8 @@ const DashboardWrapper = () => {
      if (viewingSchoolId) return <Dashboard />;
      return <SuperAdmin />;
    }
+   // Group Owner (when not impersonating a branch) lands on the portfolio.
+   if (user?.role === UserRole.GROUP_OWNER) return <GroupPortal />;
    if (user?.role === UserRole.STUDENT) return <Navigate to="/student-portal" replace />;
    if (user?.role === UserRole.PARENT) return <Navigate to="/parent-portal" replace />;
    return <Dashboard />;

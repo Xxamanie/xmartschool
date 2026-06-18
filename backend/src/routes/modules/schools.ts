@@ -10,9 +10,11 @@ const router = Router();
 router.get(
   '/',
   requireAuth,
-  requireRole(UserRole.ADMIN, UserRole.SUPER_ADMIN),
-  asyncHandler(async (_req, res) => {
-    const response = await appService.getSchools();
+  requireRole(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.GROUP_OWNER),
+  asyncHandler(async (req, res) => {
+    // Group Owners see only their group's branches; others see all.
+    const groupId = req.auth?.role === UserRole.GROUP_OWNER ? req.auth?.groupId : undefined;
+    const response = await appService.getSchools(groupId);
     res.json(response);
   }),
 );
@@ -32,7 +34,25 @@ router.post(
   requireRole(UserRole.SUPER_ADMIN),
   asyncHandler(async (req, res) => {
     const payload = createSchema.parse(req.body);
-    const response = await appService.createSchool(payload);
+    const response = await appService.createSchool(payload, req.auth?.userId);
+    res.json(response);
+  }),
+);
+
+// SUPER_ADMIN impersonation: issues a real short-lived, audited session for the
+// target school's admin instead of a client-only role swap.
+const impersonateSchema = z.object({ schoolId: z.string().min(1) });
+
+router.post(
+  '/impersonate',
+  requireAuth,
+  requireRole(UserRole.SUPER_ADMIN, UserRole.GROUP_OWNER),
+  asyncHandler(async (req, res) => {
+    const { schoolId } = impersonateSchema.parse(req.body);
+    const response = await appService.impersonateSchoolAdmin(schoolId, req.auth!.userId, {
+      role: req.auth?.role,
+      groupId: req.auth?.groupId,
+    });
     res.json(response);
   }),
 );
@@ -79,7 +99,7 @@ router.delete(
   requireRole(UserRole.SUPER_ADMIN),
   asyncHandler(async (req, res) => {
     const { id } = idParam.parse(req.params);
-    const response = await appService.deleteSchool(id);
+    const response = await appService.deleteSchool(id, req.auth?.userId);
     res.json(response);
   }),
 );
@@ -93,7 +113,7 @@ router.patch(
   asyncHandler(async (req, res) => {
     const { id } = idParam.parse(req.params);
     const { status } = statusSchema.parse(req.body);
-    const response = await appService.updateSchoolStatus(id, status);
+    const response = await appService.updateSchoolStatus(id, status, req.auth?.userId);
     res.json(response);
   }),
 );

@@ -21,7 +21,7 @@ import {
 } from '../types';
 import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
-import { createSessionToken } from '../utils/session';
+import { createSessionToken, createImpersonationToken } from '../utils/session';
 import { env } from '../config/env';
 import {
   ActiveExam,
@@ -44,6 +44,7 @@ import {
   LiveClass,
   StaffMessage,
   TeacherAssignment,
+  AuditLogEntry,
 } from '../types';
 
 
@@ -83,6 +84,7 @@ const mapUserModel = (user: PrismaUserModel): User => ({
   role: user.role as UserRole,
   avatar: user.avatar ?? undefined,
   schoolId: user.schoolId ?? undefined,
+  groupId: (user as any).groupId ?? undefined,
   gender: (user.gender as User['gender']) ?? undefined,
   phone: user.phone ?? undefined,
   bio: user.bio ?? undefined,
@@ -220,7 +222,7 @@ const mapStudentModel = (student: PrismaStudentModel): Student => ({
   resultPinTerm: (student as any).resultPinTerm ?? undefined,
 });
 
-const mapSubjectModel = (subject: PrismaSubjectModel): Subject => ({
+export const mapSubjectModel = (subject: PrismaSubjectModel): Subject => ({
   id: subject.id,
   name: subject.name,
   teacherId: subject.teacherId ?? '',
@@ -556,6 +558,48 @@ export const appService = {
     }));
   },
 
+  // Mint a real, short-lived, attributable session for a school's admin so a
+  // SUPER_ADMIN can act inside that school. The returned token carries an
+  // `impersonatedBy` claim and the action is written to the audit log — unlike
+  // a purely client-side role swap, the backend authorises as the admin.
+  impersonateSchoolAdmin: async (
+    schoolId: string,
+    impersonatorId: string,
+    actor?: { role?: UserRole; groupId?: string },
+  ): Promise<ApiResponse<User>> => {
+    const school = await prisma.school.findUnique({
+      where: { id: schoolId },
+      select: { id: true, groupId: true } as any,
+    });
+    if (!school) return failure('School not found', {} as User);
+
+    // A Group Owner may only impersonate within their own group.
+    if (actor?.role === UserRole.GROUP_OWNER && (school as any).groupId !== actor.groupId) {
+      return failure('This school is not part of your group', {} as User);
+    }
+
+    const admin = await prisma.user.findFirst({
+      where: { schoolId, role: UserRole.ADMIN },
+      orderBy: { name: 'asc' },
+    });
+    if (!admin) return failure('No administrator account found for this school', {} as User);
+
+    await appService.writeAuditLog({
+      schoolId,
+      userId: impersonatorId,
+      action: 'IMPERSONATE_SCHOOL',
+      entity: 'School',
+      entityId: schoolId,
+      metadata: { impersonatedUserId: admin.id, impersonatedUserName: admin.name },
+    });
+
+    const mapped = mapUserModel(admin);
+    return success(
+      { ...mapped, authToken: createImpersonationToken(mapped, impersonatorId) },
+      'Impersonation session started',
+    );
+  },
+
   updateUserProfile: async (userId: string, updates: Partial<User>, actorSchoolId?: string): Promise<ApiResponse<User>> => {
 
     if (actorSchoolId) {
@@ -597,13 +641,19 @@ export const appService = {
     return success(true, 'Password changed successfully');
   },
 
-  getSchools: async (): Promise<ApiResponse<School[]>> => {
-    const schools = await prisma.school.findMany({ orderBy: { name: 'asc' } });
+  getSchools: async (groupId?: string): Promise<ApiResponse<School[]>> => {
+    // Exclude soft-deleted schools (deletedAt set). When groupId is provided
+    // (a Group Owner), restrict to that group's branches.
+    const schools = await prisma.school.findMany({
+      where: { deletedAt: null, ...(groupId ? { groupId } : {}) } as any,
+      orderBy: { name: 'asc' },
+    });
     return success(schools.map(mapSchoolModel));
   },
 
   createSchool: async (
     school: Partial<School> & { adminEmail?: string },
+    actorUserId?: string,
   ): Promise<ApiResponse<School & { tempAdminPassword?: string; adminEmail?: string }>> => {
     // ── Generate a unique readable school code ────────────────────────────
     const resolveCode = async (requested?: string): Promise<string> => {
@@ -667,6 +717,15 @@ export const appService = {
       });
     }
 
+    await appService.writeAuditLog({
+      schoolId: newSchool.id,
+      userId: actorUserId,
+      action: 'CREATE_SCHOOL',
+      entity: 'School',
+      entityId: newSchool.id,
+      metadata: { name: newSchool.name, code, adminEmail: school.adminEmail ?? null },
+    });
+
     const result: School & { tempAdminPassword?: string; adminEmail?: string } = {
       ...mapSchoolModel(newSchool),
       ...(tempAdminPassword ? { tempAdminPassword, adminEmail: school.adminEmail } : {}),
@@ -702,20 +761,56 @@ export const appService = {
     }
   },
 
-  deleteSchool: async (id: string): Promise<ApiResponse<boolean>> => {
+  // Soft-delete: mark the school as deleted rather than physically removing it
+  // (and cascading every student/teacher/record). Soft-deleted schools are
+  // hidden from getSchools. Requires the `deletedAt` column migration.
+  deleteSchool: async (id: string, actorUserId?: string): Promise<ApiResponse<boolean>> => {
     try {
-      await prisma.school.delete({ where: { id } });
+      const existing = await prisma.school.findUnique({
+        where: { id },
+        select: { id: true, name: true, code: true },
+      });
+      if (!existing) return failure('School not found', false as unknown as boolean);
+
+      await prisma.school.update({
+        where: { id },
+        data: { deletedAt: new Date(), status: 'Inactive' } as any,
+      });
+
+      await appService.writeAuditLog({
+        schoolId: id,
+        userId: actorUserId,
+        action: 'DELETE_SCHOOL',
+        entity: 'School',
+        entityId: id,
+        metadata: { name: existing.name, code: existing.code, soft: true },
+      });
+
       return success(true, 'School deleted successfully');
     } catch (error) {
       return failure('Unable to delete school', false as unknown as boolean);
     }
   },
 
-  updateSchoolStatus: async (id: string, status: 'Active' | 'Inactive'): Promise<ApiResponse<boolean>> => {
+  updateSchoolStatus: async (
+    id: string,
+    status: 'Active' | 'Inactive',
+    actorUserId?: string,
+  ): Promise<ApiResponse<boolean>> => {
     await prisma.school.update({
       where: { id },
       data: { status },
     });
+
+    await appService.writeAuditLog({
+      schoolId: id,
+      userId: actorUserId,
+      action: 'UPDATE_SCHOOL_STATUS',
+      entity: 'School',
+      entityId: id,
+      metadata: { status },
+    });
+
     return success(true);
   },
 
@@ -784,6 +879,61 @@ export const appService = {
     }));
 
     return success([...users.map(mapUserModel), ...studentAsUsers]);
+  },
+
+  // Server-side searchable, paginated user listing. Replaces shipping the
+  // entire (capped) user+student set to the browser and filtering client-side.
+  // `schoolId` scopes to one school (for ADMINs); omit for SUPER_ADMIN.
+  listUsers: async (params: {
+    schoolId?: string;
+    search?: string;
+    page?: number;
+    pageSize?: number;
+  }): Promise<ApiResponse<{ users: User[]; total: number; page: number; pageSize: number }>> => {
+    const page = Math.max(1, params.page ?? 1);
+    const pageSize = Math.min(100, Math.max(1, params.pageSize ?? 25));
+    const term = (params.search ?? '').trim();
+    const upperBound = page * pageSize;
+
+    const userWhere: Prisma.UserWhereInput = {
+      ...(params.schoolId ? { schoolId: params.schoolId } : {}),
+      ...(term
+        ? {
+            OR: [
+              { name: { contains: term, mode: 'insensitive' } },
+              { email: { contains: term, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
+
+    const studentWhere: Prisma.StudentWhereInput = {
+      ...(params.schoolId ? { schoolId: params.schoolId } : {}),
+      ...(term ? { name: { contains: term, mode: 'insensitive' } } : {}),
+    };
+
+    const [users, students, userCount, studentCount] = await Promise.all([
+      prisma.user.findMany({ where: userWhere, orderBy: { name: 'asc' }, take: upperBound }),
+      prisma.student.findMany({ where: studentWhere, orderBy: { name: 'asc' }, take: upperBound }),
+      prisma.user.count({ where: userWhere }),
+      prisma.student.count({ where: studentWhere }),
+    ]);
+
+    const studentAsUsers: User[] = students.map((student: PrismaStudentModel) => ({
+      id: student.id,
+      name: student.name,
+      role: UserRole.STUDENT,
+      email: `student.${student.id}@school.edu`,
+      schoolId: student.schoolId,
+      avatar: avatarFromName(student.name),
+      gender: student.gender as User['gender'],
+    }));
+
+    const merged = [...users.map(mapUserModel), ...studentAsUsers]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .slice((page - 1) * pageSize, upperBound);
+
+    return success({ users: merged, total: userCount + studentCount, page, pageSize });
   },
 
   createUserForSchool: async (
@@ -1109,12 +1259,15 @@ export const appService = {
       return failure('Cannot delete a student from another school', false as unknown as boolean);
     }
 
-    await prisma.student.delete({ where: { id: studentId } });
-
-    await prisma.school.update({
-      where: { id: student.schoolId },
-      data: { studentCount: { decrement: 1 } },
-    });
+    // Delete the student and decrement the school's counter atomically so the
+    // cached studentCount can never drift if one operation fails.
+    await prisma.$transaction([
+      prisma.student.delete({ where: { id: studentId } }),
+      prisma.school.update({
+        where: { id: student.schoolId },
+        data: { studentCount: { decrement: 1 } },
+      }),
+    ]);
 
     await appService.writeAuditLog({
       schoolId: student.schoolId,
@@ -3199,6 +3352,55 @@ export const appService = {
     });
   },
 
+  // Consolidated earnings across every branch in a group, plus a per-branch
+  // breakdown — the multi-school owner's financial bird's-eye view.
+  getGroupFinanceSummary: async (groupId: string, term?: string): Promise<ApiResponse<{
+    totals: { totalPayable: number; totalCollected: number; outstanding: number; studentCount: number; collectionRate: number };
+    branches: Array<{ schoolId: string; schoolName: string; totalPayable: number; totalCollected: number; outstanding: number; studentCount: number; fullyPaidCount: number; collectionRate: number }>;
+  }>> => {
+    const schools = await prisma.school.findMany({
+      where: { groupId, deletedAt: null } as any,
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+
+    const branches = [] as Array<{ schoolId: string; schoolName: string; totalPayable: number; totalCollected: number; outstanding: number; studentCount: number; fullyPaidCount: number; collectionRate: number }>;
+    const totals = { totalPayable: 0, totalCollected: 0, outstanding: 0, studentCount: 0, collectionRate: 0 };
+
+    for (const s of schools) {
+      const ledgers = await (prisma as any).studentFeeLedger.findMany({
+        where: { schoolId: s.id, ...(term ? { term } : {}) },
+        include: { lineItems: { include: { payments: true } } },
+      });
+      let payable = 0, collected = 0, fullyPaid = 0;
+      const seen = new Set<string>();
+      for (const ledger of ledgers) {
+        seen.add(ledger.studentId);
+        let lp = 0, lpaid = 0;
+        for (const item of ledger.lineItems) {
+          lp += item.payableAmount;
+          lpaid += item.payments.reduce((sum: number, p: any) => sum + p.amount, 0);
+        }
+        payable += lp; collected += lpaid;
+        if (lpaid >= lp && lp > 0) fullyPaid++;
+      }
+      const outstanding = Math.max(0, payable - collected);
+      branches.push({
+        schoolId: s.id, schoolName: s.name,
+        totalPayable: payable, totalCollected: collected, outstanding,
+        studentCount: seen.size, fullyPaidCount: fullyPaid,
+        collectionRate: payable > 0 ? Math.round((collected / payable) * 100) : 0,
+      });
+      totals.totalPayable += payable;
+      totals.totalCollected += collected;
+      totals.outstanding += outstanding;
+      totals.studentCount += seen.size;
+    }
+    totals.collectionRate = totals.totalPayable > 0 ? Math.round((totals.totalCollected / totals.totalPayable) * 100) : 0;
+
+    return success({ totals, branches });
+  },
+
   // ── Audit Log ────────────────────────────────────────────────────────────
 
   writeAuditLog: async (params: {
@@ -3225,13 +3427,13 @@ export const appService = {
     }
   },
 
-  getAuditLogs: async (schoolId: string, limit = 100): Promise<ApiResponse<any[]>> => {
+  getAuditLogs: async (schoolId: string, limit = 100): Promise<ApiResponse<AuditLogEntry[]>> => {
     const logs = await (prisma as any).auditLog.findMany({
       where: { schoolId },
       orderBy: { createdAt: 'desc' },
       take: limit,
     });
-    return success(logs.map((l: any) => ({
+    return success(logs.map((l: any): AuditLogEntry => ({
       id: l.id,
       schoolId: l.schoolId ?? undefined,
       userId: l.userId ?? undefined,

@@ -6,7 +6,8 @@ import {
   Save, User, Lock, Bell, Shield, CheckCircle2, AlertCircle,
   Building2, Calendar, Plus, Trash2, Star, Palette, Eye, EyeOff, ClipboardList,
 } from 'lucide-react';
-import { School, SchoolTerm, UserRole } from '../types';
+import { School, SchoolTerm, UserRole, AuditLogEntry } from '../types';
+import { PhotoUpload } from '../components/PhotoUpload';
 
 export const Settings: React.FC = () => {
   const { user, updateUser, effectiveSchoolId } = useAuth();
@@ -43,6 +44,17 @@ export const Settings: React.FC = () => {
       });
       if (res.ok) { updateUser(res.data); flash('Profile saved.', 'success'); }
       else flash(res.message || 'Failed to save.', 'error');
+    } catch { flash('Unexpected error.', 'error'); }
+    finally { setIsLoading(false); }
+  };
+
+  const handleAvatarChange = async (dataUrl: string) => {
+    if (!user) return;
+    setIsLoading(true);
+    try {
+      const res = await api.updateUserProfile(user.id, { avatar: dataUrl });
+      if (res.ok) { updateUser(res.data); flash('Avatar updated.', 'success'); }
+      else flash(res.message || 'Failed to update avatar.', 'error');
     } catch { flash('Unexpected error.', 'error'); }
     finally { setIsLoading(false); }
   };
@@ -130,7 +142,7 @@ export const Settings: React.FC = () => {
   }, [activeTab, effectiveSchoolId]);
 
   // ── Audit Logs ────────────────────────────────────────────────────────────
-  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
 
   const loadAuditLogs = async () => {
@@ -286,14 +298,13 @@ export const Settings: React.FC = () => {
           {/* ── Profile Tab ── */}
           {activeTab === 'profile' && (
             <div className="space-y-6">
-              <div className="flex items-center gap-6 mb-8">
-                <img src={user?.avatar} alt="Profile" className="w-24 h-24 rounded-full border-4 border-gray-100 shadow-sm object-cover" />
-                <div>
-                  <button className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
-                    Change Avatar
-                  </button>
-                  <p className="text-xs text-gray-500 mt-2">JPG, GIF or PNG. Max 800K</p>
-                </div>
+              <div className="mb-8">
+                <PhotoUpload
+                  label="Profile Photo"
+                  name={user?.name || 'Profile'}
+                  value={user?.avatar}
+                  onChange={handleAvatarChange}
+                />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
@@ -683,13 +694,13 @@ export const Settings: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {auditLogs.map((log: any, i: number) => (
+                      {auditLogs.map((log, i) => (
                         <tr key={log.id ?? i} className="hover:bg-gray-50">
                           <td className="px-4 py-3 whitespace-nowrap text-gray-500 text-xs">
                             {new Date(log.createdAt).toLocaleString()}
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap font-medium text-gray-800">
-                            {log.actorName ?? log.actorId ?? '—'}
+                            {log.userId ?? '—'}
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
                             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
@@ -697,7 +708,7 @@ export const Settings: React.FC = () => {
                             </span>
                           </td>
                           <td className="px-4 py-3 text-gray-600 max-w-xs truncate">
-                            {log.targetName ?? log.targetId ?? log.details ?? '—'}
+                            {log.entity}{log.entityId ? ` #${log.entityId}` : ''}
                           </td>
                         </tr>
                       ))}

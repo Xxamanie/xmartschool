@@ -73,89 +73,9 @@ router.patch(
   }),
 );
 
-router.get(
-  '/:id/sessions',
-  requireRole(UserRole.ADMIN, UserRole.TEACHER, UserRole.SUPER_ADMIN),
-  asyncHandler(async (req, res) => {
-    const { id } = z.object({ id: z.string() }).parse(req.params);
-    const response = await appService.getExamSessions(id);
-    res.json(response);
-  }),
-);
-
-const startSessionSchema = z.object({ studentId: z.string().optional() });
-
-router.post(
-  '/:id/sessions/start',
-  requireRole(UserRole.STUDENT, UserRole.ADMIN, UserRole.SUPER_ADMIN),
-  asyncHandler(async (req, res) => {
-    const { id } = z.object({ id: z.string() }).parse(req.params);
-    const { studentId } = startSessionSchema.parse(req.body);
-    const effectiveStudentId = req.auth?.role === UserRole.STUDENT ? req.auth.userId : studentId;
-    if (!effectiveStudentId) {
-      res.status(400).json({ ok: false, data: null, message: 'studentId required' });
-      return;
-    }
-    const callerSchoolId = req.auth?.role === UserRole.SUPER_ADMIN ? undefined : req.auth?.schoolId;
-    const response = await appService.startExamSession(id, effectiveStudentId, callerSchoolId);
-    res.json(response);
-  }),
-);
-
-const progressSchema = z.object({
-  studentId: z.string(),
-  progress: z.number().min(0).max(100),
-  answers: z.record(z.string()).optional(),
-});
-
-router.post(
-  '/:id/sessions/progress',
-  requireRole(UserRole.STUDENT, UserRole.ADMIN, UserRole.SUPER_ADMIN),
-  asyncHandler(async (req, res) => {
-    const { id } = z.object({ id: z.string() }).parse(req.params);
-    const { studentId, progress, answers } = progressSchema.parse(req.body);
-    const effectiveStudentId = req.auth?.role === UserRole.STUDENT ? req.auth.userId : studentId;
-    if (!effectiveStudentId) {
-      res.status(400).json({ ok: false, data: null, message: 'studentId required' });
-      return;
-    }
-    const response = await appService.updateExamSessionProgress(id, effectiveStudentId, progress, answers);
-    res.json(response);
-  }),
-);
-
-const submitSchema = z.object({
-  studentId: z.string(),
-  answers: z.record(z.string()),
-});
-
-router.post(
-  '/:id/sessions/submit',
-  requireRole(UserRole.STUDENT, UserRole.ADMIN, UserRole.SUPER_ADMIN),
-  asyncHandler(async (req, res) => {
-    const { id } = z.object({ id: z.string() }).parse(req.params);
-    const { studentId, answers } = submitSchema.parse(req.body);
-    const effectiveStudentId = req.auth?.role === UserRole.STUDENT ? req.auth.userId : studentId;
-    if (!effectiveStudentId) {
-      res.status(400).json({ ok: false, data: null, message: 'studentId required' });
-      return;
-    }
-    const response = await appService.submitExam(effectiveStudentId, answers, id);
-    res.json(response);
-  }),
-);
-
-const resetSchema = z.object({ studentId: z.string() });
-
-router.post(
-  '/:id/sessions/reset',
-  requireRole(UserRole.ADMIN, UserRole.SUPER_ADMIN),
-  asyncHandler(async (req, res) => {
-    const { id } = z.object({ id: z.string() }).parse(req.params);
-    const { studentId } = resetSchema.parse(req.body);
-    const response = await appService.resetStudentExam(id, studentId);
-    res.json(response);
-  }),
-);
+// Note: exam session endpoints (start/progress/submit/reset/list) live in
+// `examSessionsRouter` (mounted at /api/exam-sessions), which is what the
+// frontend actually calls. The equivalent `/:id/sessions*` routes that used
+// to live here were unused duplicates and have been removed.
 
 export { router as examsRouter };

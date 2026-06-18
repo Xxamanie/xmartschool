@@ -28,7 +28,9 @@ export const Layout: React.FC = () => {
                 <div className="bg-slate-900 text-amber-500 p-1 rounded">
                    <Crown size={18} fill="currentColor" />
                 </div>
-                <span>GOD MODE ACTIVE: You are currently unrestricted.</span>
+                <span>
+                  IMPERSONATING{user?.name ? ` ${user.name}` : ''} — acting as this school's admin. Actions are logged.
+                </span>
             </div>
             <button 
               onClick={stopImpersonating} 

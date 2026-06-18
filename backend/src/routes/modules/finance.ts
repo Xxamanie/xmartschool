@@ -216,4 +216,22 @@ router.get(
   }),
 );
 
+// ── Group (consolidated) Finance Summary — Group Owner only ───────────────
+router.get(
+  '/group-summary',
+  requireAuth,
+  requireRole(UserRole.GROUP_OWNER, UserRole.SUPER_ADMIN),
+  asyncHandler(async (req, res) => {
+    const { term, groupId: q } = z.object({ term: z.string().optional(), groupId: z.string().optional() }).parse(req.query);
+    // Group Owners are locked to their own group; SUPER_ADMIN may pass one.
+    const groupId = req.auth?.role === UserRole.GROUP_OWNER ? req.auth?.groupId : q;
+    if (!groupId) {
+      res.status(400).json({ ok: false, data: null, message: 'No group context' });
+      return;
+    }
+    const response = await appService.getGroupFinanceSummary(groupId, term);
+    res.json(response);
+  }),
+);
+
 export { router as financeRouter };

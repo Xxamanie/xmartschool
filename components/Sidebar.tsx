@@ -43,6 +43,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const { unreadCount: staffUnread } = useStaffRoom();
   const navigate = useNavigate();
   const isCreator = user?.role === UserRole.SUPER_ADMIN;
+  const isGroupOwner = user?.role === UserRole.GROUP_OWNER;
   const isScopedToSchool = isCreator && !!viewingSchoolId;
 
   const isCreatorTheme = isCreator;
@@ -73,6 +74,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       ];
     } else if (isCreator && isScopedToSchool) {
       return schoolNavItems;
+    } else if (user?.role === UserRole.GROUP_OWNER) {
+      return [
+        { to: '/', icon: Globe, label: 'Group Portfolio' },
+      ];
     } else if (user?.role === UserRole.STUDENT) {
       return [
         { to: '/student-portal', icon: FileText, label: 'My Result Slip' },
@@ -107,7 +112,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
         ${isImpersonating ? 'top-12 h-[calc(100vh-3rem)]' : 'top-0 h-screen'}
         ${isCreatorTheme
           ? 'bg-[#0a0a14] border-r border-white/[0.06]'
-          : 'bg-gradient-to-b from-[#1e0a4a] via-[#2a0f5e] to-[#1a0840] border-r border-white/[0.08]'
+          : isGroupOwner
+            ? 'bg-gradient-to-b from-[#1e1b4b] via-[#312e81] to-[#1e1b4b] border-r border-white/[0.08]'
+            : 'bg-gradient-to-b from-[#1e0a4a] via-[#2a0f5e] to-[#1a0840] border-r border-white/[0.08]'
         }
       `}
     >
@@ -118,18 +125,22 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
             w-9 h-9 rounded-xl flex items-center justify-center shadow-lg flex-shrink-0
             ${isCreatorTheme
               ? 'bg-gradient-to-br from-amber-400 to-amber-600 shadow-amber-500/30'
-              : 'bg-white/10 backdrop-blur-sm border border-white/20'
+              : isGroupOwner
+                ? 'bg-gradient-to-br from-indigo-400 to-indigo-600 shadow-indigo-500/30'
+                : 'bg-white/10 backdrop-blur-sm border border-white/20'
             }
           `}>
             {isCreatorTheme
               ? <Crown size={17} fill="currentColor" className="text-slate-900" />
-              : <GraduationCap size={18} className="text-white" />
+              : isGroupOwner
+                ? <Building2 size={17} className="text-white" />
+                : <GraduationCap size={18} className="text-white" />
             }
           </div>
           <div>
             <p className="text-[15px] font-bold tracking-tight text-white leading-none">SmartSchool</p>
-            <p className={`text-[10px] font-semibold uppercase tracking-widest mt-0.5 ${isCreatorTheme ? 'text-amber-500' : 'text-white/40'}`}>
-              {isScopedToSchool ? 'God Mode' : isCreatorTheme ? 'Creator' : user?.role === UserRole.STUDENT ? 'Student' : 'Admin Panel'}
+            <p className={`text-[10px] font-semibold uppercase tracking-widest mt-0.5 ${isCreatorTheme ? 'text-amber-500' : isGroupOwner ? 'text-indigo-300' : 'text-white/40'}`}>
+              {isScopedToSchool ? 'God Mode' : isCreatorTheme ? 'Creator' : isGroupOwner ? 'Group Owner' : user?.role === UserRole.STUDENT ? 'Student' : 'Admin Panel'}
             </p>
           </div>
         </div>
@@ -167,10 +178,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                 isActive
                   ? isCreatorTheme
                     ? 'bg-amber-500/15 text-amber-300 shadow-sm'
-                    : 'bg-white/12 text-white shadow-sm'
+                    : isGroupOwner
+                      ? 'bg-emerald-500/15 text-emerald-300 shadow-sm'
+                      : 'bg-white/12 text-white shadow-sm'
                   : isCreatorTheme
                     ? 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
-                    : 'text-white/50 hover:bg-white/8 hover:text-white/90'
+                    : isGroupOwner
+                      ? 'text-white/50 hover:bg-emerald-500/10 hover:text-emerald-200'
+                      : 'text-white/50 hover:bg-white/8 hover:text-white/90'
               }`
             }
           >
@@ -179,8 +194,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                 <item.icon
                   size={17}
                   className={isActive
-                    ? isCreatorTheme ? 'text-amber-400' : 'text-white'
-                    : isCreatorTheme ? 'text-slate-500' : 'text-white/40'
+                    ? isCreatorTheme ? 'text-amber-400' : isGroupOwner ? 'text-emerald-400' : 'text-white'
+                    : isCreatorTheme ? 'text-slate-500' : isGroupOwner ? 'text-emerald-600' : 'text-white/40'
                   }
                 />
                 {item.label}
@@ -201,7 +216,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
         {user?.role !== UserRole.STUDENT && (
           <div className="pt-4">
-            <p className={`px-3 pb-1.5 text-[10px] font-bold uppercase tracking-widest ${isCreatorTheme ? 'text-slate-600' : 'text-white/25'}`}>
+            <p className={`px-3 pb-1.5 text-[10px] font-bold uppercase tracking-widest ${isCreatorTheme ? 'text-slate-600' : isGroupOwner ? 'text-emerald-700/60' : 'text-white/25'}`}>
               Account
             </p>
             <NavLink
@@ -210,14 +225,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-150 ${
                   isActive
-                    ? isCreatorTheme ? 'bg-amber-500/15 text-amber-300' : 'bg-white/12 text-white'
-                    : isCreatorTheme ? 'text-slate-400 hover:bg-white/5 hover:text-slate-200' : 'text-white/50 hover:bg-white/8 hover:text-white/90'
+                    ? isCreatorTheme ? 'bg-amber-500/15 text-amber-300' : isGroupOwner ? 'bg-emerald-500/15 text-emerald-300' : 'bg-white/12 text-white'
+                    : isCreatorTheme ? 'text-slate-400 hover:bg-white/5 hover:text-slate-200' : isGroupOwner ? 'text-white/50 hover:bg-emerald-500/10 hover:text-emerald-200' : 'text-white/50 hover:bg-white/8 hover:text-white/90'
                 }`
               }
             >
               {({ isActive }) => (
                 <>
-                  <Settings size={17} className={isActive ? (isCreatorTheme ? 'text-amber-400' : 'text-white') : (isCreatorTheme ? 'text-slate-500' : 'text-white/40')} />
+                  <Settings size={17} className={isActive ? (isCreatorTheme ? 'text-amber-400' : isGroupOwner ? 'text-emerald-400' : 'text-white') : (isCreatorTheme ? 'text-slate-500' : isGroupOwner ? 'text-emerald-600' : 'text-white/40')} />
                   Settings
                 </>
               )}

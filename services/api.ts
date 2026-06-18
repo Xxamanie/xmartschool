@@ -1,4 +1,4 @@
-import { Student, Subject, ApiResponse, SchemeSubmission, Assessment, ResultData, School, User, UserRole, ActiveExam, ExamQuestion, ExamSession, Announcement, LiveClass, SchoolClassItem, StaffMessage, TeacherAssignment, Notification, NotificationAudience, PrivateConversation, PrivateConversationMessage, CalendarEvent, SchoolTerm, StudentFeeLedger, StudentFeePayment, AttendanceSummary } from '../types';
+import { Student, Subject, ApiResponse, SchemeSubmission, Assessment, ResultData, School, User, UserRole, ActiveExam, ExamQuestion, ExamSession, Announcement, LiveClass, LiveClassParticipant, LiveClassMessage, SchoolClassItem, StaffMessage, TeacherAssignment, Notification, NotificationAudience, PrivateConversation, PrivateConversationMessage, CalendarEvent, SchoolTerm, StudentFeeLedger, StudentFeePayment, AttendanceSummary, AuditLogEntry, FeeTemplate } from '../types';
 import apiClient, { buildSchoolScopedConfig } from '../src/utils/api';
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -235,7 +235,7 @@ export const api = {
     }
   },
 
-  getLiveClassMessages: async (liveClassId: string): Promise<ApiResponse<any[]>> => {
+  getLiveClassMessages: async (liveClassId: string): Promise<ApiResponse<LiveClassMessage[]>> => {
     try {
       const response = await apiClient.get(`/live-classes/${liveClassId}/messages`);
       const data = extractData(response) || [];
@@ -246,7 +246,7 @@ export const api = {
     }
   },
 
-  getLiveClassParticipants: async (liveClassId: string): Promise<ApiResponse<any[]>> => {
+  getLiveClassParticipants: async (liveClassId: string): Promise<ApiResponse<LiveClassParticipant[]>> => {
     try {
       const response = await apiClient.get(`/live-classes/${liveClassId}/participants`);
       const data = extractData(response) || [];
@@ -311,7 +311,7 @@ export const api = {
     }
   },
 
-  updateUserProfile: async (userId: string, updates: Pick<User, 'name' | 'phone' | 'bio'> & Partial<Pick<User, 'gender' | 'avatar'>>): Promise<ApiResponse<User>> => {
+  updateUserProfile: async (userId: string, updates: Partial<Pick<User, 'name' | 'phone' | 'bio' | 'gender' | 'avatar'>>): Promise<ApiResponse<User>> => {
     try {
       const response = await apiClient.put('/auth/profile', { userId, updates });
       return normalizeApiResponse<User>(response, 'Profile updated successfully');
@@ -357,6 +357,17 @@ export const api = {
     } catch (error) {
       console.error('Failed to create student:', error);
       return wrapError(error, {} as Student, 'Failed to create student');
+    }
+  },
+
+  getStudent: async (studentId: string): Promise<ApiResponse<Student>> => {
+    try {
+      const response = await apiClient.get(`/students/${studentId}`);
+      const data = extractData(response);
+      return wrapResponse(data);
+    } catch (error) {
+      console.error('Failed to get student:', error);
+      return wrapError(error, {} as Student, 'Failed to load student');
     }
   },
 
@@ -560,6 +571,33 @@ export const api = {
     } catch (error) {
       console.error('Failed to load users:', error);
       return wrapError(error, [], 'Failed to load users');
+    }
+  },
+
+  // Server-side searchable, paginated user listing for the Creator dashboard.
+  searchUsers: async (params: { search?: string; page?: number; pageSize?: number } = {}):
+    Promise<ApiResponse<{ users: User[]; total: number; page: number; pageSize: number }>> => {
+    try {
+      const qs = new URLSearchParams();
+      if (params.search) qs.set('search', params.search);
+      if (params.page) qs.set('page', String(params.page));
+      if (params.pageSize) qs.set('pageSize', String(params.pageSize));
+      const response = await apiClient.get(`/users/search?${qs}`);
+      return normalizeApiResponse<{ users: User[]; total: number; page: number; pageSize: number }>(response);
+    } catch (error) {
+      console.error('Failed to search users:', error);
+      return wrapError(error, { users: [], total: 0, page: 1, pageSize: 25 }, 'Failed to load users');
+    }
+  },
+
+  // Start a real, audited impersonation session for a school's admin.
+  impersonateSchool: async (schoolId: string): Promise<ApiResponse<User>> => {
+    try {
+      const response = await apiClient.post('/schools/impersonate', { schoolId });
+      return normalizeApiResponse<User>(response, 'Impersonation session started');
+    } catch (error) {
+      console.error('Failed to impersonate school:', error);
+      return wrapError(error, {} as User, 'Failed to start impersonation');
     }
   },
 
@@ -1111,7 +1149,7 @@ export const api = {
 
   // ── Finance ───────────────────────────────────────────────────────────────
 
-  getFeeTemplates: async (schoolId: string, term?: string): Promise<ApiResponse<any[]>> => {
+  getFeeTemplates: async (schoolId: string, term?: string): Promise<ApiResponse<FeeTemplate[]>> => {
     try {
       const qs = new URLSearchParams({ schoolId });
       if (term) qs.set('term', term);
@@ -1131,7 +1169,7 @@ export const api = {
     scopeType?: string;
     scopeId?: string;
     lines?: { title: string; key: string; defaultAmount?: number }[];
-  }): Promise<ApiResponse<any>> => {
+  }): Promise<ApiResponse<FeeTemplate | null>> => {
     try {
       const response = await apiClient.post('/finance/templates', payload);
       const data = extractData(response);
@@ -1229,9 +1267,24 @@ export const api = {
     }
   },
 
+  // Consolidated earnings across a group's branches (Group Owner).
+  getGroupFinanceSummary: async (term?: string): Promise<ApiResponse<{
+    totals: { totalPayable: number; totalCollected: number; outstanding: number; studentCount: number; collectionRate: number };
+    branches: Array<{ schoolId: string; schoolName: string; totalPayable: number; totalCollected: number; outstanding: number; studentCount: number; fullyPaidCount: number; collectionRate: number }>;
+  }>> => {
+    try {
+      const qs = term ? `?term=${encodeURIComponent(term)}` : '';
+      const response = await apiClient.get(`/finance/group-summary${qs}`);
+      return normalizeApiResponse(response);
+    } catch (error) {
+      console.error('Failed to get group finance summary:', error);
+      return wrapError(error, { totals: { totalPayable: 0, totalCollected: 0, outstanding: 0, studentCount: 0, collectionRate: 0 }, branches: [] }, 'Failed to load group finance');
+    }
+  },
+
   // ── Audit Logs ────────────────────────────────────────────────────────────
 
-  getAuditLogs: async (schoolId: string, limit = 100): Promise<ApiResponse<any[]>> => {
+  getAuditLogs: async (schoolId: string, limit = 100): Promise<ApiResponse<AuditLogEntry[]>> => {
     try {
       const response = await apiClient.get(`/audit?schoolId=${schoolId}&limit=${limit}`);
       const data = extractData(response) ?? [];

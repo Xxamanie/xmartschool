@@ -172,7 +172,7 @@ export const PhotoUpload: React.FC<PhotoUploadProps> = ({
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="rounded-xl overflow-hidden bg-black w-full aspect-video">
+                <div className="relative rounded-xl overflow-hidden bg-black w-full aspect-video">
                   <video
                     ref={videoRef}
                     autoPlay

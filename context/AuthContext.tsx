@@ -26,6 +26,7 @@ interface AuthContextType {
   viewingSchoolId: string | null;
   setViewingSchoolId: (schoolId: string | null) => void;
   isCreator: boolean;
+  isGroupOwner: boolean;
   effectiveSchoolId: string | null | undefined;
 }
 
@@ -43,8 +44,13 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
   // does not restore a demo session after Supabase fires SIGNED_OUT.
   const loggingOutRef = useRef(false);
 
+  // Holds the super-admin's own auth token while impersonating, so it can be
+  // restored on exit. null means "no demo token — fall back to Supabase".
+  const originalTokenRef = useRef<string | null>(null);
+
   const isCreator = user?.role === UserRole.SUPER_ADMIN;
-  const effectiveSchoolId = isCreator ? viewingSchoolId : user?.schoolId;
+  const isGroupOwner = user?.role === UserRole.GROUP_OWNER;
+  const effectiveSchoolId = isCreator || isGroupOwner ? viewingSchoolId : user?.schoolId;
 
   const persistDemoSession = (nextUser: User) => {
     if (nextUser.authToken) {
@@ -240,19 +246,23 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
     setError(null);
 
     try {
-      const schoolsRes = await api.getSchools();
-      const school = schoolsRes.data.find((s) => s.id === schoolId);
-      if (!school) throw new Error('School not found');
+      // Ask the backend to mint a real, short-lived, audited session for the
+      // school's admin. The returned token carries an `impersonatedBy` claim,
+      // so the backend authorises as the admin (not the super-admin) and every
+      // action is attributable — unlike a purely client-side role swap.
+      const res = await api.impersonateSchool(schoolId);
+      if (!res.ok || !res.data?.authToken) {
+        throw new Error(res.message || 'Failed to start impersonation');
+      }
+
+      // Preserve the super-admin's current token so we can restore it on exit.
+      originalTokenRef.current = window.localStorage.getItem(DEMO_AUTH_TOKEN_KEY);
+
+      // Swap the active token to the impersonation token so apiClient uses it.
+      window.localStorage.setItem(DEMO_AUTH_TOKEN_KEY, res.data.authToken);
 
       setOriginalUser(user);
-      setUser({
-        id: `imp_${school.id}`,
-        name: `${school.adminName} (Impersonated)`,
-        email: `admin@${school.code.toLowerCase()}.edu`,
-        role: UserRole.ADMIN,
-        schoolId: school.id,
-        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(school.adminName)}&background=random`,
-      });
+      setUser(res.data);
     } catch (error: any) {
       console.error('Impersonation error:', error);
       setError(error.message || 'Failed to impersonate school');
@@ -263,6 +273,15 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
   };
 
   const stopImpersonating = () => {
+    // Restore the super-admin's original token (or fall back to Supabase if
+    // there wasn't one), then restore the original user object.
+    if (originalTokenRef.current) {
+      window.localStorage.setItem(DEMO_AUTH_TOKEN_KEY, originalTokenRef.current);
+    } else {
+      window.localStorage.removeItem(DEMO_AUTH_TOKEN_KEY);
+    }
+    originalTokenRef.current = null;
+
     if (originalUser) {
       setUser(originalUser);
       setOriginalUser(null);
@@ -309,6 +328,7 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
     viewingSchoolId,
     setViewingSchoolId,
     isCreator,
+    isGroupOwner,
     effectiveSchoolId,
   };
 
@@ -320,6 +340,7 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
 };
 
 export const useAuth = (): AuthContextType => {
+
   const context = useContext(AuthContext);
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');

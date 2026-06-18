@@ -39,15 +39,9 @@ router.post(
   }),
 );
 
-router.post(
-  '/student',
-  authRateLimiter,
-  asyncHandler(async (req, res) => {
-    const { schoolCode, studentCode } = studentSchema.parse(req.body);
-    const response = await appService.verifyStudent(schoolCode, studentCode);
-    res.json(response);
-  }),
-);
+// Note: `POST /student` used to be a duplicate of `POST /verify-student`
+// above (same handler, same schema). The frontend only calls
+// `/auth/verify-student`, so the duplicate route has been removed.
 
 const updateSchema = z.object({
   userId: z.string().min(1),
@@ -56,7 +50,10 @@ const updateSchema = z.object({
     phone: z.string().trim().max(40).optional(),
     bio: z.string().trim().max(1000).optional(),
     gender: z.enum(['Male', 'Female']).optional(),
-    avatar: z.string().url().max(2048).optional(),
+    // Avatars are stored as either a regular URL or a compressed data: URL
+    // (see components/PhotoUpload.tsx), so allow a much larger length than a
+    // typical URL.
+    avatar: z.string().url().max(2_000_000).optional(),
   }).strict(),
 });
 

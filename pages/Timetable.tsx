@@ -3,6 +3,7 @@ import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { SchoolClassItem, TeacherAssignment } from '../types';
 import { Grid3x3, Download, Printer } from 'lucide-react';
+import { colorForString } from '../src/utils/colorHash';
 
 type ClassAssignment = TeacherAssignment & { teacherName?: string };
 
@@ -28,9 +29,7 @@ const COLORS = [
   'bg-teal-100 text-teal-800 border-teal-200',
 ];
 
-const colorForSubject = (name: string) => COLORS[
-  [...name].reduce((acc, c) => acc + c.charCodeAt(0), 0) % COLORS.length
-];
+const colorForSubject = (name: string) => colorForString(name, COLORS);
 
 // Deterministic "timetable" generated from TeacherAssignment data.
 // Since no explicit scheduling DB exists yet, we distribute subjects evenly across the week.

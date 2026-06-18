@@ -3,14 +3,15 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { MessageCircle, Users, Hand, Video, Mic, Phone, Send, Settings } from 'lucide-react';
+import { LiveClass, LiveClassParticipant, LiveClassMessage } from '../types';
 
 export const LiveClassRoom: React.FC = () => {
   const { classId } = useParams<{ classId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [liveClass, setLiveClass] = useState<any>(null);
-  const [participants, setParticipants] = useState<any[]>([]);
-  const [messages, setMessages] = useState<any[]>([]);
+  const [liveClass, setLiveClass] = useState<LiveClass | null>(null);
+  const [participants, setParticipants] = useState<LiveClassParticipant[]>([]);
+  const [messages, setMessages] = useState<LiveClassMessage[]>([]);
   const [messageInput, setMessageInput] = useState('');
   const [cameraOn, setCameraOn] = useState(false);
   const [microphoneOn, setMicrophoneOn] = useState(false);
@@ -31,7 +32,7 @@ export const LiveClassRoom: React.FC = () => {
       try {
         const classesRes = await api.getLiveClasses();
         if (classesRes.ok) {
-          const cls = classesRes.data.find((c: any) => c.id === classId);
+          const cls = classesRes.data.find((c) => c.id === classId);
           if (cls) {
             setLiveClass(cls);
             if (user?.id) {
@@ -117,7 +118,12 @@ export const LiveClassRoom: React.FC = () => {
   const handleStartRecording = async () => {
     if (!classId) return;
     try {
-      const recordingUrl = `${classId}-recording-${Date.now()}`;
+      // The backend requires recordingUrl to be a valid URL. There is no real
+      // recording storage yet, so derive a placeholder URL from the meeting
+      // link (falling back to a synthetic but URL-shaped value) rather than
+      // sending a bare identifier that fails validation.
+      const baseUrl = liveClass?.meetingLink || `https://recordings.smartschool.local/${classId}`;
+      const recordingUrl = `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}recordingId=${classId}-${Date.now()}`;
       const res = await api.startLiveClassRecording(classId, recordingUrl);
       if (res.ok) {
         setRecording(true);

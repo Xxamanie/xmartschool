@@ -72,20 +72,8 @@ router.put(
   }),
 );
 
-router.post(
-  '/save',
-  requireAuth,
-  requireSchoolContext,
-  requireRole(UserRole.ADMIN, UserRole.TEACHER, UserRole.SUPER_ADMIN),
-  asyncHandler(async (req, res) => {
-    const assessments = parseAssessmentsPayload(req.body);
-    const response = await appService.saveAssessments(
-      assessments as any,
-      req.auth?.role === UserRole.SUPER_ADMIN ? undefined : req.auth?.schoolId,
-      req.auth?.role === UserRole.TEACHER ? req.auth?.userId : undefined,
-    );
-    res.json(response);
-  }),
-);
+// Note: `POST /save` used to be a duplicate of `PUT /` above (same handler,
+// same schema). The frontend only calls `PUT /assessments`, so the
+// duplicate route has been removed.
 
 export { router as assessmentsRouter };

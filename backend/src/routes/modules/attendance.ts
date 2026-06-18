@@ -64,20 +64,9 @@ const parseAttendancePayload = (body: unknown) => {
   return payload.updates;
 };
 
-router.post(
-  '/',
-  requireAuth,
-  requireSchoolContext,
-  requireRole(UserRole.ADMIN, UserRole.TEACHER, UserRole.SUPER_ADMIN),
-  asyncHandler(async (req, res) => {
-    const payload = parseAttendancePayload(req.body);
-    const response = await appService.markAttendance(
-      payload,
-      req.auth?.role === UserRole.SUPER_ADMIN ? undefined : req.auth?.schoolId,
-    );
-    res.json(response);
-  }),
-);
+// Note: `POST /` used to be a duplicate of `POST /batch` below (same
+// handler, same schema). The frontend only calls `/attendance/batch`, so
+// the duplicate route has been removed.
 
 router.post(
   '/batch',

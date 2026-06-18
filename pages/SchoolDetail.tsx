@@ -2,19 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { School, User, UserRole, Student } from '../types';
 import { api } from '../services/api';
-import { useAuth } from '../context/AuthContext';
-import { 
+import {
   Building2, MapPin, Users, ArrowLeft, Search, Filter,
   UserPlus, GraduationCap, BookOpen, CalendarCheck,
-  Mail, Phone, Shield, Settings, Crown
+  Mail, Phone, Shield, Crown
 } from 'lucide-react';
 
 export const SchoolDetail: React.FC = () => {
   const { schoolId } = useParams<{ schoolId: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const isCreator = user?.role === UserRole.SUPER_ADMIN;
-  
   const [school, setSchool] = useState<School | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
   const [staff, setStaff] = useState<User[]>([]);
@@ -125,11 +121,6 @@ export const SchoolDetail: React.FC = () => {
           }`}>
             {school.status}
           </span>
-          {isCreator && (
-            <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-              <Settings size={20} />
-            </button>
-          )}
         </div>
       </div>
 

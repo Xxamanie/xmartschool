@@ -5,11 +5,18 @@ type SessionPayload = {
   sub: string;
   role: UserRole;
   schoolId?: string;
+  groupId?: string;
   exp: number;
+  // When present, this session was minted by a SUPER_ADMIN impersonating
+  // another account. The value is the impersonator's user id, so every
+  // action taken during impersonation remains attributable.
+  impersonatedBy?: string;
 };
 
 const SESSION_SECRET = process.env.SESSION_SECRET as string;
 const SESSION_TTL_MS = 1000 * 60 * 60 * 12;
+// Impersonation sessions are deliberately short-lived (30 min).
+const IMPERSONATION_TTL_MS = 1000 * 60 * 30;
 
 const encode = (value: string) => Buffer.from(value, 'utf8').toString('base64url');
 const decode = (value: string) => Buffer.from(value, 'base64url').toString('utf8');
@@ -22,7 +29,24 @@ export const createSessionToken = (user: User): string => {
     sub: user.id,
     role: user.role,
     schoolId: user.schoolId,
+    groupId: user.groupId,
     exp: Date.now() + SESSION_TTL_MS,
+  };
+
+  const encodedPayload = encode(JSON.stringify(payload));
+  const signature = sign(encodedPayload);
+  return `${encodedPayload}.${signature}`;
+};
+
+// Mints a short-lived session for `target` that records which super-admin
+// (`impersonatorId`) created it. Used by the SUPER_ADMIN impersonation flow.
+export const createImpersonationToken = (user: User, impersonatorId: string): string => {
+  const payload: SessionPayload = {
+    sub: user.id,
+    role: user.role,
+    schoolId: user.schoolId,
+    exp: Date.now() + IMPERSONATION_TTL_MS,
+    impersonatedBy: impersonatorId,
   };
 
   const encodedPayload = encode(JSON.stringify(payload));

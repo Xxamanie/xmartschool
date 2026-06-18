@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../../utils/asyncHandler';
-import { appService } from '../../services/appService';
+import { appService, mapSubjectModel } from '../../services/appService';
 import { requireAuth, requireRole } from '../../middleware/auth';
 import { prisma } from '../../lib/prisma';
 import { UserRole } from '../../types';
@@ -56,7 +56,7 @@ router.put(
       res.status(403).json({ ok: false, data: null, message: 'Forbidden' }); return;
     }
     const updated = await prisma.subject.update({ where: { id }, data: updates });
-    res.json({ ok: true, data: updated });
+    res.json({ ok: true, data: mapSubjectModel(updated) });
   }),
 );
 

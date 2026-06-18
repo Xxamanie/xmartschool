@@ -4,8 +4,6 @@ import {
   FileText,
   X,
   CheckCircle2,
-  Download,
-  Eye,
   Clock,
 } from 'lucide-react';
 import { api } from '../services/api';
@@ -102,20 +100,20 @@ export const SchemeOfWork: React.FC = () => {
     if (!file || !selectedSubject) return;
     setUploading(true);
     try {
-      await api.uploadScheme(file, { term: selectedTerm, year: '2024', subject: selectedSubject });
+      const currentYear = new Date().getFullYear().toString();
+      const result = await api.uploadScheme(file, { term: selectedTerm, year: currentYear, subject: selectedSubject });
+      if (!result.ok) {
+        throw new Error(result.message || 'Upload failed');
+      }
       setSuccess(true);
-      
-      // Create a new local submission entry to update UI immediately
-      const newSubmission: SchemeSubmission = {
-        id: Math.random().toString(36).substring(2, 9),
-        subjectName: selectedSubject,
-        term: selectedTerm,
-        uploadDate: new Date().toISOString().split('T')[0],
-        status: 'Pending',
-        fileName: file.name,
-      };
-      
-      setHistory((prev) => [newSubmission, ...prev]);
+
+      // Refresh history from the backend so the new submission reflects its
+      // real id/status rather than a guessed local placeholder.
+      const historyRes = await api.getSchemes();
+      if (historyRes.ok) {
+        setHistory(historyRes.data);
+      }
+
       setFile(null);
     } catch (e) {
       console.error(e);
@@ -320,14 +318,6 @@ export const SchemeOfWork: React.FC = () => {
                       <span className="text-xs text-gray-400 truncate max-w-[100px]">
                         {item.fileName}
                       </span>
-                      <div className="flex gap-2">
-                        <button className="text-gray-400 hover:text-primary-600">
-                          <Eye size={14} />
-                        </button>
-                        <button className="text-gray-400 hover:text-primary-600">
-                          <Download size={14} />
-                        </button>
-                      </div>
                     </div>
                   </div>
                 ))

@@ -575,13 +575,16 @@ export const Notifications: React.FC = () => {
 
   const markAllRead = async () => {
     const unread = notifications.filter((n) => !n.readAt);
-    await Promise.all(unread.map((n) => api.markNotificationRead(n.id)));
-    setNotifications((prev) => prev.map((n) => ({ ...n, readAt: n.readAt ?? new Date().toISOString() })));
+    const results = await Promise.all(unread.map((n) => api.markNotificationRead(n.id)));
+    const succeededIds = new Set(unread.filter((_, i) => results[i].ok).map((n) => n.id));
+    if (succeededIds.size === 0) return;
+    setNotifications((prev) => prev.map((n) => (succeededIds.has(n.id) ? { ...n, readAt: n.readAt ?? new Date().toISOString() } : n)));
     refreshBadge();
   };
 
-  const markOne = (id: string) => {
-    api.markNotificationRead(id);
+  const markOne = async (id: string) => {
+    const res = await api.markNotificationRead(id);
+    if (!res.ok) return;
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, readAt: new Date().toISOString() } : n)));
     refreshBadge();
   };
