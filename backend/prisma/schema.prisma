@@ -473,6 +473,27 @@ model TeacherAssignment {
   @@unique([teacherId, subjectId, schoolClassId])
 }
 
+// One scheduled lesson in a school's weekly timetable.
+// day: 0=Mon … 4=Fri ; period: 0-based lesson period index.
+// Relation-light (ids only) to keep the model self-contained.
+model TimetableEntry {
+  id            String   @id @default(cuid())
+  schoolId      String
+  schoolClassId String
+  day           Int
+  period        Int
+  subjectId     String
+  subjectName   String   // denormalized for fast, join-free rendering
+  teacherId     String?
+  teacherName   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([schoolClassId, day, period])
+  @@index([schoolId])
+  @@index([teacherId])
+}
+
 enum StaffMessageType {
   text
   image

@@ -1,7 +1,7 @@
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { Request } from 'express';
 
-const resolveClientIp = (req: Request) => {
+const resolveClientIp = (req: Request): string => {
   const xff = req.headers['x-forwarded-for'];
   if (typeof xff === 'string') {
     return xff.split(',')[0].trim();
@@ -9,8 +9,8 @@ const resolveClientIp = (req: Request) => {
   return req.ip || req.socket.remoteAddress || 'unknown';
 };
 
-const schoolAwareKeyGenerator = (req: Request) => {
-  const ip = resolveClientIp(req);
+const schoolAwareKeyGenerator = (req: Request): string => {
+  const ip = ipKeyGenerator(resolveClientIp(req));
   const schoolId = req.auth?.schoolId ?? 'anonymous';
   return `${schoolId}:${ip}`;
 };
@@ -20,7 +20,7 @@ export const authRateLimiter = rateLimit({
   limit: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: resolveClientIp,
+  keyGenerator: (req) => ipKeyGenerator(resolveClientIp(req)),
   message: {
     ok: false,
     data: null,
@@ -33,7 +33,7 @@ export const bruteForceRateLimiter = rateLimit({
   limit: 5,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: resolveClientIp,
+  keyGenerator: (req) => ipKeyGenerator(resolveClientIp(req)),
   message: {
     ok: false,
     data: null,

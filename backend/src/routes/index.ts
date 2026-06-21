@@ -27,6 +27,7 @@ import { termsRouter } from './modules/terms';
 import { auditRouter } from './modules/audit';
 import { parentsRouter } from './modules/parents';
 import { aiRouter } from './modules/ai';
+import { timetableRouter } from './modules/timetable';
 
 export const registerRoutes = (app: Express) => {
 
@@ -59,5 +60,6 @@ export const registerRoutes = (app: Express) => {
   app.use('/api/audit', auditRouter);
   app.use('/api/parents', parentsRouter);
   app.use('/api/ai', aiRouter);
+  app.use('/api/timetable', timetableRouter);
 };
 

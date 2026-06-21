@@ -81,6 +81,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     } else if (user?.role === UserRole.STUDENT) {
       return [
         { to: '/student-portal', icon: FileText, label: 'My Result Slip' },
+        { to: '/timetable', icon: Grid3x3, label: 'Timetable' },
         { to: '/notifications', icon: Bell, label: 'Notifications' },
         { to: '/messages', icon: MessageCircle, label: 'Ask a Teacher' },
       ];

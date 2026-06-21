@@ -135,7 +135,7 @@ const AppContent: React.FC = () => {
             <Route path="messages" element={<ProtectedRoute><PrivateMessages /></ProtectedRoute>} />
             
             <Route path="finance" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.SUPER_ADMIN]}><Finance /></ProtectedRoute>} />
-            <Route path="timetable" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER]}><Timetable /></ProtectedRoute>} />
+            <Route path="timetable" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.TEACHER, UserRole.STUDENT]}><Timetable /></ProtectedRoute>} />
             <Route path="parent-portal" element={<ProtectedRoute allowedRoles={[UserRole.PARENT]}><ParentPortal /></ProtectedRoute>} />
             <Route path="settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
           </Route>

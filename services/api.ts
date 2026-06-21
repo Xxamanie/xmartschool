@@ -563,6 +563,41 @@ export const api = {
     }
   },
 
+  // Creator: register a school group + its owner login in one step.
+  createGroupOwner: async (payload: { groupName: string; ownerName: string; ownerEmail: string }):
+    Promise<ApiResponse<{ groupId: string; groupName: string; ownerEmail: string; tempPassword: string }>> => {
+    try {
+      const response = await apiClient.post('/schools/group-owner', payload);
+      return normalizeApiResponse(response, 'Group owner created successfully');
+    } catch (error) {
+      console.error('Failed to create group owner:', error);
+      return wrapError(error, { groupId: '', groupName: '', ownerEmail: '', tempPassword: '' }, 'Failed to create group owner');
+    }
+  },
+
+  // Creator: list school groups (with branch counts).
+  getGroups: async (): Promise<ApiResponse<Array<{ id: string; name: string; ownerId?: string; schoolCount: number }>>> => {
+    try {
+      const response = await apiClient.get('/schools/groups');
+      const data = extractData(response) || [];
+      return wrapResponse(data);
+    } catch (error) {
+      console.error('Failed to load groups:', error);
+      return wrapError(error, [], 'Failed to load groups');
+    }
+  },
+
+  // Creator: assign (or clear, with null) the group a school belongs to.
+  assignSchoolToGroup: async (schoolId: string, groupId: string | null): Promise<ApiResponse<boolean>> => {
+    try {
+      const response = await apiClient.patch(`/schools/${schoolId}/group`, { groupId });
+      return normalizeApiResponse<boolean>(response, 'School group updated');
+    } catch (error) {
+      console.error('Failed to assign school group:', error);
+      return wrapError(error, false, 'Failed to update school group');
+    }
+  },
+
   getAllUsers: async (): Promise<ApiResponse<User[]>> => {
     try {
       const response = await apiClient.get('/users');
@@ -1279,6 +1314,65 @@ export const api = {
     } catch (error) {
       console.error('Failed to get group finance summary:', error);
       return wrapError(error, { totals: { totalPayable: 0, totalCollected: 0, outstanding: 0, studentCount: 0, collectionRate: 0 }, branches: [] }, 'Failed to load group finance');
+    }
+  },
+
+  // Add a subject to a school (no teacher required — assign later in Teachers).
+  addSchoolSubject: async (name: string, schoolId?: string): Promise<ApiResponse<Subject>> => {
+    try {
+      const response = await apiClient.post('/subjects', { name, ...(schoolId ? { schoolId } : {}) });
+      const data = extractData(response);
+      return wrapResponse(data, 'Subject added');
+    } catch (error) {
+      console.error('Failed to add subject:', error);
+      return wrapError(error, {} as Subject, 'Failed to add subject');
+    }
+  },
+
+  // ── Timetable ─────────────────────────────────────────────────────────────
+
+  getTimetable: async (schoolId?: string): Promise<ApiResponse<import('../types').TimetableEntry[]> & { config?: { days: number; periods: number } }> => {
+    try {
+      const qs = schoolId ? `?schoolId=${schoolId}` : '';
+      const response = await apiClient.get(`/timetable${qs}`);
+      const body: any = response.data;
+      return { ok: !!body?.ok, data: body?.data || [], message: body?.message, config: body?.config };
+    } catch (error) {
+      console.error('Failed to load timetable:', error);
+      return { ...wrapError(error, [], 'Failed to load timetable') } as any;
+    }
+  },
+
+  generateTimetable: async (schoolId?: string): Promise<ApiResponse<{ placed: number; classes: number }>> => {
+    try {
+      const response = await apiClient.post('/timetable/generate', {}, buildSchoolScopedConfig(schoolId));
+      return normalizeApiResponse(response, 'Timetable generated');
+    } catch (error) {
+      console.error('Failed to generate timetable:', error);
+      return wrapError(error, { placed: 0, classes: 0 }, 'Failed to generate timetable');
+    }
+  },
+
+  updateTimetableSlot: async (
+    payload: { schoolClassId: string; day: number; period: number; subjectId: string | null },
+    schoolId?: string,
+  ): Promise<ApiResponse<import('../types').TimetableEntry | null>> => {
+    try {
+      const response = await apiClient.put('/timetable/slot', payload, buildSchoolScopedConfig(schoolId));
+      return normalizeApiResponse(response, 'Slot updated');
+    } catch (error: any) {
+      console.error('Failed to update slot:', error);
+      return wrapError(error, null, error?.response?.data?.message || 'Failed to update slot');
+    }
+  },
+
+  clearTimetable: async (schoolId?: string): Promise<ApiResponse<boolean>> => {
+    try {
+      const response = await apiClient.delete('/timetable', buildSchoolScopedConfig(schoolId));
+      return normalizeApiResponse<boolean>(response, 'Timetable cleared');
+    } catch (error) {
+      console.error('Failed to clear timetable:', error);
+      return wrapError(error, false, 'Failed to clear timetable');
     }
   },
 

@@ -20,6 +20,7 @@ import {
   StudentFeePayment,
 } from '../types';
 import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
 import { prisma } from '../lib/prisma';
 import { createSessionToken, createImpersonationToken } from '../utils/session';
 import { env } from '../config/env';
@@ -133,6 +134,7 @@ const getDemoUserByEmail = (email: string): User | null => {
 
 const mapSchoolModel = (school: PrismaSchoolModel): School => ({
   id: school.id,
+  groupId: (school as any).groupId ?? undefined,
   name: school.name,
   code: school.code ?? '',
   region: school.region ?? '',
@@ -510,7 +512,6 @@ export const appService = {
     }
 
     try {
-      const bcrypt = await import('bcryptjs');
       const hash = (user as any).password as string | undefined;
       if (!hash) {
         return failure('Invalid credentials', {} as User);
@@ -600,6 +601,95 @@ export const appService = {
     );
   },
 
+  // ── School Groups (multi-branch owners) ───────────────────────────────────
+
+  // Creator registers a school group and its owner login in one step.
+  createGroupOwner: async (
+    payload: { groupName: string; ownerName: string; ownerEmail: string },
+    actorUserId?: string,
+  ): Promise<ApiResponse<{ groupId: string; groupName: string; ownerEmail: string; tempPassword: string }>> => {
+    const email = payload.ownerEmail.trim().toLowerCase();
+    if (!payload.groupName.trim()) return failure('Group name is required', {} as any);
+    if (!payload.ownerName.trim()) return failure('Owner name is required', {} as any);
+    if (!email) return failure('Owner email is required', {} as any);
+
+    const existing = await prisma.user.findFirst({ where: { email }, select: { id: true } });
+    if (existing) return failure(`An account with email "${payload.ownerEmail}" already exists`, {} as any);
+
+    const group = await (prisma as any).schoolGroup.create({
+      data: { name: payload.groupName.trim() },
+    });
+
+    const bcrypt = await import('bcryptjs');
+    const tempPassword = crypto.randomBytes(10).toString('base64url');
+    const passwordHash = await bcrypt.hash(tempPassword, 10);
+
+    const owner = await prisma.user.create({
+      data: {
+        name: payload.ownerName.trim(),
+        email,
+        password: passwordHash,
+        role: UserRole.GROUP_OWNER,
+        groupId: group.id,
+        avatar: avatarFromName(payload.ownerName.trim()),
+      } as any,
+    });
+
+    await (prisma as any).schoolGroup.update({ where: { id: group.id }, data: { ownerId: owner.id } });
+
+    await appService.writeAuditLog({
+      userId: actorUserId,
+      action: 'CREATE_GROUP_OWNER',
+      entity: 'SchoolGroup',
+      entityId: group.id,
+      metadata: { groupName: group.name, ownerEmail: email },
+    });
+
+    return success(
+      { groupId: group.id, groupName: group.name, ownerEmail: email, tempPassword },
+      'Group owner created successfully',
+    );
+  },
+
+  // List all school groups with their branch counts (Creator view).
+  getGroups: async (): Promise<ApiResponse<Array<{ id: string; name: string; ownerId?: string; schoolCount: number }>>> => {
+    const groups = await (prisma as any).schoolGroup.findMany({
+      orderBy: { name: 'asc' },
+      include: { _count: { select: { schools: true } } },
+    });
+    return success(groups.map((g: any) => ({
+      id: g.id, name: g.name, ownerId: g.ownerId ?? undefined, schoolCount: g._count?.schools ?? 0,
+    })));
+  },
+
+  // Assign (or clear) the group a school belongs to.
+  assignSchoolToGroup: async (
+    schoolId: string,
+    groupId: string | null,
+    actorUserId?: string,
+  ): Promise<ApiResponse<boolean>> => {
+    const school = await prisma.school.findUnique({ where: { id: schoolId }, select: { id: true, name: true } });
+    if (!school) return failure('School not found', false as unknown as boolean);
+
+    if (groupId) {
+      const group = await (prisma as any).schoolGroup.findUnique({ where: { id: groupId }, select: { id: true } });
+      if (!group) return failure('Group not found', false as unknown as boolean);
+    }
+
+    await prisma.school.update({ where: { id: schoolId }, data: { groupId } as any });
+
+    await appService.writeAuditLog({
+      schoolId,
+      userId: actorUserId,
+      action: groupId ? 'ASSIGN_SCHOOL_GROUP' : 'UNASSIGN_SCHOOL_GROUP',
+      entity: 'School',
+      entityId: schoolId,
+      metadata: { schoolName: school.name, groupId },
+    });
+
+    return success(true, 'School group updated');
+  },
+
   updateUserProfile: async (userId: string, updates: Partial<User>, actorSchoolId?: string): Promise<ApiResponse<User>> => {
 
     if (actorSchoolId) {
@@ -630,7 +720,6 @@ export const appService = {
   },
 
   changePassword: async (userId: string, currentPassword: string, newPassword: string): Promise<ApiResponse<boolean>> => {
-    const bcrypt = await import('bcryptjs');
     const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, password: true } });
     if (!user) return failure('User not found', false as unknown as boolean);
     if (!user.password) return failure('Password authentication not available for this account. Use your Supabase account settings to change your password.', false as unknown as boolean);
@@ -701,7 +790,6 @@ export const appService = {
       });
       if (existing) throw new Error(`An account with email "${school.adminEmail}" already exists`);
 
-      const bcrypt = await import('bcryptjs');
       tempAdminPassword = crypto.randomBytes(10).toString('base64url');
       const passwordHash = await bcrypt.hash(tempAdminPassword, 10);
 
@@ -968,7 +1056,6 @@ export const appService = {
       return failure('A user with this email already exists', {} as User);
     }
 
-    const bcrypt = await import('bcryptjs');
     const passwordHash = await bcrypt.hash(generateTemporaryPassword(), 10);
 
     const createdUser = await prisma.user.create({
@@ -3454,7 +3541,6 @@ export const appService = {
     schoolId: string;
     studentIds: string[];
   }): Promise<ApiResponse<User>> => {
-    const bcrypt = await import('bcryptjs');
     const existing = await prisma.user.findFirst({ where: { email: payload.email.toLowerCase() }, select: { id: true } });
     if (existing) return failure('A user with this email already exists', {} as User);
 

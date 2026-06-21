@@ -39,6 +39,24 @@ router.post(
   }),
 );
 
+// Create a new SchoolGroup + GROUP_OWNER user in one transaction.
+const groupOwnerSchema = z.object({
+  groupName: z.string().trim().min(1).max(120),
+  ownerName: z.string().trim().min(1).max(120),
+  ownerEmail: z.string().email(),
+});
+
+router.post(
+  '/group-owner',
+  requireAuth,
+  requireRole(UserRole.SUPER_ADMIN),
+  asyncHandler(async (req, res) => {
+    const payload = groupOwnerSchema.parse(req.body);
+    const response = await appService.createGroupOwner(payload, req.auth?.userId);
+    res.json(response);
+  }),
+);
+
 // SUPER_ADMIN impersonation: issues a real short-lived, audited session for the
 // target school's admin instead of a client-only role swap.
 const impersonateSchema = z.object({ schoolId: z.string().min(1) });
@@ -57,7 +75,30 @@ router.post(
   }),
 );
 
+// ── School Groups: list + assign (Creator only) ───────────────────────────
+router.get(
+  '/groups',
+  requireAuth,
+  requireRole(UserRole.SUPER_ADMIN),
+  asyncHandler(async (_req, res) => {
+    const response = await appService.getGroups();
+    res.json(response);
+  }),
+);
+
 const idParam = z.object({ id: z.string().min(1) });
+
+router.patch(
+  '/:id/group',
+  requireAuth,
+  requireRole(UserRole.SUPER_ADMIN),
+  asyncHandler(async (req, res) => {
+    const { id } = idParam.parse(req.params);
+    const { groupId } = z.object({ groupId: z.string().nullable() }).parse(req.body);
+    const response = await appService.assignSchoolToGroup(id, groupId, req.auth?.userId);
+    res.json(response);
+  }),
+);
 
 router.get(
   '/:id/classes',

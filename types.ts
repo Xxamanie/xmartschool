@@ -25,6 +25,7 @@ export interface User {
 
 export interface School {
   id: string;
+  groupId?: string;
   name: string;
   code: string; // Unique School Code
   region: string;
@@ -248,6 +249,18 @@ export interface ApiResponse<T> {
   data: T;
   message?: string;
   ok: boolean;
+}
+
+export interface TimetableEntry {
+  id: string;
+  schoolClassId: string;
+  className: string;
+  day: number;     // 0 = Monday … 4 = Friday
+  period: number;  // 0-based lesson period
+  subjectId: string;
+  subjectName: string;
+  teacherId?: string;
+  teacherName?: string;
 }
 
 export type NotificationAudience =

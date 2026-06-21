@@ -23,6 +23,7 @@ export interface User {
 
 export interface School {
   id: string;
+  groupId?: string;
   name: string;
   code: string;
   region: string;
