@@ -61,7 +61,7 @@ export const SchoolsTab: React.FC<SchoolsTabProps> = ({ schools, setSchools, loa
   const [groupOwnerName, setGroupOwnerName] = useState('');
   const [groupOwnerEmail, setGroupOwnerEmail] = useState('');
   const [groupCredentials, setGroupCredentials] = useState<{
-    groupName: string; ownerEmail: string; tempPassword: string;
+    groupName: string; ownerEmail: string; tempPassword: string; userId: string;
   } | null>(null);
   // Schools selected to link to the new owner at registration time.
   const [groupSchoolIds, setGroupSchoolIds] = useState<string[]>([]);
@@ -85,7 +85,7 @@ export const SchoolsTab: React.FC<SchoolsTabProps> = ({ schools, setSchools, loa
       }
       setIsCreatingGroup(false);
       setGroupName(''); setGroupOwnerName(''); setGroupOwnerEmail(''); setGroupSchoolIds([]);
-      setGroupCredentials({ groupName: res.data.groupName, ownerEmail: res.data.ownerEmail, tempPassword: res.data.tempPassword });
+      setGroupCredentials({ groupName: res.data.groupName, ownerEmail: res.data.ownerEmail, tempPassword: res.data.tempPassword, userId: res.data.userId });
     } else {
       toast.error(res.message || 'Failed to create group owner');
     }
@@ -238,6 +238,7 @@ export const SchoolsTab: React.FC<SchoolsTabProps> = ({ schools, setSchools, loa
             </div>
             <div className="space-y-3 mb-5">
               <CredentialRow label="Group Name" value={groupCredentials.groupName} />
+              <CredentialRow label="User ID (login account)" value={groupCredentials.userId} mono icon={<Users size={14} />} />
               <CredentialRow label="Owner Email" value={groupCredentials.ownerEmail} icon={<Mail size={14} />} />
               <CredentialRow label="Temp Password" value={groupCredentials.tempPassword} mono icon={<Key size={14} />} sensitive />
             </div>

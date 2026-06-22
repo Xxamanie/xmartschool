@@ -70,7 +70,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       return [
         { to: '/', icon: Globe, label: 'Global Dashboard' },
         { to: '/schools', icon: Building2, label: 'Schools Registry' },
-        { to: '/settings', icon: Settings, label: 'System Config' },
+        { to: '/system', icon: Settings, label: 'System Config' },
       ];
     } else if (isCreator && isScopedToSchool) {
       return schoolNavItems;

@@ -21,6 +21,8 @@ const Results = React.lazy(() => import('./pages/Results').then((module) => ({ d
 const Teachers = React.lazy(() => import('./pages/Teachers').then((module) => ({ default: module.Teachers })));
 const SuperAdmin = React.lazy(() => import('./pages/SuperAdmin').then((module) => ({ default: module.SuperAdmin })));
 const GroupPortal = React.lazy(() => import('./pages/GroupPortal').then((module) => ({ default: module.GroupPortal })));
+const CreatorDashboard = React.lazy(() => import('./pages/CreatorDashboard').then((module) => ({ default: module.CreatorDashboard })));
+const SystemConfig = React.lazy(() => import('./pages/SystemConfig').then((module) => ({ default: module.SystemConfig })));
 const StudentPortal = React.lazy(() => import('./pages/StudentPortal').then((module) => ({ default: module.StudentPortal })));
 const Settings = React.lazy(() => import('./pages/Settings').then((module) => ({ default: module.Settings })));
 const SchoolDetail = React.lazy(() => import('./pages/SchoolDetail').then((module) => ({ default: module.SchoolDetail })));
@@ -106,6 +108,13 @@ const AppContent: React.FC = () => {
                   <GroupPortal />
                </ProtectedRoute>
             } />
+
+            {/* Creator platform governance */}
+            <Route path="system" element={
+               <ProtectedRoute allowedRoles={[UserRole.SUPER_ADMIN]}>
+                  <SystemConfig />
+               </ProtectedRoute>
+            } />
             <Route path="schools/:schoolId" element={
                <ProtectedRoute allowedRoles={[UserRole.SUPER_ADMIN]}>
                   <SchoolDetail />
@@ -166,7 +175,9 @@ const DashboardWrapper = () => {
    if (user?.role === UserRole.SUPER_ADMIN) {
      // If Creator has scoped to a school, show the school dashboard
      if (viewingSchoolId) return <Dashboard />;
-     return <SuperAdmin />;
+     // The Creator's home is the read-only Global Dashboard; the Schools
+     // Registry (management) lives at /schools.
+     return <CreatorDashboard />;
    }
    // Group Owner (when not impersonating a branch) lands on the portfolio.
    if (user?.role === UserRole.GROUP_OWNER) return <GroupPortal />;

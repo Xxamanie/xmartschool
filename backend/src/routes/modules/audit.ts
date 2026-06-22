@@ -28,4 +28,16 @@ router.get(
   }),
 );
 
+// Platform-wide audit log (Creator only) — no school scope.
+router.get(
+  '/global',
+  requireAuth,
+  requireRole(UserRole.SUPER_ADMIN),
+  asyncHandler(async (req, res) => {
+    const { limit } = z.object({ limit: z.coerce.number().min(1).max(500).optional() }).parse(req.query);
+    const response = await appService.getGlobalAuditLogs(limit ?? 100);
+    res.json(response);
+  }),
+);
+
 export { router as auditRouter };

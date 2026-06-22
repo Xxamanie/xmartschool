@@ -565,7 +565,7 @@ export const api = {
 
   // Creator: register a school group + its owner login in one step.
   createGroupOwner: async (payload: { groupName: string; ownerName: string; ownerEmail: string; schoolIds?: string[] }):
-    Promise<ApiResponse<{ groupId: string; groupName: string; ownerEmail: string; tempPassword: string; linkedSchoolIds: string[] }>> => {
+    Promise<ApiResponse<{ userId: string; groupId: string; groupName: string; ownerEmail: string; tempPassword: string; linkedSchoolIds: string[] }>> => {
     try {
       const response = await apiClient.post('/schools/group-owner', payload);
       return normalizeApiResponse(response, 'Group owner created successfully');
@@ -1396,6 +1396,18 @@ export const api = {
     } catch (error) {
       console.error('Failed to get audit logs:', error);
       return wrapError(error, [], 'Failed to load audit logs');
+    }
+  },
+
+  // Platform-wide audit feed (Creator).
+  getGlobalAuditLogs: async (limit = 100): Promise<ApiResponse<AuditLogEntry[]>> => {
+    try {
+      const response = await apiClient.get(`/audit/global?limit=${limit}`);
+      const data = extractData(response) ?? [];
+      return wrapResponse(data);
+    } catch (error) {
+      console.error('Failed to get global audit logs:', error);
+      return wrapError(error, [], 'Failed to load activity');
     }
   },
 

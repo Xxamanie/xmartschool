@@ -607,7 +607,7 @@ export const appService = {
   createGroupOwner: async (
     payload: { groupName: string; ownerName: string; ownerEmail: string; schoolIds?: string[] },
     actorUserId?: string,
-  ): Promise<ApiResponse<{ groupId: string; groupName: string; ownerEmail: string; tempPassword: string; linkedSchoolIds: string[] }>> => {
+  ): Promise<ApiResponse<{ userId: string; groupId: string; groupName: string; ownerEmail: string; tempPassword: string; linkedSchoolIds: string[] }>> => {
     const email = payload.ownerEmail.trim().toLowerCase();
     if (!payload.groupName.trim()) return failure('Group name is required', {} as any);
     if (!payload.ownerName.trim()) return failure('Owner name is required', {} as any);
@@ -655,7 +655,7 @@ export const appService = {
     });
 
     return success(
-      { groupId: group.id, groupName: group.name, ownerEmail: email, tempPassword, linkedSchoolIds },
+      { userId: owner.id, groupId: group.id, groupName: group.name, ownerEmail: email, tempPassword, linkedSchoolIds },
       'Group owner created successfully',
     );
   },
@@ -3536,6 +3536,24 @@ export const appService = {
   getAuditLogs: async (schoolId: string, limit = 100): Promise<ApiResponse<AuditLogEntry[]>> => {
     const logs = await (prisma as any).auditLog.findMany({
       where: { schoolId },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+    return success(logs.map((l: any): AuditLogEntry => ({
+      id: l.id,
+      schoolId: l.schoolId ?? undefined,
+      userId: l.userId ?? undefined,
+      action: l.action,
+      entity: l.entity,
+      entityId: l.entityId ?? undefined,
+      metadata: l.metadata ?? undefined,
+      createdAt: l.createdAt.toISOString(),
+    })));
+  },
+
+  // Platform-wide audit feed across every school (Creator governance view).
+  getGlobalAuditLogs: async (limit = 100): Promise<ApiResponse<AuditLogEntry[]>> => {
+    const logs = await (prisma as any).auditLog.findMany({
       orderBy: { createdAt: 'desc' },
       take: limit,
     });

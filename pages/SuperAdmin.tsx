@@ -76,14 +76,14 @@ export const SuperAdmin: React.FC = () => {
             <div className="flex items-center gap-3 mb-2">
                 <Crown className="text-amber-400" size={32} fill="currentColor" fillOpacity={0.2} />
                 <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-400 to-amber-500">
-                    Creator Dashboard
+                    Schools Registry
                 </h1>
                 <span className="ml-2 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 tracking-wider uppercase">
-                    God Mode
+                    Management
                 </span>
             </div>
             <p className="text-slate-400 max-w-2xl text-sm leading-relaxed ml-11">
-                Welcome, Architect. You have full control over the SmartSchool ecosystem. Override permissions, manage institutions, and analyze global statistics.
+                Register and manage every institution, owner, user, and event. Create schools, register group owners, link branches, and impersonate any school's admin.
             </p>
          </div>
       </div>
