@@ -63,6 +63,10 @@ export const SchoolsTab: React.FC<SchoolsTabProps> = ({ schools, setSchools, loa
   const [groupCredentials, setGroupCredentials] = useState<{
     groupName: string; ownerEmail: string; tempPassword: string;
   } | null>(null);
+  // Schools selected to link to the new owner at registration time.
+  const [groupSchoolIds, setGroupSchoolIds] = useState<string[]>([]);
+  const toggleGroupSchool = (id: string) =>
+    setGroupSchoolIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
   const handleCreateGroupOwner = async () => {
     if (!groupName.trim()) { toast.warning('Group name is required'); return; }
@@ -72,10 +76,15 @@ export const SchoolsTab: React.FC<SchoolsTabProps> = ({ schools, setSchools, loa
       groupName: groupName.trim(),
       ownerName: groupOwnerName.trim(),
       ownerEmail: groupOwnerEmail.trim(),
+      schoolIds: groupSchoolIds,
     });
     if (res.ok) {
+      const linked = res.data.linkedSchoolIds || [];
+      if (linked.length) {
+        setSchools(prev => prev.map(s => linked.includes(s.id) ? { ...s, groupId: res.data.groupId } : s));
+      }
       setIsCreatingGroup(false);
-      setGroupName(''); setGroupOwnerName(''); setGroupOwnerEmail('');
+      setGroupName(''); setGroupOwnerName(''); setGroupOwnerEmail(''); setGroupSchoolIds([]);
       setGroupCredentials({ groupName: res.data.groupName, ownerEmail: res.data.ownerEmail, tempPassword: res.data.tempPassword });
     } else {
       toast.error(res.message || 'Failed to create group owner');
@@ -443,7 +452,7 @@ export const SchoolsTab: React.FC<SchoolsTabProps> = ({ schools, setSchools, loa
               <Users size={16} className="text-indigo-600" />
               <h3 className="text-sm font-bold text-indigo-900 uppercase tracking-wide">New Group Owner Account</h3>
             </div>
-            <p className="text-xs text-indigo-700 mb-4">Creates a named school group and a Group Owner login account in one step. Assign schools to the group afterwards.</p>
+            <p className="text-xs text-indigo-700 mb-4">Creates a named school group and a Group Owner login account, and links the schools you tick below so the owner sees and manages them on login.</p>
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div className="col-span-2">
                 <label htmlFor="group-name" className="block text-xs font-medium text-slate-500 mb-1">Group / Organisation Name *</label>
@@ -478,6 +487,38 @@ export const SchoolsTab: React.FC<SchoolsTabProps> = ({ schools, setSchools, loa
                 />
               </div>
             </div>
+
+            {/* Link schools to this owner */}
+            <div className="mb-4">
+              <label className="block text-xs font-medium text-slate-500 mb-2">
+                Schools owned by this person <span className="text-slate-400 font-normal">({groupSchoolIds.length} selected)</span>
+              </label>
+              {schools.length === 0 ? (
+                <p className="text-xs text-slate-400">No schools yet — register schools first, then assign them.</p>
+              ) : (
+                <div className="max-h-44 overflow-y-auto rounded-lg border border-indigo-200 bg-white divide-y divide-slate-100">
+                  {schools.map(s => {
+                    const otherGroup = s.groupId && !groupSchoolIds.includes(s.id);
+                    return (
+                      <label key={s.id} className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-indigo-50/60">
+                        <input
+                          type="checkbox"
+                          checked={groupSchoolIds.includes(s.id)}
+                          onChange={() => toggleGroupSchool(s.id)}
+                          className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <span className="flex-1 text-sm text-slate-700">
+                          {s.name} <span className="text-xs text-slate-400 font-mono">{s.code}</span>
+                        </span>
+                        {otherGroup && <span className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">in another group — will move</span>}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+              <p className="mt-1 text-xs text-slate-400">You can also change a school's owner later from the table below.</p>
+            </div>
+
             <div className="flex gap-4 justify-end">
               <button
                 onClick={handleCreateGroupOwner}
@@ -486,7 +527,7 @@ export const SchoolsTab: React.FC<SchoolsTabProps> = ({ schools, setSchools, loa
                 Create Group Owner
               </button>
               <button
-                onClick={() => { setIsCreatingGroup(false); setGroupName(''); setGroupOwnerName(''); setGroupOwnerEmail(''); }}
+                onClick={() => { setIsCreatingGroup(false); setGroupName(''); setGroupOwnerName(''); setGroupOwnerEmail(''); setGroupSchoolIds([]); }}
                 className="px-4 py-2.5 bg-white text-slate-600 border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
               >
                 Cancel

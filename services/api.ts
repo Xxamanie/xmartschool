@@ -564,8 +564,8 @@ export const api = {
   },
 
   // Creator: register a school group + its owner login in one step.
-  createGroupOwner: async (payload: { groupName: string; ownerName: string; ownerEmail: string }):
-    Promise<ApiResponse<{ groupId: string; groupName: string; ownerEmail: string; tempPassword: string }>> => {
+  createGroupOwner: async (payload: { groupName: string; ownerName: string; ownerEmail: string; schoolIds?: string[] }):
+    Promise<ApiResponse<{ groupId: string; groupName: string; ownerEmail: string; tempPassword: string; linkedSchoolIds: string[] }>> => {
     try {
       const response = await apiClient.post('/schools/group-owner', payload);
       return normalizeApiResponse(response, 'Group owner created successfully');
@@ -584,6 +584,16 @@ export const api = {
     } catch (error) {
       console.error('Failed to load groups:', error);
       return wrapError(error, [], 'Failed to load groups');
+    }
+  },
+
+  // Group Owner: fetch their own group (for the portfolio header).
+  getMyGroup: async (): Promise<ApiResponse<{ id: string; name: string } | null>> => {
+    try {
+      const response = await apiClient.get('/schools/my-group');
+      return normalizeApiResponse(response);
+    } catch (error) {
+      return wrapError(error, null, 'Failed to load group');
     }
   },
 

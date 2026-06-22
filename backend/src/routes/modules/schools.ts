@@ -44,6 +44,7 @@ const groupOwnerSchema = z.object({
   groupName: z.string().trim().min(1).max(120),
   ownerName: z.string().trim().min(1).max(120),
   ownerEmail: z.string().email(),
+  schoolIds: z.array(z.string().min(1)).optional(),
 });
 
 router.post(
@@ -82,6 +83,17 @@ router.get(
   requireRole(UserRole.SUPER_ADMIN),
   asyncHandler(async (_req, res) => {
     const response = await appService.getGroups();
+    res.json(response);
+  }),
+);
+
+// The signed-in Group Owner's own group (name for their portfolio header).
+router.get(
+  '/my-group',
+  requireAuth,
+  requireRole(UserRole.GROUP_OWNER),
+  asyncHandler(async (req, res) => {
+    const response = await appService.getMyGroup(req.auth?.groupId);
     res.json(response);
   }),
 );

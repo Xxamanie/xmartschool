@@ -18,12 +18,13 @@ type GroupFinance = {
 const naira = (n: number) => `₦${(n || 0).toLocaleString()}`;
 
 export const GroupPortal: React.FC = () => {
-  const { impersonateSchool } = useAuth();
+  const { impersonateSchool, user } = useAuth();
   const navigate = useNavigate();
   const { toasts, toast, dismiss } = useToast();
 
   const [schools, setSchools] = useState<School[]>([]);
   const [finance, setFinance] = useState<GroupFinance | null>(null);
+  const [groupName, setGroupName] = useState('');
   const [loading, setLoading] = useState(true);
   const [entering, setEntering] = useState<string | null>(null);
   const [tab, setTab] = useState<'branches' | 'earnings'>('branches');
@@ -31,9 +32,10 @@ export const GroupPortal: React.FC = () => {
   useEffect(() => {
     (async () => {
       try {
-        const [s, f] = await Promise.all([api.getSchools(), api.getGroupFinanceSummary()]);
+        const [s, f, g] = await Promise.all([api.getSchools(), api.getGroupFinanceSummary(), api.getMyGroup()]);
         if (s.ok) setSchools(s.data || []); else toast.error(s.message || 'Failed to load branches');
         if (f.ok) setFinance(f.data); else toast.error(f.message || 'Failed to load earnings');
+        if (g.ok && g.data) setGroupName(g.data.name);
       } catch (e: any) {
         toast.error(e?.message || 'Failed to load portfolio');
       } finally {
@@ -69,12 +71,15 @@ export const GroupPortal: React.FC = () => {
       {/* Hero */}
       <div className="bg-slate-900 rounded-2xl p-8 text-white shadow-xl border border-slate-800 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl -mr-32 -mt-32 pointer-events-none"></div>
-        <div className="relative z-10 flex items-center gap-3 mb-2">
+        <div className="relative z-10 flex items-center gap-3 mb-1">
           <Crown className="text-indigo-300" size={30} fill="currentColor" fillOpacity={0.2} />
-          <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-200 via-indigo-300 to-indigo-400">Group Portfolio</h1>
+          <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-200 via-indigo-300 to-indigo-400">
+            {groupName || 'Group Portfolio'}
+          </h1>
           <span className="ml-2 px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 tracking-wider uppercase">Owner</span>
         </div>
-        <p className="text-slate-400 text-sm ml-10">Manage every branch from one account. Open any school to run it, or review consolidated earnings across all locations.</p>
+        <p className="relative z-10 text-indigo-200/90 text-sm ml-10 font-medium">{user?.name}</p>
+        <p className="relative z-10 text-slate-400 text-sm ml-10 mt-1">Manage every branch from one account. Open any school to run it, or review consolidated earnings across all locations.</p>
       </div>
 
       {/* KPI row */}

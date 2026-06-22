@@ -605,9 +605,9 @@ export const appService = {
 
   // Creator registers a school group and its owner login in one step.
   createGroupOwner: async (
-    payload: { groupName: string; ownerName: string; ownerEmail: string },
+    payload: { groupName: string; ownerName: string; ownerEmail: string; schoolIds?: string[] },
     actorUserId?: string,
-  ): Promise<ApiResponse<{ groupId: string; groupName: string; ownerEmail: string; tempPassword: string }>> => {
+  ): Promise<ApiResponse<{ groupId: string; groupName: string; ownerEmail: string; tempPassword: string; linkedSchoolIds: string[] }>> => {
     const email = payload.ownerEmail.trim().toLowerCase();
     if (!payload.groupName.trim()) return failure('Group name is required', {} as any);
     if (!payload.ownerName.trim()) return failure('Owner name is required', {} as any);
@@ -637,16 +637,25 @@ export const appService = {
 
     await (prisma as any).schoolGroup.update({ where: { id: group.id }, data: { ownerId: owner.id } });
 
+    // Optionally link selected schools to this owner's group right away.
+    const linkedSchoolIds = (payload.schoolIds ?? []).filter(Boolean);
+    if (linkedSchoolIds.length) {
+      await prisma.school.updateMany({
+        where: { id: { in: linkedSchoolIds } },
+        data: { groupId: group.id } as any,
+      });
+    }
+
     await appService.writeAuditLog({
       userId: actorUserId,
       action: 'CREATE_GROUP_OWNER',
       entity: 'SchoolGroup',
       entityId: group.id,
-      metadata: { groupName: group.name, ownerEmail: email },
+      metadata: { groupName: group.name, ownerEmail: email, linkedSchoolIds },
     });
 
     return success(
-      { groupId: group.id, groupName: group.name, ownerEmail: email, tempPassword },
+      { groupId: group.id, groupName: group.name, ownerEmail: email, tempPassword, linkedSchoolIds },
       'Group owner created successfully',
     );
   },
@@ -660,6 +669,16 @@ export const appService = {
     return success(groups.map((g: any) => ({
       id: g.id, name: g.name, ownerId: g.ownerId ?? undefined, schoolCount: g._count?.schools ?? 0,
     })));
+  },
+
+  // The signed-in Group Owner's own group (for their portfolio header).
+  getMyGroup: async (groupId?: string): Promise<ApiResponse<{ id: string; name: string } | null>> => {
+    if (!groupId) return success(null);
+    const g = await (prisma as any).schoolGroup.findUnique({
+      where: { id: groupId },
+      select: { id: true, name: true },
+    });
+    return success(g ?? null);
   },
 
   // Assign (or clear) the group a school belongs to.
