@@ -1,5 +1,6 @@
 import { Student, Subject, ApiResponse, SchemeSubmission, Assessment, ResultData, School, User, UserRole, ActiveExam, ExamQuestion, ExamSession, Announcement, LiveClass, LiveClassParticipant, LiveClassMessage, SchoolClassItem, StaffMessage, TeacherAssignment, Notification, NotificationAudience, PrivateConversation, PrivateConversationMessage, CalendarEvent, SchoolTerm, StudentFeeLedger, StudentFeePayment, AttendanceSummary, AuditLogEntry, FeeTemplate } from '../types';
 import apiClient, { buildSchoolScopedConfig } from '../src/utils/api';
+import { enqueue } from '../src/utils/offlineQueue';
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -343,6 +344,53 @@ export const api = {
     }
   },
 
+  // AI: holistic principal's comment for a report card.
+  generateReportComment: async (payload: {
+    studentName: string; average: number; grade: string; position?: number; classSize?: number; attendance?: number; term?: string;
+  }): Promise<ApiResponse<string>> => {
+    try {
+      const response = await apiClient.post('/ai/report-comment', payload);
+      return normalizeApiResponse(response);
+    } catch (error: any) {
+      return wrapError(error, '', error?.response?.data?.message || 'AI unavailable');
+    }
+  },
+
+  // AI: week-by-week scheme of work.
+  generateScheme: async (payload: { subject: string; className: string; term: string; weeks?: number }):
+    Promise<ApiResponse<Array<{ week: number; topic: string; objectives: string[] }>>> => {
+    try {
+      const response = await apiClient.post('/ai/scheme-of-work', payload);
+      return normalizeApiResponse(response);
+    } catch (error: any) {
+      return wrapError(error, [], error?.response?.data?.message || 'AI unavailable');
+    }
+  },
+
+  // Full report-card data (results, position, branding, affective/psychomotor).
+  getReportCard: async (studentId: string, term?: string): Promise<ApiResponse<any>> => {
+    try {
+      const qs = term ? `?term=${encodeURIComponent(term)}` : '';
+      const response = await apiClient.get(`/students/${studentId}/report-card${qs}`);
+      return normalizeApiResponse(response);
+    } catch (error: any) {
+      return wrapError(error, null, error?.response?.data?.message || 'Failed to load report card');
+    }
+  },
+
+  // Bulk import students from a parsed CSV.
+  importStudents: async (
+    students: Array<{ name: string; gender?: string; className?: string; field?: string }>,
+    schoolId?: string,
+  ): Promise<ApiResponse<{ created: number; total: number; errors: Array<{ row: number; reason: string }> }>> => {
+    try {
+      const response = await apiClient.post('/students/import', { students, ...(schoolId ? { schoolId } : {}) });
+      return normalizeApiResponse(response, 'Import complete');
+    } catch (error: any) {
+      return wrapError(error, { created: 0, total: 0, errors: [] }, error?.response?.data?.message || 'Import failed');
+    }
+  },
+
   createStudent: async (studentData: Omit<Student, 'id' | 'enrollmentDate'>): Promise<ApiResponse<Student>> => {
     try {
       const payload = {
@@ -584,6 +632,20 @@ export const api = {
     } catch (error) {
       console.error('Failed to load groups:', error);
       return wrapError(error, [], 'Failed to load groups');
+    }
+  },
+
+  // Group Owner: cross-branch analytics (benchmarking + at-risk students).
+  getGroupAnalytics: async (): Promise<ApiResponse<{
+    totals: { schools: number; students: number; avgAttendance: number; avgCollectionRate: number; atRisk: number };
+    branches: Array<{ schoolId: string; schoolName: string; students: number; avgAttendance: number; avgGpa: number; collectionRate: number; outstanding: number; atRisk: number }>;
+    topAtRisk: Array<{ studentId: string; name: string; schoolName: string; grade: string; attendance: number; gpa: number }>;
+  }>> => {
+    try {
+      const response = await apiClient.get('/finance/group-analytics');
+      return normalizeApiResponse(response);
+    } catch (error) {
+      return wrapError(error, { totals: { schools: 0, students: 0, avgAttendance: 0, avgCollectionRate: 0, atRisk: 0 }, branches: [], topAtRisk: [] }, 'Failed to load analytics');
     }
   },
 
@@ -867,9 +929,14 @@ export const api = {
       const response = await apiClient.post('/attendance/batch', { updates });
       const data = extractData(response);
       return wrapResponse(data, 'Attendance marked successfully');
-    } catch (error) {
+    } catch (error: any) {
+      // No HTTP response = the device is offline. Queue it and sync on reconnect
+      // so a teacher can mark a register with no signal.
+      if (!error?.response) {
+        enqueue({ method: 'post', url: '/attendance/batch', data: { updates }, label: `Attendance (${updates.length} record${updates.length === 1 ? '' : 's'})` });
+        return { ok: true, data: true as any, message: 'Saved offline — will sync automatically when you reconnect.' };
+      }
       console.error('Failed to mark attendance:', error);
-      await delay(800);
       return wrapError(error, false, 'Failed to mark attendance');
     }
   },
@@ -1271,6 +1338,38 @@ export const api = {
     } catch (error) {
       console.error('Failed to get ledgers:', error);
       return wrapError(error, [], 'Failed to load ledgers');
+    }
+  },
+
+  // Send fee reminders (SMS/WhatsApp) to parents of owing students.
+  sendFeeReminders: async (term?: string, channel: 'sms' | 'whatsapp' = 'sms'):
+    Promise<ApiResponse<{ owing: number; messaged: number }>> => {
+    try {
+      const response = await apiClient.post('/finance/reminders', { term, channel });
+      return normalizeApiResponse(response, 'Reminders sent');
+    } catch (error: any) {
+      return wrapError(error, { owing: 0, messaged: 0 }, error?.response?.data?.message || 'Failed to send reminders');
+    }
+  },
+
+  // Start a Paystack checkout for a fee line; returns the URL to redirect to.
+  initializeFeePayment: async (payload: { ledgerItemId: string; email: string; amount?: number }):
+    Promise<ApiResponse<{ authorizationUrl: string; reference: string; accessCode: string }>> => {
+    try {
+      const response = await apiClient.post('/finance/payments/initialize', payload);
+      return normalizeApiResponse(response, 'Payment initialized');
+    } catch (error: any) {
+      return wrapError(error, { authorizationUrl: '', reference: '', accessCode: '' }, error?.response?.data?.message || 'Failed to start payment');
+    }
+  },
+
+  // Verify a Paystack reference and post it to the ledger.
+  verifyFeePayment: async (reference: string): Promise<ApiResponse<{ recorded: boolean; reference: string }>> => {
+    try {
+      const response = await apiClient.get(`/finance/payments/verify/${encodeURIComponent(reference)}`);
+      return normalizeApiResponse(response, 'Payment verified');
+    } catch (error: any) {
+      return wrapError(error, { recorded: false, reference }, error?.response?.data?.message || 'Verification failed');
     }
   },
 

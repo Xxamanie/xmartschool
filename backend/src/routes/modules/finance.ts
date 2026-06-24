@@ -1,13 +1,101 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import crypto from 'crypto';
 import { prisma } from '../../lib/prisma';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { requireAuth, requireRole } from '../../middleware/auth';
 import { appService } from '../../services/appService';
 import { getEffectiveSchoolId, enforceTenantQuery } from '../../utils/tenant';
 import { UserRole } from '../../types';
+import { env } from '../../config/env';
+import { initializeTransaction, paystackConfigured } from '../../services/paystackService';
 
 const router = Router();
+
+// ── Online payments (Paystack) ────────────────────────────────────────────
+const initPaymentSchema = z.object({
+  ledgerItemId: z.string().min(1),
+  email: z.string().email(),
+  amount: z.number().positive().optional(),
+});
+
+// Start a Paystack checkout for a single fee line; returns the URL to redirect to.
+router.post(
+  '/payments/initialize',
+  requireAuth,
+  requireRole(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.PARENT),
+  asyncHandler(async (req, res) => {
+    if (!paystackConfigured()) {
+      res.status(503).json({ ok: false, data: null, message: 'Online payments are not configured on this server.' });
+      return;
+    }
+    const { ledgerItemId, email, amount } = initPaymentSchema.parse(req.body);
+    const item = await (prisma as any).studentFeeLedgerItem.findUnique({
+      where: { id: ledgerItemId },
+      include: { ledger: { select: { schoolId: true, studentId: true } }, payments: { select: { amount: true } } },
+    });
+    if (!item) {
+      res.status(404).json({ ok: false, data: null, message: 'Fee item not found' });
+      return;
+    }
+    const paid = item.payments.reduce((s: number, p: any) => s + p.amount, 0);
+    const outstanding = Math.max(0, item.payableAmount - paid);
+    const payAmount = amount ?? outstanding;
+    if (payAmount <= 0) {
+      res.status(400).json({ ok: false, data: null, message: 'This fee line is already fully paid.' });
+      return;
+    }
+    if (payAmount > outstanding) {
+      res.status(400).json({ ok: false, data: null, message: 'Amount exceeds the outstanding balance.' });
+      return;
+    }
+    const reference = `xss_${ledgerItemId.slice(0, 8)}_${crypto.randomBytes(6).toString('hex')}`;
+    const data = await initializeTransaction({
+      email,
+      amountKobo: Math.round(payAmount * 100),
+      reference,
+      metadata: {
+        ledgerItemId,
+        schoolId: item.ledger.schoolId,
+        studentId: item.ledger.studentId,
+        actorUserId: req.auth?.userId,
+      },
+      callbackUrl: env.frontendUrl,
+    });
+    res.json({ ok: true, data });
+  }),
+);
+
+// Verify a reference and post it to the ledger (browser callback path).
+router.get(
+  '/payments/verify/:reference',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const { reference } = z.object({ reference: z.string().min(1) }).parse(req.params);
+    const response = await appService.recordOnlinePayment(reference);
+    res.json(response);
+  }),
+);
+
+// Bulk fee reminders to parents of owing students (SMS / WhatsApp).
+router.post(
+  '/reminders',
+  requireAuth,
+  requireRole(UserRole.ADMIN, UserRole.SUPER_ADMIN),
+  asyncHandler(async (req, res) => {
+    const schoolId = getEffectiveSchoolId(req);
+    if (!schoolId) {
+      res.status(400).json({ ok: false, data: null, message: 'School context required' });
+      return;
+    }
+    const { term, channel } = z.object({
+      term: z.string().optional(),
+      channel: z.enum(['sms', 'whatsapp']).optional(),
+    }).parse(req.body);
+    const response = await appService.sendFeeReminders(schoolId, term, channel ?? 'sms', req.auth?.userId);
+    res.json(response);
+  }),
+);
 
 // ── Fee Templates ─────────────────────────────────────────────────────────
 
@@ -230,6 +318,23 @@ router.get(
       return;
     }
     const response = await appService.getGroupFinanceSummary(groupId, term);
+    res.json(response);
+  }),
+);
+
+// Cross-branch analytics (benchmarking + at-risk) — Group Owner.
+router.get(
+  '/group-analytics',
+  requireAuth,
+  requireRole(UserRole.GROUP_OWNER, UserRole.SUPER_ADMIN),
+  asyncHandler(async (req, res) => {
+    const { groupId: q } = z.object({ groupId: z.string().optional() }).parse(req.query);
+    const groupId = req.auth?.role === UserRole.GROUP_OWNER ? req.auth?.groupId : q;
+    if (!groupId) {
+      res.status(400).json({ ok: false, data: null, message: 'No group context' });
+      return;
+    }
+    const response = await appService.getGroupAnalytics(groupId);
     res.json(response);
   }),
 );

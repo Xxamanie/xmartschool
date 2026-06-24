@@ -8,6 +8,8 @@ import { env } from './config/env';
 import { registerRoutes } from './routes';
 import { apiRateLimiter } from './middleware/rateLimit';
 import { sanitizeRequest } from './middleware/sanitize';
+import { verifyWebhookSignature } from './services/paystackService';
+import { appService } from './services/appService';
 
 const app = express();
 
@@ -43,6 +45,27 @@ app.use(
     optionsSuccessStatus: 200,
   }),
 );
+
+// Paystack webhook — must read the RAW body for signature verification, so it
+// is registered BEFORE express.json(). Public (no auth); Paystack is the caller.
+app.post('/api/paystack/webhook', express.raw({ type: '*/*' }), async (req, res) => {
+  const signature = req.headers['x-paystack-signature'] as string | undefined;
+  const raw = req.body as Buffer;
+  if (!Buffer.isBuffer(raw) || !verifyWebhookSignature(raw, signature)) {
+    res.status(401).send('invalid signature');
+    return;
+  }
+  try {
+    const event = JSON.parse(raw.toString('utf8'));
+    if (event?.event === 'charge.success' && event?.data?.reference) {
+      await appService.recordOnlinePayment(event.data.reference);
+    }
+  } catch (err) {
+    console.error('[Paystack webhook] processing error', err);
+  }
+  // Always 200 so Paystack does not retry-storm; discrepancies show in reconciliation.
+  res.sendStatus(200);
+});
 
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));

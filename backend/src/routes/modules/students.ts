@@ -95,6 +95,37 @@ router.get(
   }),
 );
 
+// ── Report card (full Nigerian report card data) ─────────────────────────────
+
+router.get(
+  '/:id/report-card',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const { id } = idParam.parse(req.params);
+    const term = typeof req.query.term === 'string' ? req.query.term : undefined;
+    const role = req.auth?.role;
+
+    const allowed = [UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.TEACHER, UserRole.STUDENT];
+    if (!role || !allowed.includes(role)) {
+      res.status(403).json({ ok: false, data: null, message: 'Not authorised to view report cards' });
+      return;
+    }
+    if (role === UserRole.STUDENT && req.auth?.userId !== id) {
+      res.status(403).json({ ok: false, data: null, message: 'You can only view your own report card' });
+      return;
+    }
+    if (role !== UserRole.SUPER_ADMIN && role !== UserRole.STUDENT) {
+      const stu = await prisma.student.findUnique({ where: { id }, select: { schoolId: true } });
+      if (!stu || stu.schoolId !== req.auth?.schoolId) {
+        res.status(403).json({ ok: false, data: null, message: 'Student not in your school' });
+        return;
+      }
+    }
+    const response = await appService.getReportCard(id, term);
+    res.json(response);
+  }),
+);
+
 // ── CREATE ───────────────────────────────────────────────────────────────────
 
 const createSchema = z.object({
@@ -125,6 +156,37 @@ router.post(
         ? (data.schoolId?.trim() || req.auth?.schoolId)
         : req.auth?.schoolId;
     const response = await appService.createStudent(data as any, effectiveSchoolId, req.auth?.userId);
+    res.json(response);
+  }),
+);
+
+// ── BULK IMPORT (CSV) ────────────────────────────────────────────────────────
+
+const importSchema = z.object({
+  schoolId: z.string().optional(),
+  students: z.array(z.object({
+    name: z.string().min(1),
+    gender: z.string().optional(),
+    className: z.string().optional(),
+    field: z.string().optional(),
+  })).min(1).max(2000),
+});
+
+router.post(
+  '/import',
+  requireAuth,
+  requireSchoolContext,
+  requireRole(UserRole.ADMIN, UserRole.SUPER_ADMIN),
+  asyncHandler(async (req, res) => {
+    const data = importSchema.parse(req.body);
+    const schoolId = req.auth?.role === UserRole.SUPER_ADMIN
+      ? (data.schoolId?.trim() || req.auth?.schoolId)
+      : req.auth?.schoolId;
+    if (!schoolId) {
+      res.status(400).json({ ok: false, data: null, message: 'School context required' });
+      return;
+    }
+    const response = await appService.bulkCreateStudents(schoolId, data.students, req.auth?.userId);
     res.json(response);
   }),
 );

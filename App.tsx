@@ -6,6 +6,7 @@ import { NotificationProvider } from './context/NotificationContext';
 import { StaffRoomProvider } from './context/StaffRoomContext';
 import { Layout } from './components/Layout';
 import { LoadingScreen } from './components/LoadingScreen';
+import { OfflineBadge } from './components/OfflineBadge';
 import { UserRole } from './types';
 import { useClickSound } from './src/utils/useClickSound';
 
@@ -163,6 +164,7 @@ const App: React.FC = () => {
         <StaffRoomProvider>
           <GlobalClickSound />
           <AppContent />
+          <OfflineBadge />
         </StaffRoomProvider>
       </NotificationProvider>
     </AuthProvider>

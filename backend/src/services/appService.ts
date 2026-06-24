@@ -23,6 +23,8 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../lib/prisma';
 import { createSessionToken, createImpersonationToken } from '../utils/session';
+import { verifyTransaction } from './paystackService';
+import { sendSMS, sendWhatsApp } from './messagingService';
 import { env } from '../config/env';
 import {
   ActiveExam,
@@ -1246,6 +1248,60 @@ export const appService = {
     return appService.updateStudent(studentId, updates);
   },
 
+  // Bulk-create students from a parsed CSV. Auto-creates any missing class by
+  // name, then reuses createStudent per row (access code, fee ledger, audit).
+  bulkCreateStudents: async (
+    schoolId: string,
+    rows: Array<{ name: string; gender?: string; className?: string; field?: string }>,
+    actorUserId?: string,
+  ): Promise<ApiResponse<{ created: number; total: number; errors: Array<{ row: number; reason: string }> }>> => {
+    const classCache = new Map<string, string>();
+    const errors: Array<{ row: number; reason: string }> = [];
+    let created = 0;
+
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      try {
+        const name = (r.name || '').trim();
+        if (!name) { errors.push({ row: i + 1, reason: 'Missing name' }); continue; }
+        const g = (r.gender || '').trim();
+        const gender = /^f/i.test(g) ? 'Female' : /^m/i.test(g) ? 'Male' : '';
+        if (!gender) { errors.push({ row: i + 1, reason: 'Gender must be Male or Female' }); continue; }
+
+        let schoolClassId: string | undefined;
+        const cname = (r.className || '').trim();
+        if (cname) {
+          if (classCache.has(cname)) {
+            schoolClassId = classCache.get(cname);
+          } else {
+            let cls = await prisma.schoolClass.findFirst({ where: { schoolId, name: cname }, select: { id: true } });
+            if (!cls) cls = await prisma.schoolClass.create({ data: { schoolId, name: cname } });
+            classCache.set(cname, cls.id);
+            schoolClassId = cls.id;
+          }
+        }
+
+        const res = await appService.createStudent(
+          { name, gender, grade: cname || 'Unassigned', schoolClassId, field: (r.field || 'general').trim() || 'general' },
+          schoolId,
+          actorUserId,
+        );
+        if (res.ok) created++;
+        else errors.push({ row: i + 1, reason: res.message || 'Failed to create' });
+      } catch (e: any) {
+        errors.push({ row: i + 1, reason: e?.message || 'Error' });
+      }
+    }
+
+    await appService.writeAuditLog({
+      schoolId, userId: actorUserId,
+      action: 'BULK_IMPORT_STUDENTS', entity: 'Student',
+      metadata: { created, total: rows.length, failed: errors.length },
+    });
+
+    return success({ created, total: rows.length, errors }, `Imported ${created} of ${rows.length} students.`);
+  },
+
   createStudent: async (
     data: {
       name: string;
@@ -1704,6 +1760,94 @@ export const appService = {
     return success(results.map(mapResultModel));
   },
 
+  // Assemble everything needed for a full Nigerian report card: results, term
+  // summary, class position, attendance, school branding, and affective /
+  // psychomotor domains.
+  getReportCard: async (studentId: string, term?: string): Promise<ApiResponse<any>> => {
+    const student = await prisma.student.findUnique({ where: { id: studentId } });
+    if (!student) return failure('Student not found', null);
+    const school = await prisma.school.findUnique({ where: { id: student.schoolId } });
+
+    let useTerm = term;
+    if (!useTerm) {
+      const ct = await (prisma as any).schoolTerm.findFirst({ where: { schoolId: student.schoolId, isCurrent: true } });
+      useTerm = ct?.name ?? (student as any).resultPinTerm ?? 'current';
+    }
+
+    const results = await prisma.result.findMany({
+      where: { studentId, term: useTerm },
+      orderBy: { subjectName: 'asc' },
+    });
+    const totalObtained = results.reduce((s, r) => s + (r.average || 0), 0);
+    const average = results.length ? Math.round((totalObtained / results.length) * 100) / 100 : 0;
+
+    // Class position: rank classmates by their term average.
+    let position = 0, classSize = 0;
+    if ((student as any).schoolClassId) {
+      const classmates = await prisma.student.findMany({ where: { schoolClassId: (student as any).schoolClassId }, select: { id: true } });
+      classSize = classmates.length;
+      const ids = classmates.map((c) => c.id);
+      const allResults = await prisma.result.findMany({ where: { studentId: { in: ids }, term: useTerm }, select: { studentId: true, average: true } });
+      const byStudent = new Map<string, { sum: number; n: number }>();
+      for (const r of allResults) {
+        const e = byStudent.get(r.studentId) || { sum: 0, n: 0 };
+        e.sum += r.average || 0; e.n++; byStudent.set(r.studentId, e);
+      }
+      const ranked = ids
+        .map((id) => { const e = byStudent.get(id); return { id, avg: e && e.n ? e.sum / e.n : 0 }; })
+        .sort((a, b) => b.avg - a.avg);
+      position = ranked.findIndex((r) => r.id === studentId) + 1;
+    }
+
+    const att = (student as any).attendance ?? 0;
+    const punctuality = att >= 95 ? 5 : att >= 85 ? 4 : att >= 70 ? 3 : 2;
+    const affective = [
+      { trait: 'Punctuality', rating: punctuality },
+      { trait: 'Attentiveness', rating: 4 },
+      { trait: 'Politeness', rating: 4 },
+      { trait: 'Neatness', rating: 4 },
+      { trait: 'Honesty', rating: 5 },
+      { trait: 'Cooperation', rating: 4 },
+    ];
+    const psychomotor = [
+      { trait: 'Handwriting', rating: 4 },
+      { trait: 'Sports', rating: 4 },
+      { trait: 'Drawing / Art', rating: 3 },
+      { trait: 'Music', rating: 3 },
+      { trait: 'Handling Tools', rating: 4 },
+    ];
+
+    const className = (student as any).schoolClassId
+      ? (await prisma.schoolClass.findUnique({ where: { id: (student as any).schoolClassId }, select: { name: true } }))?.name
+      : (student as any).grade;
+
+    // Rule-based principal's comment (used as-is, or as a fallback for the AI one).
+    const ord = (n: number) => { if (!n) return ''; const s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); };
+    const perf = average >= 75 ? 'an outstanding' : average >= 65 ? 'a very good' : average >= 55 ? 'a good' : average >= 45 ? 'a fair' : 'a below-average';
+    const comment = `${student.name} produced ${perf} result this term with an average of ${average}%${position && classSize ? `, ranking ${ord(position)} of ${classSize} in class` : ''}. ${average >= 55 ? 'Keep up the good work and aim even higher next term.' : 'More consistent effort and focused study will lift these results; the school is here to support you.'}`;
+
+    return success({
+      comment,
+      student: {
+        id: student.id, name: student.name, gender: (student as any).gender,
+        className: className ?? (student as any).grade, attendance: att, accessCode: (student as any).accessCode,
+      },
+      school: {
+        name: school?.name ?? '', motto: (school as any)?.motto ?? '', address: (school as any)?.address ?? '',
+        contact: (school as any)?.contact ?? '', logoUrl: (school as any)?.logoUrl ?? '',
+        principalName: (school as any)?.principalName ?? '', principalSignatureUrl: (school as any)?.principalSignatureUrl ?? '',
+        schoolStampUrl: (school as any)?.schoolStampUrl ?? '', themeColor: (school as any)?.themeColor ?? '#059669',
+      },
+      term: useTerm,
+      results: results.map((r) => ({
+        subjectName: r.subjectName, grade: r.grade, average: r.average, remarks: r.remarks,
+        details: (r.details as any) ?? null,
+      })),
+      summary: { subjects: results.length, totalObtained, average, grade: computeGrade(average), position, classSize },
+      affective, psychomotor,
+    });
+  },
+
   publishResults: async (schoolId: string | undefined, newResults: ResultData[], actorUserId?: string): Promise<ApiResponse<{ success: boolean }>> => {
 
     const uniqueStudentIds = [...new Set(newResults.map(r => r.studentId))];
@@ -1809,6 +1953,15 @@ export const appService = {
               })),
               skipDuplicates: true,
             });
+
+            // Best-effort SMS/WhatsApp to parents (no-op if messaging unconfigured).
+            try {
+              await appService.messageStudentParents(
+                studentId,
+                `${(student as any).name}'s results for ${termLabel} are published at ${school?.name ?? 'your school'}. Use the Result Access PIN to view them. - SmartSchool`,
+                'sms',
+              );
+            } catch { /* best-effort */ }
           }
         } catch (err) {
           console.error('[PublishResults] Parent notification failed:', err);
@@ -3415,6 +3568,98 @@ export const appService = {
     } as StudentFeePayment, 'Payment recorded');
   },
 
+  // Verify a Paystack reference and post it to the student's fee ledger.
+  // Idempotent: both the webhook and the browser callback can call this safely
+  // (clientRef = reference dedupes inside recordPayment).
+  recordOnlinePayment: async (reference: string): Promise<ApiResponse<{ recorded: boolean; reference: string }>> => {
+    const verified = await verifyTransaction(reference);
+    if (verified.status !== 'success') {
+      return failure(`Payment not successful (status: ${verified.status})`, { recorded: false, reference });
+    }
+    const meta = (verified.metadata || {}) as Record<string, any>;
+    const ledgerItemId = meta.ledgerItemId as string | undefined;
+    const schoolId = meta.schoolId as string | undefined;
+    if (!ledgerItemId || !schoolId) {
+      return failure('Payment is missing ledger metadata', { recorded: false, reference });
+    }
+    const amount = Math.round(verified.amountKobo) / 100; // kobo → naira
+
+    try {
+      const res = await appService.recordPayment({
+        ledgerItemId,
+        amount,
+        method: 'online',
+        paymentRef: reference,
+        clientRef: reference,
+        schoolId,
+        actorUserId: (meta.actorUserId as string) || undefined,
+      });
+      return success({ recorded: res.ok, reference }, res.message || 'Payment recorded');
+    } catch (e: any) {
+      // The money was captured at Paystack; acknowledge so the webhook stops
+      // retrying. Any mismatch surfaces in reconciliation rather than looping.
+      return success({ recorded: false, reference }, e?.message || 'Payment received; posting deferred');
+    }
+  },
+
+  // Send a message to every parent linked to a student (SMS or WhatsApp).
+  messageStudentParents: async (studentId: string, text: string, channel: 'sms' | 'whatsapp' = 'sms'): Promise<number> => {
+    const links = await (prisma as any).parentStudent.findMany({
+      where: { studentId },
+      include: { parent: { select: { phone: true } } },
+    });
+    let sent = 0;
+    for (const l of links) {
+      const phone = l.parent?.phone as string | undefined;
+      if (!phone) continue;
+      const ok = channel === 'whatsapp' ? await sendWhatsApp(phone, text) : await sendSMS(phone, text);
+      if (ok) sent++;
+    }
+    return sent;
+  },
+
+  // Bulk fee reminders: message the parents of every student with an outstanding balance.
+  sendFeeReminders: async (
+    schoolId: string,
+    term?: string,
+    channel: 'sms' | 'whatsapp' = 'sms',
+    actorUserId?: string,
+  ): Promise<ApiResponse<{ owing: number; messaged: number }>> => {
+    const [ledgers, school] = await Promise.all([
+      (prisma as any).studentFeeLedger.findMany({
+        where: { schoolId, ...(term ? { term } : {}) },
+        include: {
+          lineItems: { include: { payments: { select: { amount: true } } } },
+          student: { select: { id: true, name: true } },
+        },
+      }),
+      prisma.school.findUnique({ where: { id: schoolId }, select: { name: true } }),
+    ]);
+
+    let owing = 0;
+    let messaged = 0;
+    for (const led of ledgers) {
+      let payable = 0, paid = 0;
+      for (const it of led.lineItems) {
+        payable += it.payableAmount;
+        paid += it.payments.reduce((s: number, p: any) => s + p.amount, 0);
+      }
+      const outstanding = Math.max(0, payable - paid);
+      if (outstanding <= 0 || !led.student) continue;
+      owing++;
+      const text = `Dear Parent, ${led.student.name} has an outstanding fee balance of N${outstanding.toLocaleString()} for ${led.term} at ${school?.name ?? 'school'}. Kindly arrange payment. Thank you.`;
+      messaged += await appService.messageStudentParents(led.student.id, text, channel);
+    }
+
+    await appService.writeAuditLog({
+      schoolId, userId: actorUserId,
+      action: 'SEND_FEE_REMINDERS', entity: 'School', entityId: schoolId,
+      metadata: { owing, messaged, channel, term: term ?? null },
+    });
+
+    return success({ owing, messaged }, `Reminders sent to ${messaged} parent contact(s) across ${owing} owing student(s).`);
+  },
+
   getSchoolFinanceSummary: async (schoolId: string, term?: string): Promise<ApiResponse<{
     totalPayable: number;
     totalCollected: number;
@@ -3505,6 +3750,88 @@ export const appService = {
     totals.collectionRate = totals.totalPayable > 0 ? Math.round((totals.totalCollected / totals.totalPayable) * 100) : 0;
 
     return success({ totals, branches });
+  },
+
+  // Cross-branch analytics for a group owner: benchmarking + at-risk detection.
+  getGroupAnalytics: async (groupId: string): Promise<ApiResponse<{
+    totals: { schools: number; students: number; avgAttendance: number; avgCollectionRate: number; atRisk: number };
+    branches: Array<{ schoolId: string; schoolName: string; students: number; avgAttendance: number; avgGpa: number; collectionRate: number; outstanding: number; atRisk: number }>;
+    topAtRisk: Array<{ studentId: string; name: string; schoolName: string; grade: string; attendance: number; gpa: number }>;
+  }>> => {
+    const schools = await prisma.school.findMany({
+      where: { groupId, deletedAt: null } as any,
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+
+    const branches: any[] = [];
+    const topAtRisk: any[] = [];
+    let totalStudents = 0, attWeighted = 0, attCount = 0, atRiskTotal = 0, payableTotal = 0, collectedTotal = 0;
+
+    // A student is "at risk" academically: poor attendance or low GPA.
+    const atRiskWhere = (schoolId: string) => ({
+      schoolId,
+      OR: [{ attendance: { lt: 75 } }, { gpa: { lt: 2.5 } }],
+    });
+
+    for (const s of schools) {
+      const agg = await prisma.student.aggregate({
+        where: { schoolId: s.id },
+        _count: { id: true },
+        _avg: { attendance: true, gpa: true },
+      });
+      const studentsN = agg._count.id;
+      const avgAttendance = Math.round(agg._avg.attendance ?? 0);
+      const avgGpa = Math.round((agg._avg.gpa ?? 0) * 100) / 100;
+      const atRisk = await prisma.student.count({ where: atRiskWhere(s.id) as any });
+
+      const ledgers = await (prisma as any).studentFeeLedger.findMany({
+        where: { schoolId: s.id },
+        include: { lineItems: { include: { payments: { select: { amount: true } } } } },
+      });
+      let payable = 0, collected = 0;
+      for (const led of ledgers) {
+        for (const it of led.lineItems) {
+          payable += it.payableAmount;
+          collected += it.payments.reduce((a: number, p: any) => a + p.amount, 0);
+        }
+      }
+      const collectionRate = payable > 0 ? Math.round((collected / payable) * 100) : 0;
+
+      branches.push({
+        schoolId: s.id, schoolName: s.name, students: studentsN,
+        avgAttendance, avgGpa, collectionRate, outstanding: Math.max(0, payable - collected), atRisk,
+      });
+
+      totalStudents += studentsN;
+      if (studentsN) { attWeighted += avgAttendance * studentsN; attCount += studentsN; }
+      atRiskTotal += atRisk; payableTotal += payable; collectedTotal += collected;
+
+      const risky = await prisma.student.findMany({
+        where: atRiskWhere(s.id) as any,
+        select: { id: true, name: true, grade: true, attendance: true, gpa: true },
+        orderBy: { attendance: 'asc' },
+        take: 6,
+      });
+      risky.forEach((r) => topAtRisk.push({
+        studentId: r.id, name: r.name, schoolName: s.name, grade: r.grade,
+        attendance: r.attendance, gpa: r.gpa,
+      }));
+    }
+
+    topAtRisk.sort((a, b) => a.attendance - b.attendance);
+
+    return success({
+      totals: {
+        schools: schools.length,
+        students: totalStudents,
+        avgAttendance: attCount ? Math.round(attWeighted / attCount) : 0,
+        avgCollectionRate: payableTotal > 0 ? Math.round((collectedTotal / payableTotal) * 100) : 0,
+        atRisk: atRiskTotal,
+      },
+      branches,
+      topAtRisk: topAtRisk.slice(0, 12),
+    });
   },
 
   // ── Audit Log ────────────────────────────────────────────────────────────

@@ -15,6 +15,12 @@ type GroupFinance = {
   branches: Array<{ schoolId: string; schoolName: string; totalPayable: number; totalCollected: number; outstanding: number; studentCount: number; fullyPaidCount: number; collectionRate: number }>;
 };
 
+type GroupAnalytics = {
+  totals: { schools: number; students: number; avgAttendance: number; avgCollectionRate: number; atRisk: number };
+  branches: Array<{ schoolId: string; schoolName: string; students: number; avgAttendance: number; avgGpa: number; collectionRate: number; outstanding: number; atRisk: number }>;
+  topAtRisk: Array<{ studentId: string; name: string; schoolName: string; grade: string; attendance: number; gpa: number }>;
+};
+
 const naira = (n: number) => `₦${(n || 0).toLocaleString()}`;
 
 export const GroupPortal: React.FC = () => {
@@ -27,15 +33,17 @@ export const GroupPortal: React.FC = () => {
   const [groupName, setGroupName] = useState('');
   const [loading, setLoading] = useState(true);
   const [entering, setEntering] = useState<string | null>(null);
-  const [tab, setTab] = useState<'branches' | 'earnings'>('branches');
+  const [analytics, setAnalytics] = useState<GroupAnalytics | null>(null);
+  const [tab, setTab] = useState<'branches' | 'earnings' | 'analytics'>('branches');
 
   useEffect(() => {
     (async () => {
       try {
-        const [s, f, g] = await Promise.all([api.getSchools(), api.getGroupFinanceSummary(), api.getMyGroup()]);
+        const [s, f, g, a] = await Promise.all([api.getSchools(), api.getGroupFinanceSummary(), api.getMyGroup(), api.getGroupAnalytics()]);
         if (s.ok) setSchools(s.data || []); else toast.error(s.message || 'Failed to load branches');
         if (f.ok) setFinance(f.data); else toast.error(f.message || 'Failed to load earnings');
         if (g.ok && g.data) setGroupName(g.data.name);
+        if (a.ok) setAnalytics(a.data);
       } catch (e: any) {
         toast.error(e?.message || 'Failed to load portfolio');
       } finally {
@@ -92,10 +100,10 @@ export const GroupPortal: React.FC = () => {
 
       {/* Tabs */}
       <div className="border-b border-slate-200 flex gap-6">
-        {(['branches', 'earnings'] as const).map(t => (
+        {(['branches', 'earnings', 'analytics'] as const).map(t => (
           <button key={t} onClick={() => setTab(t)}
             className={`pb-3 px-1 text-sm font-bold transition-colors border-b-2 ${tab === t ? 'border-indigo-500 text-slate-900' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>
-            {t === 'branches' ? 'Branches' : 'Consolidated Earnings'}
+            {t === 'branches' ? 'Branches' : t === 'earnings' ? 'Consolidated Earnings' : 'Analytics'}
           </button>
         ))}
       </div>
@@ -192,9 +200,90 @@ export const GroupPortal: React.FC = () => {
           <p className="text-xs text-slate-400 flex items-center gap-1.5"><CheckCircle2 size={13} className="text-emerald-500" /> Figures roll up live from each branch's fee ledgers.</p>
         </div>
       )}
+
+      {tab === 'analytics' && (
+        <div className="space-y-6 animate-in fade-in">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <KPI icon={<TrendingUp size={20} />} tint="emerald" label="Avg Collection Rate" value={`${analytics?.totals.avgCollectionRate ?? 0}%`} />
+            <KPI icon={<Users size={20} />} tint="blue" label="Avg Attendance" value={`${analytics?.totals.avgAttendance ?? 0}%`} />
+            <KPI icon={<AlertCircle size={20} />} tint="amber" label="At-risk Students" value={String(analytics?.totals.atRisk ?? 0)} />
+            <KPI icon={<Layers size={20} />} tint="indigo" label="Branches" value={String(analytics?.totals.schools ?? 0)} />
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center gap-2">
+              <BarChart3 size={18} className="text-indigo-500" />
+              <h3 className="font-bold text-slate-900">Branch benchmarking</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-50 text-slate-500 uppercase text-xs">
+                  <tr>
+                    <th className="px-6 py-3 text-left">Branch</th>
+                    <th className="px-6 py-3 text-center">Students</th>
+                    <th className="px-6 py-3 text-left w-40">Attendance</th>
+                    <th className="px-6 py-3 text-center">Avg GPA</th>
+                    <th className="px-6 py-3 text-left w-40">Collection</th>
+                    <th className="px-6 py-3 text-center">At-risk</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {(analytics?.branches ?? []).map(b => (
+                    <tr key={b.schoolId} className="hover:bg-slate-50">
+                      <td className="px-6 py-3 font-semibold text-slate-900">{b.schoolName}</td>
+                      <td className="px-6 py-3 text-center text-slate-600">{b.students}</td>
+                      <td className="px-6 py-3"><Bar value={b.avgAttendance} good={75} /></td>
+                      <td className="px-6 py-3 text-center font-bold text-slate-800">{b.avgGpa.toFixed(2)}</td>
+                      <td className="px-6 py-3"><Bar value={b.collectionRate} good={75} /></td>
+                      <td className="px-6 py-3 text-center"><span className={`font-bold ${b.atRisk > 0 ? 'text-amber-600' : 'text-slate-400'}`}>{b.atRisk}</span></td>
+                    </tr>
+                  ))}
+                  {(!analytics || analytics.branches.length === 0) && (
+                    <tr><td colSpan={6} className="px-6 py-8 text-center text-slate-400">No analytics yet.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center gap-2">
+              <AlertCircle size={18} className="text-amber-500" />
+              <h3 className="font-bold text-slate-900">Students needing attention</h3>
+              <span className="ml-auto text-xs text-slate-400">low attendance (&lt;75%) or low GPA (&lt;2.5)</span>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {(analytics?.topAtRisk ?? []).length === 0 ? (
+                <div className="px-6 py-8 text-center text-emerald-600 text-sm flex items-center justify-center gap-2"><CheckCircle2 size={15} /> No at-risk students — every branch is healthy.</div>
+              ) : (analytics?.topAtRisk ?? []).map(st => (
+                <div key={st.studentId} className="px-6 py-3 flex items-center gap-4">
+                  <div className="h-8 w-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0"><AlertCircle size={15} /></div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-slate-800 truncate">{st.name}</p>
+                    <p className="text-xs text-slate-400">{st.schoolName} · {st.grade}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className={`text-xs font-bold ${st.attendance < 75 ? 'text-red-600' : 'text-slate-500'}`}>{st.attendance}% att.</p>
+                    <p className={`text-xs font-bold ${st.gpa < 2.5 ? 'text-red-600' : 'text-slate-500'}`}>GPA {st.gpa.toFixed(2)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
+const Bar: React.FC<{ value: number; good: number }> = ({ value, good }) => (
+  <div className="flex items-center gap-2">
+    <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+      <div className="h-full rounded-full" style={{ width: `${Math.min(100, value)}%`, background: value >= good ? '#16a34a' : value >= good * 0.66 ? '#ca8a04' : '#dc2626' }} />
+    </div>
+    <span className="text-xs font-bold text-slate-600 w-9 text-right">{value}%</span>
+  </div>
+);
 
 const tints: Record<string, string> = {
   slate: 'bg-slate-100 text-slate-600', blue: 'bg-blue-50 text-blue-600',

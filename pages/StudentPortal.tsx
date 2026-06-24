@@ -3,7 +3,8 @@ import React, { useEffect, useState, useRef } from 'react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { ResultData, ActiveExam, School, Student, AttendanceSummary, SchoolTerm } from '../types';
-import { FileCheck, Award, Calendar, Timer, ArrowRight, CheckCircle, BookOpen, ChevronRight, X, Ghost, Lock, KeyRound, AlertCircle } from 'lucide-react';
+import { FileCheck, Award, Calendar, Timer, ArrowRight, CheckCircle, BookOpen, ChevronRight, X, Ghost, Lock, KeyRound, AlertCircle, Printer } from 'lucide-react';
+import { printReportCard } from '../src/utils/printReportCard';
 
 export const StudentPortal: React.FC = () => {
   const { user } = useAuth();
@@ -476,10 +477,20 @@ export const StudentPortal: React.FC = () => {
 
        {/* Results Section — fee-gated */}
        <div>
-         <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-           <Award className="text-primary-600" />
-           Academic Results
-         </h2>
+         <div className="flex items-center justify-between mb-4">
+           <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+             <Award className="text-primary-600" />
+             Academic Results
+           </h2>
+           {pinUnlocked && results.length > 0 && user && (
+             <button
+               onClick={() => printReportCard(user.id, currentTerm?.name)}
+               className="flex items-center gap-2 px-3 py-2 bg-primary-600 text-white rounded-lg text-sm font-bold hover:bg-primary-700"
+             >
+               <Printer size={15} /> Print Report Card
+             </button>
+           )}
+         </div>
 
          {feeCleared === false ? (
            <div className="bg-amber-50 border border-amber-200 rounded-xl p-8 text-center space-y-3">

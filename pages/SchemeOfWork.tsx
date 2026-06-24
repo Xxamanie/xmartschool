@@ -5,6 +5,7 @@ import {
   X,
   CheckCircle2,
   Clock,
+  Sparkles,
 } from 'lucide-react';
 import { api } from '../services/api';
 import { SchemeSubmission, Subject, UserRole } from '../types';
@@ -22,7 +23,21 @@ export const SchemeOfWork: React.FC = () => {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [selectedSubject, setSelectedSubject] = useState('');
   const [selectedTerm, setSelectedTerm] = useState('Term 1');
-  
+
+  // AI scheme generator
+  const [aiClass, setAiClass] = useState('');
+  const [aiWeeks, setAiWeeks] = useState(12);
+  const [aiScheme, setAiScheme] = useState<Array<{ week: number; topic: string; objectives: string[] }>>([]);
+  const [aiLoading, setAiLoading] = useState(false);
+
+  const handleGenerateScheme = async () => {
+    if (!selectedSubject) return;
+    setAiLoading(true);
+    const res = await api.generateScheme({ subject: selectedSubject, className: aiClass || 'SS1', term: selectedTerm, weeks: aiWeeks });
+    setAiLoading(false);
+    if (res.ok) setAiScheme(res.data);
+  };
+
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -145,6 +160,45 @@ export const SchemeOfWork: React.FC = () => {
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
+      {/* AI Scheme of Work draft */}
+      <div className="bg-gradient-to-br from-indigo-50 to-white p-6 rounded-xl border border-indigo-200 shadow-sm">
+        <div className="flex items-center gap-2 mb-1">
+          <Sparkles size={18} className="text-indigo-600" />
+          <h2 className="text-lg font-bold text-indigo-900">AI Scheme of Work Draft</h2>
+        </div>
+        <p className="text-xs text-indigo-700 mb-4">Generate a week-by-week draft aligned to the Nigerian curriculum, then refine and upload it below.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-4">
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-medium text-gray-600 mb-1">Subject</label>
+            <input value={selectedSubject} onChange={e => setSelectedSubject(e.target.value)} className="w-full border border-indigo-200 rounded-lg p-2 text-sm" placeholder="e.g. Biology" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Class</label>
+            <input value={aiClass} onChange={e => setAiClass(e.target.value)} className="w-full border border-indigo-200 rounded-lg p-2 text-sm" placeholder="e.g. SS2A" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Weeks</label>
+            <input type="number" min={1} max={16} value={aiWeeks} onChange={e => setAiWeeks(parseInt(e.target.value) || 12)} className="w-full border border-indigo-200 rounded-lg p-2 text-sm" />
+          </div>
+        </div>
+        <button onClick={handleGenerateScheme} disabled={aiLoading || !selectedSubject}
+          className="flex items-center gap-2 px-4 py-2 bg-indigo-700 text-white rounded-lg text-sm font-bold hover:bg-indigo-800 disabled:opacity-60">
+          <Sparkles size={15} /> {aiLoading ? 'Generating…' : 'Generate with AI'}
+        </button>
+        {aiScheme.length > 0 && (
+          <div className="mt-4 max-h-80 overflow-y-auto border border-indigo-100 rounded-lg divide-y divide-indigo-50 bg-white">
+            {aiScheme.map(w => (
+              <div key={w.week} className="px-4 py-3">
+                <p className="text-sm font-bold text-slate-800">Week {w.week}: {w.topic}</p>
+                <ul className="mt-1 list-disc list-inside text-xs text-slate-500 space-y-0.5">
+                  {w.objectives.map((o, i) => <li key={i}>{o}</li>)}
+                </ul>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="flex flex-col md:flex-row gap-8">
         {/* Upload Section */}
         <div className="w-full md:w-2/3 space-y-6">

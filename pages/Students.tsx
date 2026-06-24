@@ -6,7 +6,8 @@ import { useAuth } from '../context/AuthContext';
 import { StudentForm } from '../components/StudentForm';
 import { ToastContainer } from '../components/Toast';
 import { useToast } from '../src/utils/useToast';
-import { Search, Filter, MoreHorizontal, Plus, ArrowUp, ArrowDown, ArrowUpDown, Calendar, Crown, X, UserCheck, CheckCircle2, Trash2, Edit, BookOpen, Upload, Download, Baby, Link, Link2Off, Eye, EyeOff, RefreshCw } from 'lucide-react';
+import { Search, Filter, MoreHorizontal, Plus, ArrowUp, ArrowDown, ArrowUpDown, Calendar, Crown, X, UserCheck, CheckCircle2, Trash2, Edit, BookOpen, Upload, Download, Baby, Link, Link2Off, Eye, EyeOff, RefreshCw, Printer } from 'lucide-react';
+import { printReportCard } from '../src/utils/printReportCard';
 
 export const Students: React.FC = () => {
   const { user, isCreator, effectiveSchoolId } = useAuth();
@@ -179,7 +180,7 @@ export const Students: React.FC = () => {
   // ── CSV template download ─────────────────────────────────────────────────
 
   const downloadTemplate = () => {
-    const csv = 'Name,Gender,Grade,Status,GPA,Attendance\nAda Obi,Female,JSS2A,Active,3.5,90\n';
+    const csv = 'Name,Gender,Class,Field\nAda Obi,Female,JSS2A,science\nMusa Bello,Male,JSS2A,science\n';
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
@@ -189,44 +190,58 @@ export const Students: React.FC = () => {
 
   // ── CSV import ────────────────────────────────────────────────────────────
 
+  const parseCsvLine = (line: string): string[] => {
+    const out: string[] = []; let cur = ''; let q = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') q = !q;
+      else if (c === ',' && !q) { out.push(cur); cur = ''; }
+      else cur += c;
+    }
+    out.push(cur);
+    return out.map(s => s.trim().replace(/^"|"$/g, ''));
+  };
+
   const handleImportCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !effectiveSchoolId) return;
     setImportLoading(true);
-    const text = await file.text();
-    const lines = text.split('\n').filter(l => l.trim());
-    const headers = lines[0].toLowerCase().split(',').map(h => h.trim());
-    const nameIdx = headers.indexOf('name');
-    const genderIdx = headers.indexOf('gender');
-    const gradeIdx = headers.indexOf('grade');
-    const statusIdx = headers.indexOf('status');
-    const gpaIdx = headers.indexOf('gpa');
-    const attIdx = headers.indexOf('attendance');
+    try {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter(l => l.trim());
+      if (lines.length < 2) { toast.error('CSV has no data rows.'); return; }
+      const headers = parseCsvLine(lines[0]).map(h => h.toLowerCase());
+      const findCol = (names: string[]) => { for (const n of names) { const i = headers.indexOf(n); if (i >= 0) return i; } return -1; };
+      const nameIdx = findCol(['name', 'full name', 'student name']);
+      const genderIdx = findCol(['gender', 'sex']);
+      const classIdx = findCol(['class', 'grade', 'classroom']);
+      const fieldIdx = findCol(['field', 'department', 'stream']);
+      if (nameIdx < 0) { toast.error('CSV must include a "name" column.'); return; }
 
-    let created = 0; let failed = 0;
-    for (let i = 1; i < lines.length; i++) {
-      const cols = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
-      const name = nameIdx >= 0 ? cols[nameIdx] : '';
-      const gender = (genderIdx >= 0 ? cols[genderIdx] : 'Male') as 'Male' | 'Female';
-      const grade = gradeIdx >= 0 ? cols[gradeIdx] : '';
-      if (!name || !grade) { failed++; continue; }
-      const res = await api.createStudent({
-        name,
-        gender: gender === 'Female' ? 'Female' : 'Male',
-        grade,
-        status: (statusIdx >= 0 ? cols[statusIdx] : 'Active') as any,
-        gpa: gpaIdx >= 0 ? parseFloat(cols[gpaIdx]) || 0 : 0,
-        attendance: attIdx >= 0 ? parseInt(cols[attIdx]) || 100 : 100,
-        schoolId: effectiveSchoolId,
-        accessCode: '',
-      });
-      if (res.ok) created++; else failed++;
+      const rows = lines.slice(1).map(parseCsvLine).map(cols => ({
+        name: cols[nameIdx] || '',
+        gender: genderIdx >= 0 ? cols[genderIdx] : '',
+        className: classIdx >= 0 ? cols[classIdx] : '',
+        field: fieldIdx >= 0 ? cols[fieldIdx] : '',
+      })).filter(r => r.name);
+
+      if (rows.length === 0) { toast.error('No valid rows found.'); return; }
+
+      // One efficient bulk request — auto-creates missing classes, returns per-row errors.
+      const res = await api.importStudents(rows, effectiveSchoolId);
+      if (res.ok) {
+        const { created, total, errors } = res.data;
+        toast.success(`Imported ${created} of ${total} student(s)${errors.length ? `, ${errors.length} skipped` : ''}.`);
+        if (errors.length) console.warn('Import skipped rows:', errors);
+      } else {
+        toast.error(res.message || 'Import failed.');
+      }
+      const refreshed = await api.getStudents(effectiveSchoolId);
+      if (refreshed.ok) setStudents(refreshed.data);
+    } finally {
+      setImportLoading(false);
+      e.target.value = '';
     }
-    toast.success(`Import complete: ${created} added${failed > 0 ? `, ${failed} skipped` : ''}.`);
-    const refreshed = await api.getStudents(effectiveSchoolId);
-    if (refreshed.ok) setStudents(refreshed.data);
-    setImportLoading(false);
-    e.target.value = '';
   };
 
   const handleDeleteStudent = async () => {
@@ -663,9 +678,18 @@ export const Students: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex items-center justify-end gap-2">
+                        {(isAdmin || user?.role === UserRole.TEACHER) && (
+                          <button
+                            onClick={() => printReportCard(student.id)}
+                            className="text-indigo-600 hover:text-indigo-800"
+                            title="Print report card"
+                          >
+                            <Printer size={16} />
+                          </button>
+                        )}
                         {isAdmin && (
                           <>
-                            <button 
+                            <button
                               onClick={() => handleOpenField(student)}
                               className="text-green-600 hover:text-green-800"
                               title="Assign field & subjects"

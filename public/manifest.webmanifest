@@ -1,0 +1,14 @@
+{
+  "name": "SmartSchool",
+  "short_name": "SmartSchool",
+  "description": "School management — results, fees, attendance, and timetable.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f172a",
+  "theme_color": "#059669",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

@@ -47,6 +47,12 @@ export const Finance: React.FC = () => {
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [paymentRef, setPaymentRef] = useState('');
   const [paymentSaving, setPaymentSaving] = useState(false);
+  // Online (Paystack) payment
+  const [payEmail, setPayEmail] = useState('');
+  const [pendingRef, setPendingRef] = useState<string | null>(null);
+  const [payOnlineBusy, setPayOnlineBusy] = useState(false);
+  const [remindersBusy, setRemindersBusy] = useState(false);
+  useEffect(() => { setPendingRef(null); }, [paymentModal?.itemId]);
 
   // ── Load summary + terms on mount ─────────────────────────────────────────
 
@@ -222,6 +228,61 @@ export const Finance: React.FC = () => {
     setPaymentSaving(false);
   };
 
+  const refreshLedgersAndSummary = async () => {
+    if (!effectiveSchoolId) return;
+    const refreshed = await api.getLedgers({ schoolId: effectiveSchoolId, term: selectedTerm || undefined });
+    if (refreshed.ok) setLedgers(refreshed.data);
+    const sumRes = await api.getFinanceSummary(effectiveSchoolId, selectedTerm || undefined);
+    if (sumRes.ok) setSummary(sumRes.data);
+  };
+
+  const handlePayOnline = async () => {
+    if (!paymentModal) return;
+    const email = payEmail.trim();
+    if (!email) { toast.error('Enter the payer’s email for the receipt.'); return; }
+    const amount = paymentAmount ? parseFloat(paymentAmount) : paymentModal.payable;
+    if (isNaN(amount) || amount <= 0) { toast.error('Enter a valid amount.'); return; }
+    setPayOnlineBusy(true);
+    const res = await api.initializeFeePayment({ ledgerItemId: paymentModal.itemId, email, amount });
+    setPayOnlineBusy(false);
+    if (res.ok && res.data.authorizationUrl) {
+      setPendingRef(res.data.reference);
+      window.open(res.data.authorizationUrl, '_blank', 'noopener');
+      toast.success('Payment window opened — complete it, then click “Verify payment”.');
+    } else {
+      toast.error(res.message || 'Could not start online payment.');
+    }
+  };
+
+  const handleVerifyOnline = async () => {
+    if (!pendingRef) return;
+    setPayOnlineBusy(true);
+    const res = await api.verifyFeePayment(pendingRef);
+    setPayOnlineBusy(false);
+    if (res.ok && res.data.recorded) {
+      toast.success('Online payment confirmed and posted to the ledger.');
+      setPendingRef(null);
+      setPaymentModal(null);
+      setPaymentAmount(''); setPaymentRef(''); setPayEmail('');
+      await refreshLedgersAndSummary();
+    } else {
+      toast.error(res.message || 'Payment not confirmed yet — give it a moment and try again.');
+    }
+  };
+
+  const handleSendReminders = async () => {
+    setRemindersBusy(true);
+    const res = await api.sendFeeReminders(selectedTerm || undefined, 'sms');
+    setRemindersBusy(false);
+    if (res.ok) {
+      toast.success(res.data.messaged > 0
+        ? `Reminders sent to ${res.data.messaged} parent contact(s) across ${res.data.owing} owing student(s).`
+        : 'No reminders sent — no owing students, missing parent phone numbers, or messaging not configured.');
+    } else {
+      toast.error(res.message || 'Failed to send reminders.');
+    }
+  };
+
   // ── Derived stats ─────────────────────────────────────────────────────────
 
   const collectionRate = summary && summary.totalPayable > 0
@@ -376,6 +437,12 @@ export const Finance: React.FC = () => {
                     <p className="text-sm text-gray-500">
                       <span className="font-semibold text-emerald-600">{collectionRate}%</span> of target collected
                     </p>
+                    {isAdmin && (
+                      <button onClick={handleSendReminders} disabled={remindersBusy}
+                        className="mt-2 w-full flex items-center justify-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-bold hover:bg-amber-600 disabled:opacity-60">
+                        <AlertCircle size={15} /> {remindersBusy ? 'Sending…' : 'Send fee reminders (SMS) to owing parents'}
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -645,6 +712,12 @@ export const Finance: React.FC = () => {
                   placeholder="Receipt / transaction ref"
                   className="w-full border border-gray-300 rounded-lg p-2.5 text-sm" />
               </div>
+              <div>
+                <label htmlFor="payer-email" className="block text-xs font-medium text-gray-600 mb-1">Payer email <span className="text-gray-400 font-normal">(for online payment)</span></label>
+                <input id="payer-email" name="payer-email" type="email" value={payEmail} onChange={(e) => setPayEmail(e.target.value)}
+                  placeholder="parent@example.com"
+                  className="w-full border border-gray-300 rounded-lg p-2.5 text-sm" />
+              </div>
             </div>
             <div className="flex gap-3 mt-5">
               <button onClick={handleRecordPayment} disabled={paymentSaving}
@@ -655,6 +728,25 @@ export const Finance: React.FC = () => {
                 className="flex-1 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50">
                 Cancel
               </button>
+            </div>
+
+            {/* Online payment (Paystack) */}
+            <div className="mt-4 pt-4 border-t border-gray-100">
+              {!pendingRef ? (
+                <button onClick={handlePayOnline} disabled={payOnlineBusy}
+                  className="w-full py-2.5 bg-emerald-600 text-white rounded-lg text-sm font-bold hover:bg-emerald-700 disabled:opacity-60 flex items-center justify-center gap-2">
+                  <CreditCard size={15} /> {payOnlineBusy ? 'Starting…' : 'Pay online (Card / Transfer / USSD)'}
+                </button>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs text-gray-500">Complete payment in the Paystack tab, then confirm here:</p>
+                  <button onClick={handleVerifyOnline} disabled={payOnlineBusy}
+                    className="w-full py-2.5 bg-emerald-600 text-white rounded-lg text-sm font-bold hover:bg-emerald-700 disabled:opacity-60 flex items-center justify-center gap-2">
+                    <CheckCircle2 size={15} /> {payOnlineBusy ? 'Verifying…' : 'Verify payment'}
+                  </button>
+                </div>
+              )}
+              <p className="mt-1.5 text-[10px] text-gray-400 text-center">Powered by Paystack · auto-posts to the ledger &amp; releases the result PIN</p>
             </div>
           </div>
         </div>
