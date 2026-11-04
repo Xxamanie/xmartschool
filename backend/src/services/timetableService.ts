@@ -25,6 +25,7 @@ export type TimetableEntryDTO = {
   subjectName: string;
   teacherId?: string;
   teacherName?: string;
+  room?: string;
 };
 
 type Assignment = { subjectId: string; subjectName: string; teacherId?: string; teacherName?: string };
@@ -146,6 +147,14 @@ export const getTimetable = async (schoolId: string): Promise<Resp<TimetableEntr
     prisma.schoolClass.findMany({ where: { schoolId }, select: { id: true, name: true } }),
   ]);
   const classNames = new Map(classes.map(c => [c.id, c.name]));
+  const subjectIds = [...new Set(entries.map(entry => entry.subjectId))];
+  const subjects = subjectIds.length > 0
+    ? await prisma.subject.findMany({
+        where: { schoolId, id: { in: subjectIds } },
+        select: { id: true, room: true },
+      })
+    : [];
+  const subjectRooms = new Map(subjects.map(subject => [subject.id, subject.room?.trim() || undefined]));
   return ok(entries.map((e): TimetableEntryDTO => ({
     id: e.id,
     schoolClassId: e.schoolClassId,
@@ -156,6 +165,7 @@ export const getTimetable = async (schoolId: string): Promise<Resp<TimetableEntr
     subjectName: e.subjectName,
     teacherId: e.teacherId ?? undefined,
     teacherName: e.teacherName ?? undefined,
+    room: subjectRooms.get(e.subjectId),
   })));
 };
 
@@ -182,7 +192,7 @@ export const updateTimetableSlot = async (params: {
     return ok(null, 'Slot cleared');
   }
 
-  const subject = await prisma.subject.findFirst({ where: { id: subjectId, schoolId }, select: { id: true, name: true } });
+  const subject = await prisma.subject.findFirst({ where: { id: subjectId, schoolId }, select: { id: true, name: true, room: true } });
   if (!subject) return fail('Subject not found in this school', null);
 
   // Resolve the teacher who teaches this subject in this class (if assigned).
@@ -222,6 +232,7 @@ export const updateTimetableSlot = async (params: {
     id: saved.id, schoolClassId, className, day, period,
     subjectId, subjectName: subject.name,
     teacherId: teacherId ?? undefined, teacherName: teacherName ?? undefined,
+    room: subject.room?.trim() || undefined,
   }, 'Slot updated');
 };
 

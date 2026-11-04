@@ -8,6 +8,7 @@
  * Run: cd backend && npx tsx prisma/seed.ts
  */
 
+import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
@@ -20,6 +21,9 @@ const avatar = (name: string, bg = '4F46E5') =>
   `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=${bg}&color=fff&size=128`;
 
 async function main() {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Demo seed is disabled in production. Provision real school accounts instead.');
+  }
   console.log('🌱  Seeding demo data…');
 
   const pw = await hash('Password1');

@@ -21,6 +21,18 @@ export interface User {
   gender?: 'Male' | 'Female';
   phone?: string;
   bio?: string;
+  active?: boolean;
+  provider?: 'supabase' | 'legacy';
+  notificationPreferences?: NotificationPreferences;
+  temporaryPassword?: string;
+}
+
+export interface NotificationPreferences {
+  examSubmission: boolean;
+  resultsPublished: boolean;
+  paymentReceived: boolean;
+  newAnnouncement: boolean;
+  systemMaintenance: boolean;
 }
 
 export interface School {
@@ -55,6 +67,7 @@ export interface Student {
   gpa: number;
   attendance: number; // percentage
   schoolId: string;
+  schoolClassId?: string | null;
   accessCode: string; // Unique Student Access Code
   enrolledSubjects?: string[];
   field?: 'science' | 'arts' | 'business' | 'general';
@@ -87,6 +100,8 @@ export interface SchemeSubmission {
   uploadDate: string;
   status: 'Pending' | 'Approved' | 'Rejected';
   fileName: string;
+  reviewNote?: string;
+  remarks?: string;
 }
 
 export interface Assessment {
@@ -99,7 +114,15 @@ export interface Assessment {
   ca2: number; // Max 10
   ca3: number; // Max 10
   exam: number; // Max 70
-  [key: string]: string | number | undefined; // Allow dynamic CA columns
+  scores?: Record<string, number>;
+  [key: string]: string | number | Record<string, number> | undefined;
+}
+
+export interface AssessmentConfiguration {
+  caColumns: { id: string; label: string; maxScore: number }[];
+  examMax: number;
+  passMark: number;
+  gradingScale: { grade: string; minPercentage: number }[];
 }
 
 export interface ResultData {
@@ -231,6 +254,10 @@ export interface ActiveExam {
   duration: number; // minutes
   questions: ExamQuestion[];
   teacherId?: string; // Owner of the exam
+  schoolId?: string;
+  schoolClassId?: string;
+  subjectId?: string;
+  termId?: string;
 }
 
 export interface ExamSession {
@@ -241,6 +268,7 @@ export interface ExamSession {
   progress: number; // 0 to 100
   score?: number;
   startTime?: string;
+  deadline?: string;
   endTime?: string;
   answers?: Record<string, string>; // Persist draft answers
 }
@@ -261,6 +289,7 @@ export interface TimetableEntry {
   subjectName: string;
   teacherId?: string;
   teacherName?: string;
+  room?: string;
 }
 
 export type NotificationAudience =

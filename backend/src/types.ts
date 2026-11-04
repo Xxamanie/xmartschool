@@ -19,6 +19,11 @@ export interface User {
   gender?: 'Male' | 'Female';
   phone?: string;
   bio?: string;
+  active?: boolean;
+  sessionVersion?: number;
+  notificationPreferences?: Record<string, boolean>;
+  temporaryPassword?: string;
+  existingProviderAccount?: boolean;
 }
 
 export interface School {
@@ -92,6 +97,7 @@ export interface StudentFeeLedger {
 export interface Student {
   id: string;
   name: string;
+  email?: string;
   gender: 'Male' | 'Female';
   grade: string;
   enrollmentDate: string;
@@ -99,11 +105,12 @@ export interface Student {
   gpa: number;
   attendance: number;
   schoolId: string;
-  accessCode: string;
+  accessCode?: string;
   avatar?: string;
   enrolledSubjects?: string[];
   resultPin?: string;
   resultPinTerm?: string;
+  schoolClassId?: string;
 }
 
 export interface Subject {
@@ -122,6 +129,8 @@ export interface SchemeSubmission {
   uploadDate: string;
   status: 'Pending' | 'Approved' | 'Rejected';
   fileName: string;
+  reviewNote?: string;
+  remarks?: string;
 }
 
 export interface Assessment {
@@ -198,6 +207,7 @@ export interface Announcement {
   targetAudience: 'all' | 'teachers' | 'students';
   source: string;
   createdAt: string;
+  schoolId?: string;
 }
 
 export type NotificationAudience =
@@ -293,6 +303,7 @@ export interface ApiResponse<T> {
   ok: boolean;
   data: T;
   message?: string;
+  pagination?: { nextCursor: string | null; total?: number };
 }
 
 export interface AuditLogEntry {

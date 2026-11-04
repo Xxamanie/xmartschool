@@ -50,8 +50,8 @@ import {
   LogOut,
   HelpCircle,
   MessageCircle,
-  Gift,
   Flame,
+  Gift,
   PencilLine,
   Trash2,
 } from 'lucide-react';

@@ -7,6 +7,8 @@ type SessionPayload = {
   schoolId?: string;
   groupId?: string;
   exp: number;
+  version: number;
+  impersonatorVersion?: number;
   // When present, this session was minted by a SUPER_ADMIN impersonating
   // another account. The value is the impersonator's user id, so every
   // action taken during impersonation remains attributable.
@@ -24,13 +26,14 @@ const decode = (value: string) => Buffer.from(value, 'base64url').toString('utf8
 const sign = (value: string) =>
   crypto.createHmac('sha256', SESSION_SECRET).update(value).digest('base64url');
 
-export const createSessionToken = (user: User): string => {
+export const createSessionToken = (user: User & { sessionVersion?: number }): string => {
   const payload: SessionPayload = {
     sub: user.id,
     role: user.role,
     schoolId: user.schoolId,
     groupId: user.groupId,
     exp: Date.now() + SESSION_TTL_MS,
+    version: user.sessionVersion ?? 0,
   };
 
   const encodedPayload = encode(JSON.stringify(payload));
@@ -40,13 +43,15 @@ export const createSessionToken = (user: User): string => {
 
 // Mints a short-lived session for `target` that records which super-admin
 // (`impersonatorId`) created it. Used by the SUPER_ADMIN impersonation flow.
-export const createImpersonationToken = (user: User, impersonatorId: string): string => {
+export const createImpersonationToken = (user: User & { sessionVersion?: number }, impersonatorId: string, impersonatorVersion = 0): string => {
   const payload: SessionPayload = {
     sub: user.id,
     role: user.role,
     schoolId: user.schoolId,
     exp: Date.now() + IMPERSONATION_TTL_MS,
     impersonatedBy: impersonatorId,
+    version: user.sessionVersion ?? 0,
+    impersonatorVersion,
   };
 
   const encodedPayload = encode(JSON.stringify(payload));
@@ -55,8 +60,8 @@ export const createImpersonationToken = (user: User, impersonatorId: string): st
 };
 
 export const verifySessionToken = (token: string): SessionPayload | null => {
-  const [encodedPayload, providedSignature] = token.split('.');
-  if (!encodedPayload || !providedSignature) {
+  const [encodedPayload, providedSignature, extra] = token.split('.');
+  if (!encodedPayload || !providedSignature || extra) {
     return null;
   }
 
@@ -73,7 +78,7 @@ export const verifySessionToken = (token: string): SessionPayload | null => {
 
   try {
     const payload = JSON.parse(decode(encodedPayload)) as SessionPayload;
-    if (!payload.sub || !payload.role || typeof payload.exp !== 'number' || payload.exp < Date.now()) {
+    if (!payload.sub || !Object.values(UserRole).includes(payload.role) || !Number.isSafeInteger(payload.version) || payload.version < 0 || typeof payload.exp !== 'number' || payload.exp <= Date.now()) {
       return null;
     }
     return payload;

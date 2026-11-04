@@ -6,18 +6,20 @@
 
 A comprehensive school management system built with React, TypeScript, and modern web technologies.
 
+The [implementation checklist and production setup](docs/IMPLEMENTATION_CHECKLIST.md) describe the current features, verification commands, and provider configuration. Read the [database migration guide](backend/prisma/README.md) before deploying to an existing database.
+
 ## 🚀 Recent Updates & Fixes
 
 ### ✅ Authentication System Improvements
 - **Enhanced Supabase Integration**: Better error handling and configuration validation
-- **Dual Authentication Mode**: Seamless fallback from Supabase to demo mode
+- **Dual Authentication Mode**: Supabase authentication and explicitly enabled local demo authentication
 - **Improved Error Messages**: Clear, actionable feedback for login issues
 - **Auth State Management**: Better session handling and cleanup
 
 ### ✅ API Service Overhaul
 - **Consistent Response Handling**: Unified data extraction across all endpoints
 - **Better Error Reporting**: Standardized error messages and fallback responses
-- **Enhanced Demo Mode**: Improved fallback behavior when backend is unavailable
+- **Demo Configuration**: Separate frontend and backend demo authentication flags
 - **Type Safety**: Better TypeScript integration throughout
 
 ### ✅ Security & Configuration
@@ -32,7 +34,7 @@ A comprehensive school management system built with React, TypeScript, and moder
 
 ## Features
 
-- **Multi-role Authentication** - Support for Super Admin, Admin, Teacher, and Student roles
+- **Multi-role Authentication** - Support for Super Admin, Admin, Teacher, Student, and Parent roles
 - **School Management** - Complete school administration and management
 - **Student Information System** - Student enrollment, attendance, and academic tracking
 - **Assessment & Results** - Comprehensive assessment and result management
@@ -72,8 +74,7 @@ A comprehensive school management system built with React, TypeScript, and moder
    # API Configuration
    VITE_API_BASE_URL=http://localhost:4000/api
    
-   # Gemini API Key (optional - for AI features)
-   VITE_GEMINI_API_KEY=your_gemini_api_key_here
+   # AI requests use the backend GEMINI_API_KEY; no frontend secret is needed.
    
    # Supabase Configuration
    VITE_SUPABASE_URL=your_supabase_url
@@ -95,15 +96,17 @@ A comprehensive school management system built with React, TypeScript, and moder
 The application includes demo accounts for testing:
 
 ### Staff/Admin Login
-- **Super Admin**: `creator@smartschool.edu`
-- **School Admin**: `admin@smartschool.edu`  
-- **Teacher**: `alex.j@smartschool.edu`
+The [demo seed](./backend/prisma/seed-demo.ts) creates working pitch accounts. Every staff account uses `Password1`:
+- **Creator**: `creator@smartschool.edu`
+- **Group Owner**: `owner@brightedu.demo`
+- **School Admin**: `admin@greenfield.demo`
+- **Teacher**: `math.teacher@gfd-101.demo`
 
 ### Student Portal
-- **School Code**: `SPR-001`
-- **Student Code**: `STU-2024-001`
+- **School Code**: `GFD-101`
+- **Student Code**: `GFD-101-2025-0001`
 
-*Note: Password is not required for demo accounts*
+Run `npx tsx prisma/seed-demo.ts` from `backend/` against the database used by the app to create these accounts and their walkthrough data. Demo email/password logins use the seeded bcrypt password and work even when the optional password-free local demo fallback is disabled. Supabase authentication remains the sign-in path for other provisioned accounts. Treat these shared demo credentials as temporary and remove the demo seed before a full production launch.
 
 ## Project Structure
 
@@ -149,7 +152,7 @@ smart-school/
 
 The application supports both:
 - **Live Backend**: Full API integration with backend services
-- **Demo Mode**: Mock data fallback when backend is unavailable
+- **Demo Authentication**: Explicit opt-in for local previews; backend API errors remain visible
 
 ## Deployment
 
@@ -165,6 +168,8 @@ The application supports both:
 ### Fullstack Docker Deployment
 
 The repository now includes production and development compose files for frontend and backend.
+
+Production startup runs `prisma migrate deploy`. A database created previously with `db push` needs the verified migration adoption described in [the migration guide](backend/prisma/README.md) before Docker startup. Set a random `SESSION_SECRET` of at least 64 characters; production startup rejects demo authentication and shorter secrets. Demo seeding is also blocked when `NODE_ENV=production`.
 
 - **Production**
   ```bash
@@ -183,8 +188,9 @@ The repository now includes production and development compose files for fronten
 Ensure production environment variables are properly set:
 - Set `VITE_API_BASE_URL` to your backend API URL (for frontend)
 - Configure Supabase credentials
-- Set `VITE_GEMINI_API_KEY` for AI features (optional)
-- Set backend-specific variables: `DATABASE_URL`, `FRONTEND_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY`
+- Set backend `GEMINI_API_KEY` for AI features (optional); the frontend does not need the secret
+- Set backend-specific variables: `DATABASE_URL`, `FRONTEND_URL`, `CORS_ORIGIN`, `SESSION_SECRET`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
+- Configure storage, password recovery, SMTP, and optional payment/video providers using the [production setup checklist](docs/IMPLEMENTATION_CHECKLIST.md)
 
 ## Features Overview
 
@@ -228,7 +234,7 @@ Ensure production environment variables are properly set:
 3. **API connection problems**
    - Verify `VITE_API_BASE_URL` is correct
    - Check backend server status
-   - Application will fallback to demo mode if backend is unavailable
+   - Inspect the reported API error; demo authentication requires explicit local configuration
 
 ### Development Tips
 

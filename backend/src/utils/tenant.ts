@@ -12,7 +12,7 @@ export const getEffectiveSchoolId = (req: Request): string | undefined => {
   }
 
   if (MULTI_SCHOOL_ROLES.includes(req.auth.role)) {
-    return typeof req.query.schoolId === 'string' ? req.query.schoolId : undefined;
+    return typeof req.query.schoolId === 'string' ? req.query.schoolId : req.auth.schoolId;
   }
 
   return req.auth.schoolId;
@@ -103,7 +103,7 @@ export const requireSameSchool = (resourceSchoolId: string | undefined, auth?: {
   return null;
 };
 
-export const enforceTenantQuery = (req: Request, res: Response, next: NextFunction) => {
+export const enforceTenantQuery = async (req: Request, res: Response, next: NextFunction) => {
   if (!req.auth) {
     res.status(401).json({ ok: false, data: null, message: 'Authentication required' });
     return;
@@ -111,11 +111,7 @@ export const enforceTenantQuery = (req: Request, res: Response, next: NextFuncti
 
   // Multi-school roles (Creator, Group Owner) pass schoolId as the active
   // school; group-scoped endpoints validate group membership at the data layer.
-  if (
-    !MULTI_SCHOOL_ROLES.includes(req.auth.role) &&
-    typeof req.query.schoolId === 'string' &&
-    req.query.schoolId !== req.auth.schoolId
-  ) {
+  if (typeof req.query.schoolId === 'string' && !await canAccessSchool(req.auth, req.query.schoolId)) {
     res.status(403).json({ ok: false, data: null, message: 'Cannot query another school' });
     return;
   }

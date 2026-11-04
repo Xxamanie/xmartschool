@@ -4,8 +4,10 @@ import { asyncHandler } from '../../utils/asyncHandler';
 import { appService } from '../../services/appService';
 import { requireAuth, requireRole } from '../../middleware/auth';
 import { UserRole } from '../../types';
+import { enforceTenantQuery, getEffectiveSchoolId } from '../../utils/tenant';
 
 const router = Router();
+router.use(requireAuth, enforceTenantQuery, requireRole(UserRole.ADMIN, UserRole.TEACHER, UserRole.STUDENT, UserRole.SUPER_ADMIN));
 
 router.get(
   '/',
@@ -13,7 +15,7 @@ router.get(
   asyncHandler(async (req, res) => {
     const auth = req.auth;
     const response = await appService.getLiveClasses(
-      auth?.schoolId,
+      getEffectiveSchoolId(req),
       auth?.userId,
       auth?.role,
       auth?.role === UserRole.STUDENT ? auth.userId : undefined,
@@ -26,8 +28,11 @@ const createSchema = z.object({
   subjectId: z.string().optional(),
   teacherId: z.string().optional(),
   schoolClassId: z.string().min(1),
-  scheduledTime: z.string().min(1),
-  meetingLink: z.string().min(1),
+  scheduledTime: z.string().refine(value => Number.isFinite(Date.parse(value)), 'Scheduled time must be a valid date and time'),
+  meetingLink: z.string().trim().max(2048).refine(value => {
+    if (!value) return true;
+    try { return ['https:', 'http:'].includes(new URL(value).protocol); } catch { return false; }
+  }, 'Meeting link must be an HTTP or HTTPS URL').default(''),
 });
 
 
@@ -38,7 +43,9 @@ router.post(
   asyncHandler(async (req, res) => {
     const { subjectId, teacherId, schoolClassId, scheduledTime, meetingLink } = createSchema.parse(req.body);
     const preferredTeacherId = req.auth?.role === UserRole.TEACHER ? req.auth.userId : teacherId;
-    const response = await appService.createLiveClass(subjectId, preferredTeacherId, schoolClassId, scheduledTime, meetingLink);
+    const response = await appService.createLiveClass(subjectId, preferredTeacherId, schoolClassId, scheduledTime, meetingLink, {
+      userId: req.auth!.userId, role: req.auth!.role, schoolId: getEffectiveSchoolId(req),
+    });
 
     res.json(response);
   }),
@@ -49,7 +56,7 @@ router.post(
   requireAuth,
   asyncHandler(async (req, res) => {
     const { liveClassId } = req.params;
-    const response = await appService.joinLiveClass(liveClassId, req.auth!.userId, req.auth!.role);
+    const response = await appService.joinLiveClass(liveClassId, req.auth!.userId, req.auth!.role, getEffectiveSchoolId(req));
     res.json(response);
   }),
 );
@@ -59,7 +66,7 @@ router.post(
   requireAuth,
   asyncHandler(async (req, res) => {
     const { liveClassId } = req.params;
-    const response = await appService.leaveLiveClass(liveClassId, req.auth!.userId);
+    const response = await appService.leaveLiveClass(liveClassId, req.auth!.userId, req.auth!.role, getEffectiveSchoolId(req));
     res.json(response);
   }),
 );
@@ -69,8 +76,8 @@ router.post(
   requireAuth,
   asyncHandler(async (req, res) => {
     const { liveClassId } = req.params;
-    const { cameraOn, microphoneOn } = req.body;
-    const response = await appService.updateParticipantStatus(liveClassId, req.auth!.userId, req.auth!.role, cameraOn, microphoneOn);
+    const { cameraOn, microphoneOn } = z.object({ cameraOn: z.boolean(), microphoneOn: z.boolean() }).parse(req.body);
+    const response = await appService.updateParticipantStatus(liveClassId, req.auth!.userId, req.auth!.role, cameraOn, microphoneOn, getEffectiveSchoolId(req));
     res.json(response);
   }),
 );
@@ -80,8 +87,8 @@ router.post(
   requireAuth,
   asyncHandler(async (req, res) => {
     const { liveClassId } = req.params;
-    const { raised } = req.body;
-    const response = await appService.raiseHand(liveClassId, req.auth!.userId, req.auth!.role, raised);
+    const { raised } = z.object({ raised: z.boolean() }).parse(req.body);
+    const response = await appService.raiseHand(liveClassId, req.auth!.userId, req.auth!.role, raised, getEffectiveSchoolId(req));
     res.json(response);
   }),
 );
@@ -94,7 +101,7 @@ router.post(
   asyncHandler(async (req, res) => {
     const { liveClassId } = req.params;
     const { message } = messageSchema.parse(req.body);
-    const response = await appService.sendLiveClassMessage(liveClassId, req.auth!.userId, req.auth!.role, message);
+    const response = await appService.sendLiveClassMessage(liveClassId, req.auth!.userId, req.auth!.role, message, getEffectiveSchoolId(req));
     res.json(response);
   }),
 );
@@ -104,7 +111,7 @@ router.get(
   requireAuth,
   asyncHandler(async (req, res) => {
     const { liveClassId } = req.params;
-    const response = await appService.getLiveClassMessages(liveClassId, req.auth!.userId, req.auth!.role);
+    const response = await appService.getLiveClassMessages(liveClassId, req.auth!.userId, req.auth!.role, getEffectiveSchoolId(req));
     res.json(response);
   }),
 );
@@ -114,7 +121,7 @@ router.get(
   requireAuth,
   asyncHandler(async (req, res) => {
     const { liveClassId } = req.params;
-    const response = await appService.getLiveClassParticipants(liveClassId, req.auth!.userId, req.auth!.role);
+    const response = await appService.getLiveClassParticipants(liveClassId, req.auth!.userId, req.auth!.role, getEffectiveSchoolId(req));
     res.json(response);
   }),
 );
@@ -128,7 +135,7 @@ router.post(
   asyncHandler(async (req, res) => {
     const { liveClassId } = req.params;
     const { recordingUrl } = recordingStartSchema.parse(req.body);
-    const response = await appService.startLiveClassRecording(liveClassId, recordingUrl);
+    const response = await appService.startLiveClassRecording(liveClassId, recordingUrl, req.auth!.userId, req.auth!.role, getEffectiveSchoolId(req));
     res.json(response);
   }),
 );
@@ -139,8 +146,8 @@ router.post(
   requireRole(UserRole.ADMIN, UserRole.TEACHER, UserRole.SUPER_ADMIN),
   asyncHandler(async (req, res) => {
     const { liveClassId } = req.params;
-    const { duration } = req.body;
-    const response = await appService.stopLiveClassRecording(liveClassId, duration || 0);
+    const { duration } = z.object({ duration: z.number().nonnegative().default(0) }).parse(req.body);
+    const response = await appService.stopLiveClassRecording(liveClassId, duration, req.auth!.userId, req.auth!.role, getEffectiveSchoolId(req));
     res.json(response);
   }),
 );

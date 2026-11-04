@@ -23,6 +23,7 @@ export const StudentForm: React.FC<StudentFormProps> = ({ student, onSubmit, onC
 
   const [formData, setFormData] = useState({
     name: '',
+    email: '',
     gender: 'Male' as 'Male' | 'Female',
     grade: '',
     status: 'Active' as 'Active' | 'Inactive' | 'Suspended',
@@ -44,6 +45,7 @@ export const StudentForm: React.FC<StudentFormProps> = ({ student, onSubmit, onC
     if (student) {
       setFormData({
         name: student.name,
+        email: student.email || '',
         gender: student.gender,
         grade: student.grade,
         status: student.status,
@@ -114,6 +116,10 @@ export const StudentForm: React.FC<StudentFormProps> = ({ student, onSubmit, onC
       </div>
 
       {/* Gender */}
+      <div>
+        <label htmlFor="student-email" className="block text-sm font-medium text-gray-700 mb-1">Email for notifications (optional)</label>
+        <input id="student-email" name="email" type="email" value={formData.email} onChange={e => handleChange('email', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+      </div>
       <div>
         <label htmlFor="student-gender" className="block text-sm font-medium text-gray-700 mb-1">Gender *</label>
         <select

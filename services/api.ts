@@ -1,6 +1,7 @@
-import { Student, Subject, ApiResponse, SchemeSubmission, Assessment, ResultData, School, User, UserRole, ActiveExam, ExamQuestion, ExamSession, Announcement, LiveClass, LiveClassParticipant, LiveClassMessage, SchoolClassItem, StaffMessage, TeacherAssignment, Notification, NotificationAudience, PrivateConversation, PrivateConversationMessage, CalendarEvent, SchoolTerm, StudentFeeLedger, StudentFeePayment, AttendanceSummary, AuditLogEntry, FeeTemplate } from '../types';
+import { Student, Subject, ApiResponse, SchemeSubmission, Assessment, AssessmentConfiguration, NotificationPreferences, ResultData, School, User, UserRole, ActiveExam, ExamQuestion, ExamSession, Announcement, LiveClass, LiveClassParticipant, LiveClassMessage, SchoolClassItem, StaffMessage, TeacherAssignment, Notification, NotificationAudience, PrivateConversation, PrivateConversationMessage, CalendarEvent, SchoolTerm, StudentFeeLedger, StudentFeePayment, AttendanceSummary, AuditLogEntry, FeeTemplate } from '../types';
 import apiClient, { buildSchoolScopedConfig } from '../src/utils/api';
 import { enqueue } from '../src/utils/offlineQueue';
+import { getApiSession } from '../src/utils/sessionState';
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -35,14 +36,42 @@ const normalizeApiResponse = <T>(response: any, fallbackMessage?: string): ApiRe
 
 // Consistent data extraction from API responses
 const extractData = (response: any): any => {
-  // Handle different response structures consistently
-  if (response?.data?.data) return response.data.data;
+  if (response?.data?.ok === false) throw new Error(response.data.message || 'The server rejected this operation.');
+  if (response?.data && Object.prototype.hasOwnProperty.call(response.data, 'data')) return response.data.data;
   if (response?.data?.user) return response.data.user;
   if (response?.data) return response.data;
   return response;
 };
 
 export const api = {
+  getCurrentUser: async (): Promise<ApiResponse<User>> => {
+    try { return normalizeApiResponse(await apiClient.get('/auth/me')); }
+    catch (error) { return wrapError(error, {} as User, 'Could not load your account.'); }
+  },
+  getNotificationPreferences: async (): Promise<ApiResponse<{ preferences: NotificationPreferences }>> => {
+    try { return normalizeApiResponse(await apiClient.get('/auth/notification-preferences')); }
+    catch (error) { return wrapError(error, undefined, 'Could not load notification preferences.'); }
+  },
+  saveNotificationPreferences: async (preferences: NotificationPreferences): Promise<ApiResponse<{ preferences: NotificationPreferences }>> => {
+    try { return normalizeApiResponse(await apiClient.put('/auth/notification-preferences', { preferences })); }
+    catch (error) { return wrapError(error, undefined, 'Could not save notification preferences.'); }
+  },
+  getAssessmentConfig: async (subjectId: string, term: string, schoolId?: string): Promise<ApiResponse<AssessmentConfiguration | null>> => {
+    try { return normalizeApiResponse(await apiClient.get('/assessments/config', { params: { subjectId, term, schoolId } })); }
+    catch (error) { return wrapError(error, null, 'Could not load grading configuration.'); }
+  },
+  saveAssessmentConfig: async (subjectId: string, term: string, configJson: AssessmentConfiguration, schoolId?: string): Promise<ApiResponse<AssessmentConfiguration>> => {
+    try { return normalizeApiResponse(await apiClient.put('/assessments/config', { subjectId, term, configJson, schoolId })); }
+    catch (error) { return wrapError(error, {} as AssessmentConfiguration, 'Could not save grading configuration.'); }
+  },
+  reviewScheme: async (id: string, status: 'Approved' | 'Rejected', remarks?: string): Promise<ApiResponse<SchemeSubmission>> => {
+    try { return normalizeApiResponse(await apiClient.patch('/schemes/' + encodeURIComponent(id) + '/review', { status, remarks })); }
+    catch (error) { return wrapError(error, {} as SchemeSubmission, 'Could not review the scheme.'); }
+  },
+  resetUserPassword: async (userId: string): Promise<ApiResponse<{ temporaryPassword: string }>> => {
+    try { return normalizeApiResponse(await apiClient.post(`/users/${userId}/reset-password`)); }
+    catch (error) { return wrapError(error, { temporaryPassword: '' }, 'Could not reset password'); }
+  },
   health: async (): Promise<ApiResponse<{ status: string }>> => {
     try {
       const response = await apiClient.get('/health');
@@ -368,7 +397,7 @@ export const api = {
   },
 
   // Full report-card data (results, position, branding, affective/psychomotor).
-  getReportCard: async (studentId: string, term?: string): Promise<ApiResponse<any>> => {
+  getReportCard: async (studentId: string, term?: string, pin?: string): Promise<ApiResponse<any>> => {
     try {
       const qs = term ? `?term=${encodeURIComponent(term)}` : '';
       const response = await apiClient.get(`/students/${studentId}/report-card${qs}`);
@@ -619,7 +648,14 @@ export const api = {
       return normalizeApiResponse(response, 'Group owner created successfully');
     } catch (error) {
       console.error('Failed to create group owner:', error);
-      return wrapError(error, { groupId: '', groupName: '', ownerEmail: '', tempPassword: '' }, 'Failed to create group owner');
+      return wrapError(error, {
+        userId: '',
+        groupId: '',
+        groupName: '',
+        ownerEmail: '',
+        tempPassword: '',
+        linkedSchoolIds: [],
+      }, 'Failed to create group owner');
     }
   },
 
@@ -748,29 +784,36 @@ export const api = {
     } catch (error) {
       console.error('Failed to get schemes:', error);
       await delay(700);
-      return wrapResponse([], 'Using empty scheme list');
+      return wrapError(error, [], 'Using empty scheme list');
     }
   },
 
-  uploadScheme: async (file: File, metadata: any): Promise<ApiResponse<{ id: string }>> => {
+  uploadScheme: async (file: File, metadata: { term: string; subject: string; year?: string }): Promise<ApiResponse<{ id: string }>> => {
+    let cleanupUpload: (() => Promise<void>) | undefined;
+    let recordingStarted = false;
+    let backendRejected = false;
     try {
-      // Upload file to Supabase Storage if configured, then record metadata via backend
       const { getSupabaseClient } = await import('../src/services/supabaseClient');
       const supabase = getSupabaseClient();
+      if (!supabase) throw new Error('Configure Supabase Storage before uploading a scheme of work.');
+      if (!file.size) throw new Error('Select a non-empty document to upload.');
+      if (!metadata.term.trim() || !metadata.subject.trim()) throw new Error('Select a subject and term before uploading.');
       const bucket = import.meta.env.VITE_SUPABASE_STORAGE_BUCKET || 'schemes';
+      const path = `schemes/${crypto.randomUUID()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from(bucket)
+        .upload(path, file, { upsert: false, contentType: file.type || 'application/octet-stream' });
+      if (uploadError) throw new Error(uploadError.message);
+      if (!uploadData?.path) throw new Error('Storage did not return an uploaded file path.');
+      cleanupUpload = async () => {
+        const { error } = await supabase.storage.from(bucket).remove([uploadData.path]);
+        if (error) console.warn('Could not remove an unrecorded scheme upload:', error.message);
+      };
+      const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(uploadData.path);
+      const fileUrl = urlData.publicUrl;
+      if (!/^https?:\/\//i.test(fileUrl)) throw new Error('Storage did not return a public file URL.');
 
-      let fileUrl = '';
-      if (supabase) {
-        const path = `schemes/${Date.now()}_${file.name.replace(/\s+/g, '_')}`;
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from(bucket)
-          .upload(path, file, { upsert: false });
-        if (uploadError) throw new Error(uploadError.message);
-        const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(uploadData.path);
-        fileUrl = urlData.publicUrl;
-      }
-
-      // Record the submission in the backend
+      recordingStarted = true;
       const response = await apiClient.post('/schemes/upload', {
         fileName: file.name,
         fileUrl,
@@ -778,9 +821,19 @@ export const api = {
         subject: metadata.subject,
         year: metadata.year,
       });
-      const data = extractData(response);
-      return wrapResponse(data, 'Scheme uploaded successfully');
+      const result = normalizeApiResponse<{ id: string }>(response, 'Scheme uploaded successfully');
+      if (!result.ok) {
+        backendRejected = true;
+        throw new Error(result.message || 'Could not save the scheme submission.');
+      }
+      return result;
     } catch (error) {
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      // A timeout may follow a successful save; keep the file when the outcome is unknown.
+      if (cleanupUpload && (!recordingStarted || backendRejected || (status !== undefined && status >= 400 && status < 500 && status !== 408))) {
+        try { await cleanupUpload(); }
+        catch (cleanupError) { console.warn('Could not clean up a scheme upload:', cleanupError); }
+      }
       console.error('Failed to upload scheme:', error);
       return wrapError(error, { id: '' }, 'Upload failed. Check your Supabase storage configuration.');
     }
@@ -811,7 +864,7 @@ export const api = {
     } catch (error) {
       console.error('Failed to save assessments:', error);
       await delay(1000);
-      return wrapResponse({ success: true }, 'Assessments saved successfully (demo mode)');
+      return wrapError(error, { success: true }, 'Assessments saved successfully (demo mode)');
     }
   },
 
@@ -823,7 +876,7 @@ export const api = {
     } catch (error) {
       console.error('Failed to get exams:', error);
       await delay(500);
-      return wrapResponse([], 'No exams available (demo mode)');
+      return wrapError(error, [], 'No exams available (demo mode)');
     }
   },
 
@@ -835,14 +888,14 @@ export const api = {
     } catch (error) {
       console.error('Failed to get available exams:', error);
       await delay(500);
-      return wrapResponse([], 'No available exams (demo mode)');
+      return wrapError(error, [], 'No available exams (demo mode)');
     }
   },
 
-  updateExamQuestions: async (questions: ExamQuestion[], title: string, examId?: string, teacherId?: string): Promise<ApiResponse<ActiveExam>> => {
+  updateExamQuestions: async (questions: ExamQuestion[], title: string, examId?: string, teacherId?: string, scope?: { schoolId?: string; schoolClassId: string; subjectId: string; termId: string; duration?: number }): Promise<ApiResponse<ActiveExam>> => {
     try {
       const method = examId ? 'put' : 'post';
-      const response = await apiClient[method]('/exams', { examId, title, questions, teacherId });
+      const response = await apiClient[method]('/exams', { examId, title, questions, teacherId, ...scope });
       const data = extractData(response);
       return wrapResponse(data, 'Exam saved successfully');
     } catch (error) {
@@ -871,7 +924,7 @@ export const api = {
     } catch (error) {
       console.error('Failed to get exam sessions:', error);
       await delay(300);
-      return wrapResponse([], 'No exam sessions found (demo mode)');
+      return wrapError(error, [], 'No exam sessions found (demo mode)');
     }
   },
 
@@ -897,15 +950,15 @@ export const api = {
     }
   },
 
-  submitExam: async (studentId: string, answers: Record<string, string>, score: number): Promise<ApiResponse<boolean>> => {
+  submitExam: async (studentId: string, answers: Record<string, string>, examId: string): Promise<ApiResponse<{ score: number; sessionId: string }>> => {
     try {
-      const response = await apiClient.post('/exam-sessions/submit', { studentId, answers, score });
+      const response = await apiClient.post('/exam-sessions/submit', { studentId, answers, examId });
       const data = extractData(response);
       return wrapResponse(data, 'Exam submitted successfully');
     } catch (error) {
       console.error('Failed to submit exam:', error);
       await delay(1500);
-      return wrapError(error, false, 'Failed to submit exam');
+      return wrapError(error, { score: 0, sessionId: '' }, 'Failed to submit exam');
     }
   },
 
@@ -920,11 +973,12 @@ export const api = {
     } catch (error) {
       console.error('Failed to get attendance:', error);
       await delay(600);
-      return wrapResponse([], 'No attendance records found (demo mode)');
+      return wrapError(error, [], 'No attendance records found (demo mode)');
     }
   },
 
   markAttendance: async (updates: AttendanceRecord[]): Promise<ApiResponse<boolean>> => {
+    const scope = getApiSession();
     try {
       const response = await apiClient.post('/attendance/batch', { updates });
       const data = extractData(response);
@@ -932,7 +986,7 @@ export const api = {
     } catch (error: any) {
       // No HTTP response = the device is offline. Queue it and sync on reconnect
       // so a teacher can mark a register with no signal.
-      if (!error?.response) {
+      if (!error?.response && error?.code !== 'ERR_CANCELED' && scope.generation === getApiSession().generation) {
         enqueue({ method: 'post', url: '/attendance/batch', data: { updates }, label: `Attendance (${updates.length} record${updates.length === 1 ? '' : 's'})` });
         return { ok: true, data: true as any, message: 'Saved offline — will sync automatically when you reconnect.' };
       }
@@ -949,7 +1003,7 @@ export const api = {
     } catch (error) {
       console.error('Failed to get class masters:', error);
       await delay(500);
-      return wrapResponse({}, 'No class masters assigned (demo mode)');
+      return wrapError(error, {}, 'No class masters assigned (demo mode)');
     }
   },
 
@@ -983,7 +1037,7 @@ export const api = {
     } catch (error) {
       console.error('Failed to get school classes:', error);
       await delay(300);
-      return wrapResponse([], 'No classes found (demo mode)');
+      return wrapError(error, [], 'No classes found (demo mode)');
     }
   },
 
@@ -1173,11 +1227,18 @@ export const api = {
 
   // ── Attendance Summaries ──────────────────────────────────────────────────
 
-  getAttendanceSummaries: async (studentIds: string[]): Promise<ApiResponse<Record<string, { present: number; absent: number; late: number; excused: number; total: number }>>> => {
+  getAttendanceSummaries: async (studentIds: string[], currentTerm = false): Promise<ApiResponse<Record<string, AttendanceSummary>>> => {
     try {
-      const response = await apiClient.get(`/attendance/summaries?ids=${studentIds.join(',')}`);
-      const data = extractData(response) ?? {};
-      return wrapResponse(data);
+      const ids = [...new Set(studentIds.map(id => id.trim()).filter(Boolean))];
+      const summaries: Record<string, AttendanceSummary> = {};
+      // The backend accepts at most 100 students per request. Keep batches sequential.
+      for (let start = 0; start < ids.length; start += 100) {
+        const response = await apiClient.get('/attendance/summaries', { params: { ids: ids.slice(start, start + 100).join(','), currentTerm: String(currentTerm) } });
+        const result = normalizeApiResponse<Record<string, AttendanceSummary>>(response);
+        if (!result.ok) return { ...result, data: {} };
+        Object.assign(summaries, result.data ?? {});
+      }
+      return wrapResponse(summaries);
     } catch (error) {
       console.error('Failed to get attendance summaries:', error);
       return wrapError(error, {}, 'Failed to load attendance');
@@ -1379,13 +1440,12 @@ export const api = {
     method?: string;
     paymentRef?: string;
     schoolId: string;
+    clientRef: string;
   }): Promise<ApiResponse<StudentFeePayment>> => {
     try {
-      // Generate a one-time idempotency key so retries don't create duplicate records
-      const clientRef = `pay_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-      const response = await apiClient.post('/finance/payments', { ...payload, clientRef });
-      const data = extractData(response);
-      return wrapResponse(data, 'Payment recorded');
+      // The caller retains the operation's idempotency key across retries.
+      const response = await apiClient.post('/finance/payments', payload);
+      return normalizeApiResponse<StudentFeePayment>(response, 'Payment recorded');
     } catch (error) {
       console.error('Failed to record payment:', error);
       return wrapError(error, {} as StudentFeePayment, 'Failed to record payment');

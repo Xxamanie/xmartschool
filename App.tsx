@@ -11,6 +11,7 @@ import { UserRole } from './types';
 import { useClickSound } from './src/utils/useClickSound';
 
 const Login = React.lazy(() => import('./pages/Login').then((module) => ({ default: module.Login })));
+const ResetPassword = React.lazy(() => import('./pages/ResetPassword').then((module) => ({ default: module.ResetPassword })));
 const Dashboard = React.lazy(() => import('./pages/Dashboard').then((module) => ({ default: module.Dashboard })));
 const Students = React.lazy(() => import('./pages/Students').then((module) => ({ default: module.Students })));
 const Classes = React.lazy(() => import('./pages/Classes').then((module) => ({ default: module.Classes })));
@@ -87,6 +88,7 @@ const AppContent: React.FC = () => {
     <Router>
       <Suspense fallback={<RouteFallback />}>
         <Routes>
+          <Route path="reset-password" element={<ResetPassword />} />
           <Route path="/login" element={<Login />} />
           
           <Route path="/" element={<Layout />}>

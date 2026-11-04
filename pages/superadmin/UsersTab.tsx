@@ -20,9 +20,15 @@ export const UsersTab: React.FC<UsersTabProps> = ({ schools, toast, onTotalChang
   const [userPage, setUserPage] = useState(1);
   const [usersLoading, setUsersLoading] = useState(false);
   const [userSearch, setUserSearch] = useState('');
-
   const handleViewUser = (_userId: string) => {
-    // User detail page not yet implemented — no-op
+    // User detail page not yet implemented.
+  };
+
+  const handleResetPassword = (_userId: string) => {
+    void api.resetUserPassword(_userId).then(response => {
+      if (response.ok) window.alert(`Temporary password: ${response.data.temporaryPassword}`);
+      else toast.error(response.message || 'Could not reset password');
+    });
   };
 
   // Server-side user search + pagination. Debounced on the search term.
@@ -149,10 +155,10 @@ export const UsersTab: React.FC<UsersTabProps> = ({ schools, toast, onTotalChang
                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                           <div className="flex items-center justify-end gap-2">
                              <button
-                                onClick={() => handleViewUser(user.id)}
+                                onClick={() => handleResetPassword(user.id)}
                                 className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                title="View User Profile">
-                                <ExternalLink size={16} />
+                                title="Reset to temporary password">
+                                Reset password
                              </button>
                           </div>
                        </td>

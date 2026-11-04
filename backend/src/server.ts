@@ -10,6 +10,7 @@ import { apiRateLimiter } from './middleware/rateLimit';
 import { sanitizeRequest } from './middleware/sanitize';
 import { verifyWebhookSignature } from './services/paystackService';
 import { appService } from './services/appService';
+import { HttpError } from './utils/httpError';
 
 const app = express();
 
@@ -75,6 +76,10 @@ app.use('/api', apiRateLimiter);
 registerRoutes(app);
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  if (err instanceof HttpError) {
+    res.status(err.status).json({ ok: false, data: null, message: err.message });
+    return;
+  }
   // ZodError → 400 with field-level messages
   if (err instanceof ZodError) {
     const message = err.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; ');

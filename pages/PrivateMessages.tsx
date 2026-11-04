@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { UserRole } from '../types';
 import type { PrivateConversation, PrivateConversationMessage } from '../types';
 import { avatarColor } from '../src/utils/colorHash';
+import { subscribeMessageEvents } from '../src/utils/messageEvents';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -78,10 +79,22 @@ export const PrivateMessages: React.FC = () => {
   const { user, effectiveSchoolId } = useAuth();
   const role = user?.role as UserRole;
   const isStudent = role === UserRole.STUDENT;
+  const scopeKey = JSON.stringify([user?.id, user?.schoolId, user?.role, effectiveSchoolId]);
+  const scopeRef = useRef(scopeKey);
+  scopeRef.current = scopeKey;
+  const lifecycleRef = useRef<object | null>(null);
+  const inboxRequestRef = useRef(0);
+  const threadRequestRef = useRef(0);
+  const [dataScope, setDataScope] = useState(scopeKey);
 
-  const [conversations, setConversations] = useState<PrivateConversation[]>([]);
-  const [activeConv, setActiveConv] = useState<PrivateConversation | null>(null);
-  const [messages, setMessages] = useState<PrivateConversationMessage[]>([]);
+  const [conversationRows, setConversations] = useState<PrivateConversation[]>([]);
+  const [selectedConversation, setActiveConv] = useState<PrivateConversation | null>(null);
+  const [messageRows, setMessages] = useState<PrivateConversationMessage[]>([]);
+  const conversations = dataScope === scopeKey ? conversationRows : [];
+  const activeConv = dataScope === scopeKey ? selectedConversation : null;
+  const messages = dataScope === scopeKey ? messageRows : [];
+  const activeConvRef = useRef<string | null>(null);
+  activeConvRef.current = activeConv?.id ?? null;
   const [content, setContent] = useState('');
   const [loadingMsgs, setLoadingMsgs] = useState(false);
   const [sending, setSending] = useState(false);
@@ -97,69 +110,106 @@ export const PrivateMessages: React.FC = () => {
   const [selectedTeacher, setSelectedTeacher] = useState('');
   const [starting, setStarting] = useState(false);
 
+  const isCurrent = useCallback((session: object | null) =>
+    session !== null && lifecycleRef.current === session && scopeRef.current === scopeKey,
+  [scopeKey]);
+
   const loadConversations = useCallback(async () => {
+    if (!user?.id) return;
+    const session = lifecycleRef.current;
+    if (!isCurrent(session)) return;
+    const request = ++inboxRequestRef.current;
     const res = await api.getConversations();
-    if (res.ok) setConversations(res.data);
-  }, []);
+    if (res.ok && isCurrent(session) && request === inboxRequestRef.current) setConversations(res.data);
+  }, [user?.id, isCurrent]);
 
   useEffect(() => {
-    loadConversations();
-  }, [loadConversations]);
+    const session = {};
+    lifecycleRef.current = session;
+    setDataScope(scopeKey);
+    setConversations([]);
+    setActiveConv(null);
+    activeConvRef.current = null;
+    setMessages([]);
+    setContent('');
+    setLoadingMsgs(false);
+    setSending(false);
+    setTeachers([]);
+    setSelectedTeacher('');
+    setShowNewForm(false);
+    setStarting(false);
+    void loadConversations();
+    return () => {
+      if (lifecycleRef.current === session) lifecycleRef.current = null;
+      ++inboxRequestRef.current;
+      ++threadRequestRef.current;
+    };
+  }, [loadConversations, scopeKey]);
+
+  const loadMessages = useCallback(async (conversationId: string) => {
+    const session = lifecycleRef.current;
+    if (!isCurrent(session)) return;
+    const request = ++threadRequestRef.current;
+    const res = await api.getConversationMessages(conversationId);
+    if (!isCurrent(session) || request !== threadRequestRef.current || activeConvRef.current !== conversationId) return;
+    if (res.ok) {
+      setMessages(res.data);
+      const latest = res.data[res.data.length - 1];
+      if (user && latest) {
+        setLastRead(user.id, conversationId, new Date(latest.createdAt));
+        setReadTick(t => t + 1);
+      }
+    }
+    setLoadingMsgs(false);
+  }, [user?.id, isCurrent]);
 
   const openConversation = useCallback(
     async (conv: PrivateConversation) => {
+      const session = lifecycleRef.current;
+      if (!isCurrent(session)) return;
+      activeConvRef.current = conv.id;
       setActiveConv(conv);
+      setMessages([]);
       setLoadingMsgs(true);
-      const res = await api.getConversationMessages(conv.id);
-      if (res.ok) {
-        setMessages(res.data);
-        // Mark as read: use latest message time (or now)
-        const latest = res.data[res.data.length - 1];
-        if (user) {
-          setLastRead(user.id, conv.id, latest ? new Date(latest.createdAt) : new Date());
-          setReadTick((t) => t + 1);
-        }
-      }
-      setLoadingMsgs(false);
-      inputRef.current?.focus();
+      await loadMessages(conv.id);
+      if (isCurrent(session) && activeConvRef.current === conv.id) inputRef.current?.focus();
     },
-    [user],
+    [isCurrent, loadMessages],
   );
 
-  // Poll for new messages in active conversation
+  // Refresh the inbox and open thread on relevant events.
   useEffect(() => {
-    if (!activeConv) return;
-    const interval = setInterval(async () => {
-      const res = await api.getConversationMessages(activeConv.id);
-      if (res.ok) {
-        setMessages(res.data);
-        // Keep marking as read while conversation is open
-        if (user && res.data.length > 0) {
-          const latest = res.data[res.data.length - 1];
-          setLastRead(user.id, activeConv.id, new Date(latest.createdAt));
-        }
-      }
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [activeConv, user]);
+    if (!user) return;
+    return subscribeMessageEvents({ userId: user.id, schoolId: user.schoolId, role: user.role, contextSchoolId: effectiveSchoolId }, event => {
+      if (event.type !== 'private-message') return;
+      void loadConversations();
+      const conversationId = activeConvRef.current;
+      if (conversationId && (!event.conversationId || event.conversationId === conversationId)) void loadMessages(conversationId);
+    });
+  }, [scopeKey, loadConversations, loadMessages]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSend = async (e: React.FormEvent) => {
+  const handleSend = async (e: Pick<React.SyntheticEvent, 'preventDefault'>) => {
     e.preventDefault();
-    if (!content.trim() || !activeConv) return;
+    if (!content.trim() || !activeConv || sending) return;
+    const session = lifecycleRef.current;
+    const conversationId = activeConv.id;
+    const sentContent = content.trim();
     setSending(true);
-    const res = await api.sendConversationMessage(activeConv.id, content.trim());
+    const res = await api.sendConversationMessage(conversationId, sentContent);
+    if (!isCurrent(session)) return;
     if (res.ok) {
-      setMessages((prev) => [...prev, res.data]);
-      setContent('');
-      if (user) {
-        setLastRead(user.id, activeConv.id, new Date(res.data.createdAt));
+      if (activeConvRef.current === conversationId) {
+        setMessages(prev => prev.some(message => message.id === res.data.id) ? prev : [...prev, res.data]);
+        setContent(previous => previous.trim() === sentContent ? '' : previous);
+        if (user) setLastRead(user.id, conversationId, new Date(res.data.createdAt));
+        void loadMessages(conversationId);
       }
-      loadConversations();
+      void loadConversations();
     }
     setSending(false);
   };
@@ -167,13 +217,14 @@ export const PrivateMessages: React.FC = () => {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSend(e as any);
+      void handleSend(e);
     }
   };
 
   const loadTeachers = async () => {
+    const session = lifecycleRef.current;
     const res = await api.getAllUsers();
-    if (res.ok) {
+    if (res.ok && isCurrent(session)) {
       setTeachers(
         res.data
           .filter((u) => u.role === UserRole.TEACHER)
@@ -184,18 +235,21 @@ export const PrivateMessages: React.FC = () => {
 
   const startNewConversation = async () => {
     if (!selectedTeacher || !effectiveSchoolId || !user) return;
+    const session = lifecycleRef.current;
     setStarting(true);
     const res = await api.getOrCreateConversation({
       schoolId: effectiveSchoolId,
       studentId: user.id,
       teacherId: selectedTeacher,
     });
+    if (!isCurrent(session)) return;
     setStarting(false);
     if (res.ok) {
       await loadConversations();
+      if (!isCurrent(session)) return;
       setShowNewForm(false);
       setSelectedTeacher('');
-      openConversation(res.data);
+      void openConversation(res.data);
     }
   };
 
@@ -246,7 +300,7 @@ export const PrivateMessages: React.FC = () => {
         </div>
 
         {/* New conversation form */}
-        {showNewForm && isStudent && (
+        {dataScope === scopeKey && showNewForm && isStudent && (
           <div className="p-4 border-b border-gray-100 bg-primary-50/30 space-y-3">
             <p className="text-xs font-semibold text-gray-700">Ask a teacher</p>
             <select
@@ -370,7 +424,7 @@ export const PrivateMessages: React.FC = () => {
             {/* Chat header */}
             <div className="px-4 py-3.5 border-b border-gray-100 flex items-center gap-3 bg-white flex-shrink-0">
               <button
-                onClick={() => setActiveConv(null)}
+                onClick={() => { activeConvRef.current = null; ++threadRequestRef.current; setActiveConv(null); }}
                 className="md:hidden text-gray-400 hover:text-gray-600 p-1 -ml-1"
               >
                 <ArrowLeft size={18} />

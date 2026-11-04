@@ -44,8 +44,13 @@ export const Login: React.FC = () => {
   const [isVisible, setIsVisible] = useState(true);
 
   // Staff Form State
-  const [email, setEmail] = useState('alex.j@smartschool.edu');
-  const [password, setPassword] = useState('password');
+  const [email, setEmail] = useState('creator@smartschool.edu');
+  const [password, setPassword] = useState('Password1');
+  const selectDemoAccount = (demoEmail: string) => {
+    setEmail(demoEmail);
+    setPassword('Password1');
+    setError('');
+  };
 
   // Student Form State
   const [schoolCode, setSchoolCode] = useState('SPR-001');
@@ -278,10 +283,12 @@ return (
                 <div className="mt-6 text-center">
                     <p className="text-xs text-gray-400 mb-3 uppercase tracking-wider font-semibold">Demo Accounts</p>
                     <div className="flex gap-2 justify-center flex-wrap">
-                        <button type="button" onClick={() => { playSound(); setEmail('creator@smartschool.edu'); }} className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-lg border border-gray-200 transition-colors">Creator</button>
-                        <button type="button" onClick={() => { playSound(); setEmail('admin@smartschool.edu'); }} className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-lg border border-gray-200 transition-colors">Admin</button>
-                        <button type="button" onClick={() => { playSound(); setEmail('alex.j@smartschool.edu'); }} className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-lg border border-gray-200 transition-colors">Teacher</button>
+                        <button type="button" onClick={() => { playSound(); selectDemoAccount('creator@smartschool.edu'); }} className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-lg border border-gray-200 transition-colors">Creator</button>
+                        <button type="button" onClick={() => { playSound(); selectDemoAccount('owner@brightedu.demo'); }} className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-lg border border-gray-200 transition-colors">Group Owner</button>
+                        <button type="button" onClick={() => { playSound(); selectDemoAccount('admin@greenfield.demo'); }} className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-lg border border-gray-200 transition-colors">Admin</button>
+                        <button type="button" onClick={() => { playSound(); selectDemoAccount('math.teacher@gfd-101.demo'); }} className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-lg border border-gray-200 transition-colors">Teacher</button>
                     </div>
+                    <p className="text-xs text-gray-400 mt-3">Password: <code>Password1</code></p>
                 </div>
                 </form>
             ) : (
@@ -348,7 +355,7 @@ return (
                 <div className="mt-6 text-center">
                     <p className="text-xs text-gray-400 mb-3 uppercase tracking-wider font-semibold">Demo Access</p>
                     <div className="flex gap-2 justify-center flex-wrap">
-                        <button type="button" onClick={() => { setSchoolCode('SPR-001'); setStudentCode('STU-2024-001'); }} className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-lg border border-gray-200 transition-colors">Emma (SPR-001)</button>
+                        <button type="button" onClick={() => { setSchoolCode('GFD-101'); setStudentCode('GFD-101-2025-0001'); }} className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-lg border border-gray-200 transition-colors">Student (Greenfield)</button>
                     </div>
                 </div>
                 </form>

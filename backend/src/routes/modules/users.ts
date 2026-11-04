@@ -58,6 +58,12 @@ const userPayloadSchema = z.object({
 
 const idParamSchema = z.object({ id: z.string().min(1) });
 
+router.post('/:id/reset-password', requireAuth, requireRole(UserRole.ADMIN, UserRole.SUPER_ADMIN), asyncHandler(async (req, res) => {
+  const { id } = idParamSchema.parse(req.params);
+  const response = await appService.resetUserPassword(id, req.auth!.role === UserRole.SUPER_ADMIN ? undefined : req.auth!.schoolId, req.auth!.userId);
+  res.status(response.ok ? 200 : 403).json(response);
+}));
+
 router.post(
   '/',
   requireAuth,

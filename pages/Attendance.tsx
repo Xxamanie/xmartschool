@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { api } from '../services/api';
 import { Student, UserRole } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { createCsv } from '../src/utils/csv';
 import { Calendar as CalendarIcon, CheckCircle2, XCircle, Clock, AlertCircle, Save, Loader2, Users, Filter, BarChart2, Download } from 'lucide-react';
 
 // ── Termly Report ────────────────────────────────────────────────────────────
@@ -21,25 +22,28 @@ interface TermSummary {
 const TermlyReport: React.FC<{ students: Student[] }> = ({ students }) => {
   const [summaries, setSummaries] = useState<TermSummary[]>([]);
   const [loadingReport, setLoadingReport] = useState(false);
+  const [reportError, setReportError] = useState('');
   const [selectedGrade, setSelectedGrade] = useState('');
 
   const uniqueGrades = useMemo(() => Array.from(new Set(students.map(s => s.grade))).sort(), [students]);
 
   useEffect(() => {
-    if (students.length === 0) return;
-    if (!selectedGrade && uniqueGrades.length > 0) setSelectedGrade(uniqueGrades[0]);
+    setSelectedGrade(current => uniqueGrades.includes(current) ? current : uniqueGrades[0] ?? '');
   }, [uniqueGrades]);
 
   useEffect(() => {
-    if (!selectedGrade) return;
+    let active = true;
+    setSummaries([]);
+    setReportError('');
     const gradeStudents = students.filter(s => s.grade === selectedGrade);
-    if (gradeStudents.length === 0) { setSummaries([]); return; }
+    if (!selectedGrade || gradeStudents.length === 0) { setLoadingReport(false); return; }
 
     setLoadingReport(true);
-    api.getAttendanceSummaries(gradeStudents.map(s => s.id)).then(res => {
+    api.getAttendanceSummaries(gradeStudents.map(s => s.id), true).then(res => {
+      if (!active) return;
       if (res.ok) {
         const rows: TermSummary[] = gradeStudents.map(s => {
-          const raw = res.data[s.id] as any;
+          const raw = res.data[s.id];
           const present = raw?.present ?? 0;
           const total = raw?.total ?? 0;
           const absent = raw?.absent ?? 0;
@@ -58,30 +62,38 @@ const TermlyReport: React.FC<{ students: Student[] }> = ({ students }) => {
           };
         });
         setSummaries(rows.sort((a, b) => b.pct - a.pct));
-      }
-    }).finally(() => setLoadingReport(false));
+      } else { setSummaries([]); setReportError(res.message || 'Could not load termly attendance'); }
+    }).catch(() => {
+      if (active) { setSummaries([]); setReportError('Could not load termly attendance'); }
+    }).finally(() => { if (active) setLoadingReport(false); });
+    return () => { active = false; };
   }, [selectedGrade, students]);
 
   const exportCSV = () => {
-    const header = 'Name,Grade,Present,Absent,Late,Excused,Total Days,Attendance %\n';
-    const rows = summaries.map(s =>
-      `${s.name},${s.grade},${s.present},${s.absent},${s.late},${s.excused},${s.total},${s.pct}%`
-    ).join('\n');
-    const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8;' });
+    const csv = createCsv([
+      ['Name', 'Grade', 'Present', 'Absent', 'Late', 'Excused', 'Total Days', 'Attendance %'],
+      ...summaries.map(s => [s.name, s.grade, s.present, s.absent, s.late, s.excused, s.total, `${s.pct}%`]),
+    ]);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
+    link.href = url;
     link.download = `attendance_report_${selectedGrade.replace(/\s+/g, '_')}.csv`;
-    link.click();
+    link.hidden = true;
+    document.body.appendChild(link);
+    try { link.click(); }
+    finally { link.remove(); URL.revokeObjectURL(url); }
   };
 
   return (
     <div className="space-y-5">
+      {reportError && <p role="alert" className="text-red-600">{reportError}</p>}
       <div className="flex flex-wrap items-center gap-3">
         <select
           id="report-class"
           name="report-class"
           value={selectedGrade}
-          onChange={e => setSelectedGrade(e.target.value)}
+          onChange={e => { setSummaries([]); setSelectedGrade(e.target.value); }}
           className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
         >
           <option value="" disabled>Select class</option>
@@ -89,7 +101,7 @@ const TermlyReport: React.FC<{ students: Student[] }> = ({ students }) => {
         </select>
         <button
           onClick={exportCSV}
-          disabled={summaries.length === 0}
+          disabled={loadingReport || summaries.length === 0}
           className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
         >
           <Download size={15} /> Export CSV

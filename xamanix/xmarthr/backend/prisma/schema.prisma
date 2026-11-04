@@ -1,0 +1,484 @@
+// XmartHR — HR & workforce management domain model.
+// Money is stored as INTEGER MINOR UNITS (e.g. kobo/cents) — never floats.
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ─── Enums ──────────────────────────────────────────────────────────────────
+enum UserRole {
+  OWNER
+  HR_ADMIN
+  MANAGER
+  EMPLOYEE
+}
+
+enum EmploymentStatus {
+  Active
+  OnLeave
+  Suspended
+  Terminated
+}
+
+enum AttendanceStatus {
+  Present
+  Late
+  Absent
+  Remote
+  OnLeave
+}
+
+enum LeaveStatus {
+  Pending
+  Approved
+  Rejected
+  Cancelled
+}
+
+enum ComponentType {
+  Earning
+  Deduction
+}
+
+enum PayrollStatus {
+  Draft
+  Finalized
+}
+
+enum StatutoryKind {
+  Pension
+  Tax
+  Levy
+  Other
+}
+
+enum StatutoryMethod {
+  PercentOfBasic
+  PercentOfGross
+  Fixed
+  PayeBands
+}
+
+enum ReviewCycleStatus {
+  Open
+  Closed
+}
+
+enum ReviewStatus {
+  Draft
+  Submitted
+  Acknowledged
+}
+
+enum GoalStatus {
+  Open
+  InProgress
+  Done
+  Cancelled
+}
+
+// ─── Core ───────────────────────────────────────────────────────────────────
+model Org {
+  id        String   @id @default(cuid())
+  name      String
+  country   String   @default("Nigeria")
+  currency  String   @default("NGN")
+  timezone  String   @default("Africa/Lagos")
+  createdAt DateTime @default(now())
+
+  users        User[]
+  departments  Department[]
+  positions    Position[]
+  employees    Employee[]
+  leaveTypes   LeaveType[]
+  payrollRuns  PayrollRun[]
+  statutoryRules StatutoryRule[]
+  reviewCycles ReviewCycle[]
+  announcements Announcement[]
+  checklistTemplates ChecklistTemplate[]
+}
+
+enum ChecklistType {
+  Onboarding
+  Offboarding
+}
+
+enum ChecklistStatus {
+  Open
+  Done
+}
+
+model ChecklistTemplate {
+  id        String        @id @default(cuid())
+  orgId     String
+  org       Org           @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  type      ChecklistType
+  name      String
+  items     Json          @default("[]") // string[] of task titles
+  createdAt DateTime      @default(now())
+
+  @@unique([orgId, type, name])
+}
+
+model Checklist {
+  id         String          @id @default(cuid())
+  employeeId String
+  employee   Employee        @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  type       ChecklistType
+  title      String
+  status     ChecklistStatus @default(Open)
+  items      Json            @default("[]") // [{ title, done, doneAt? }]
+  createdAt  DateTime        @default(now())
+  documents  Document[]
+
+  @@index([employeeId])
+}
+
+// ─── Document storage & e-signatures ─────────────────────────────────────────
+enum SignatureMethod {
+  Typed
+  Drawn
+}
+
+model Document {
+  id                String   @id @default(cuid())
+  orgId             String
+  employeeId        String?
+  employee          Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  checklistId       String?
+  checklist         Checklist? @relation(fields: [checklistId], references: [id], onDelete: SetNull)
+  itemIndex         Int? // links the document to a specific checklist item
+  name              String
+  mimeType          String   @default("application/octet-stream")
+  sizeBytes         Int      @default(0)
+  storageDriver     String   @default("db") // "db" | "s3"
+  storageKey        String? // object key when stored in S3
+  contentBase64     String? // inline blob when stored in the DB
+  requiresSignature Boolean  @default(false)
+  uploadedById      String?
+  createdAt         DateTime @default(now())
+  signatures        Signature[]
+  signatureRequests SignatureRequest[]
+
+  @@index([orgId, createdAt])
+  @@index([employeeId])
+}
+
+enum SignatureRequestStatus {
+  Pending
+  Signed
+  Expired
+}
+
+model SignatureRequest {
+  id             String                 @id @default(cuid())
+  orgId          String
+  documentId     String
+  document       Document               @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  recipientEmail String
+  recipientName  String?
+  token          String                 @unique @default(cuid())
+  status         SignatureRequestStatus @default(Pending)
+  expiresAt      DateTime
+  createdById    String?
+  createdAt      DateTime               @default(now())
+  signedAt       DateTime?
+
+  @@index([documentId])
+}
+
+model Signature {
+  id               String          @id @default(cuid())
+  documentId       String
+  document         Document        @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  signerUserId     String?
+  signerEmployeeId String?
+  signerName       String
+  method           SignatureMethod @default(Typed)
+  imageBase64      String? // for Drawn signatures
+  contentHash      String // sha256 of the document content at signing time (integrity)
+  signedAt         DateTime        @default(now())
+
+  @@index([documentId])
+}
+
+enum AnnouncementAudience {
+  All
+  Department
+}
+
+model Announcement {
+  id           String               @id @default(cuid())
+  orgId        String
+  org          Org                  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  message      String
+  audience     AnnouncementAudience @default(All)
+  departmentId String?
+  channel      String               @default("generic") // generic | whatsapp
+  sentCount    Int                  @default(0)
+  createdById  String?
+  createdAt    DateTime             @default(now())
+
+  @@index([orgId, createdAt])
+}
+
+model User {
+  id           String   @id @default(cuid())
+  orgId        String
+  org          Org      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         UserRole @default(EMPLOYEE)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  employee     Employee?
+}
+
+model Department {
+  id        String     @id @default(cuid())
+  orgId     String
+  org       Org        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  name      String
+  employees Employee[]
+
+  @@unique([orgId, name])
+}
+
+model Position {
+  id        String     @id @default(cuid())
+  orgId     String
+  org       Org        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  title     String
+  grade     String     @default("")
+  employees Employee[]
+
+  @@unique([orgId, title])
+}
+
+model Employee {
+  id              String           @id @default(cuid())
+  orgId           String
+  org             Org              @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  userId          String?          @unique
+  user            User?            @relation(fields: [userId], references: [id])
+  staffNo         String
+  firstName       String
+  lastName        String
+  email           String?
+  phone           String?
+  departmentId    String?
+  department      Department?      @relation(fields: [departmentId], references: [id])
+  positionId      String?
+  position        Position?        @relation(fields: [positionId], references: [id])
+  managerId       String?
+  manager         Employee?        @relation("Reports", fields: [managerId], references: [id])
+  reports         Employee[]       @relation("Reports")
+  status          EmploymentStatus @default(Active)
+  hireDate        DateTime         @default(now())
+  baseSalaryMinor Int              @default(0) // monthly gross base
+  bankName        String?
+  bankAccount     String?
+  createdAt       DateTime         @default(now())
+
+  attendance    AttendanceRecord[]
+  leaveRequests LeaveRequest[]
+  leaveBalances LeaveBalance[]
+  components    SalaryComponent[]
+  payslips      Payslip[]
+  reviews       Review[]       @relation("Reviewee")
+  reviewsGiven  Review[]       @relation("Reviewer")
+  goals         Goal[]
+  checklists    Checklist[]
+  documents     Document[]
+
+  @@unique([orgId, staffNo])
+  @@index([orgId, status])
+}
+
+// ─── Attendance ─────────────────────────────────────────────────────────────
+model AttendanceRecord {
+  id            String           @id @default(cuid())
+  employeeId    String
+  employee      Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date          DateTime // the calendar day (midnight)
+  clockIn       DateTime?
+  clockOut      DateTime?
+  status        AttendanceStatus @default(Present)
+  workedMinutes Int              @default(0)
+  note          String?
+
+  @@unique([employeeId, date])
+  @@index([date])
+}
+
+// ─── Leave ──────────────────────────────────────────────────────────────────
+model LeaveType {
+  id          String         @id @default(cuid())
+  orgId       String
+  org         Org            @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  name        String
+  daysPerYear Int            @default(0)
+  paid        Boolean        @default(true)
+  requests    LeaveRequest[]
+  balances    LeaveBalance[]
+
+  @@unique([orgId, name])
+}
+
+model LeaveBalance {
+  id          String    @id @default(cuid())
+  employeeId  String
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveTypeId String
+  leaveType   LeaveType @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
+  year        Int
+  entitled    Int       @default(0)
+  used        Int       @default(0)
+
+  @@unique([employeeId, leaveTypeId, year])
+}
+
+model LeaveRequest {
+  id          String      @id @default(cuid())
+  employeeId  String
+  employee    Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveTypeId String
+  leaveType   LeaveType   @relation(fields: [leaveTypeId], references: [id])
+  startDate   DateTime
+  endDate     DateTime
+  days        Int
+  status      LeaveStatus @default(Pending)
+  reason      String?
+  decidedById String?
+  decidedAt   DateTime?
+  createdAt   DateTime    @default(now())
+
+  @@index([employeeId, status])
+}
+
+// ─── Payroll ────────────────────────────────────────────────────────────────
+model SalaryComponent {
+  id          String        @id @default(cuid())
+  employeeId  String
+  employee    Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  name        String
+  type        ComponentType @default(Earning)
+  amountMinor Int           @default(0)
+  recurring   Boolean       @default(true)
+}
+
+model PayrollRun {
+  id          String        @id @default(cuid())
+  orgId       String
+  org         Org           @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  periodLabel String // e.g. "2026-06"
+  status      PayrollStatus @default(Draft)
+  createdById String?
+  createdAt   DateTime      @default(now())
+  payslips    Payslip[]
+
+  @@unique([orgId, periodLabel])
+}
+
+model Payslip {
+  id              String     @id @default(cuid())
+  runId           String
+  run             PayrollRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  employeeId      String
+  employee        Employee   @relation(fields: [employeeId], references: [id])
+  grossMinor      Int        @default(0)
+  deductionsMinor Int        @default(0) // total of all deductions (manual + statutory)
+  taxMinor        Int        @default(0)
+  pensionMinor    Int        @default(0)
+  statutoryMinor  Int        @default(0) // sum of all statutory deductions
+  netMinor        Int        @default(0)
+  breakdown       Json? // [{ name, type, category, amountMinor }]
+
+  @@unique([runId, employeeId])
+}
+
+// ─── Statutory rules (auto-applied tax/pension engine) ───────────────────────
+model StatutoryRule {
+  id               String          @id @default(cuid())
+  orgId            String
+  org              Org             @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  name             String
+  kind             StatutoryKind   @default(Other)
+  method           StatutoryMethod @default(PercentOfBasic)
+  rateBps          Int             @default(0) // basis points (e.g. 800 = 8%) for percent methods
+  fixedMinor       Int             @default(0) // for Fixed method
+  bands            Json? // for PayeBands: [{ uptoMinor: number|null, rateBps: number }]
+  reliefBps        Int             @default(0) // for PayeBands: relief as % of gross before tax
+  active           Boolean         @default(true)
+  order            Int             @default(0)
+  createdAt        DateTime        @default(now())
+
+  @@index([orgId, active])
+}
+
+// ─── Performance ─────────────────────────────────────────────────────────────
+model ReviewCycle {
+  id        String            @id @default(cuid())
+  orgId     String
+  org       Org               @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  name      String
+  periodLabel String          @default("")
+  status    ReviewCycleStatus @default(Open)
+  createdAt DateTime          @default(now())
+  reviews   Review[]
+
+  @@unique([orgId, name])
+}
+
+model Review {
+  id           String       @id @default(cuid())
+  cycleId      String
+  cycle        ReviewCycle  @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  employeeId   String
+  employee     Employee     @relation("Reviewee", fields: [employeeId], references: [id], onDelete: Cascade)
+  reviewerId   String?
+  reviewer     Employee?    @relation("Reviewer", fields: [reviewerId], references: [id])
+  overallRating Int         @default(0) // 1..5
+  strengths    String?
+  improvements String?
+  comments     String?
+  status       ReviewStatus @default(Draft)
+  submittedAt  DateTime?
+  createdAt    DateTime     @default(now())
+
+  @@unique([cycleId, employeeId])
+  @@index([employeeId])
+}
+
+model Goal {
+  id          String     @id @default(cuid())
+  employeeId  String
+  employee    Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  status      GoalStatus @default(Open)
+  dueDate     DateTime?
+  createdAt   DateTime   @default(now())
+
+  @@index([employeeId, status])
+}
+
+// ─── Audit ──────────────────────────────────────────────────────────────────
+model AuditLog {
+  id        String   @id @default(cuid())
+  orgId     String?
+  actorId   String?
+  action    String
+  entity    String
+  entityId  String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([orgId, createdAt])
+}

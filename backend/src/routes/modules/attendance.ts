@@ -27,11 +27,11 @@ router.get(
   '/summaries',
   requireAuth,
   asyncHandler(async (req, res) => {
-    const schema = z.object({ ids: z.string().min(1).max(5000) });
-    const { ids } = schema.parse(req.query);
+    const schema = z.object({ ids: z.string().min(1).max(5000), currentTerm: z.enum(['true', 'false']).optional() });
+    const { ids, currentTerm } = schema.parse(req.query);
     const studentIds = ids.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 100);
     const schoolId = req.auth?.role === UserRole.SUPER_ADMIN ? undefined : req.auth?.schoolId;
-    const response = await appService.getStudentsAttendanceSummaries(studentIds, schoolId);
+    const response = await appService.getStudentsAttendanceSummaries(studentIds, schoolId, currentTerm === 'true');
     res.json(response);
   }),
 );

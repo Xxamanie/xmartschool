@@ -23,7 +23,7 @@ router.get(
 // Get or create a conversation thread
 router.post(
   '/',
-  requireRole(UserRole.ADMIN, UserRole.TEACHER, UserRole.SUPER_ADMIN),
+  requireRole(UserRole.ADMIN, UserRole.TEACHER, UserRole.SUPER_ADMIN, UserRole.STUDENT),
   asyncHandler(async (req, res) => {
     const schema = z.object({
       schoolId: z.string().min(1).optional(),
@@ -56,7 +56,7 @@ router.get(
   asyncHandler(async (req, res) => {
     const userId = req.auth?.userId as string;
     const role = req.auth?.role as UserRole;
-    const response = await appService.getConversationMessages(req.params.conversationId, userId, role);
+    const response = await appService.getConversationMessages(req.params.conversationId, userId, role, req.auth?.schoolId);
     res.json(response);
   }),
 );

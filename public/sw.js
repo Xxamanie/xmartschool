@@ -1,56 +1,36 @@
-/* SmartSchool service worker — offline app shell.
- * Conservative by design:
- *  - never touches non-GET requests (writes always go to the network / offline queue)
- *  - never caches cross-origin requests (the API, Supabase, Google Fonts) → no stale data
- *  - navigations are network-first with an offline fallback to the cached shell
- *  - same-origin static assets use stale-while-revalidate so they load offline after first visit
- */
-const CACHE = 'smartschool-shell-v1';
+﻿/* Cache the public application shell and static assets; never authenticated data. */
+const CACHE = 'smartschool-shell-v2';
 const SHELL = ['/', '/index.html', '/favicon.svg', '/manifest.webmanifest'];
-
-self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).catch(() => {}));
+self.addEventListener('install', event => {
+  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).catch(() => {}));
   self.skipWaiting();
 });
-
-self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
-  );
+self.addEventListener('activate', event => {
+  event.waitUntil(caches.keys().then(names => Promise.all(names.filter(name => name.startsWith('smartschool-') && name !== CACHE).map(name => caches.delete(name)))));
   self.clients.claim();
 });
-
-self.addEventListener('fetch', (event) => {
-  const req = event.request;
-  if (req.method !== 'GET') return; // never cache writes
-  const url = new URL(req.url);
-  if (url.origin !== self.location.origin) return; // never cache cross-origin (API/fonts/supabase)
-
-  if (req.mode === 'navigate') {
-    event.respondWith(
-      fetch(req)
-        .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put('/index.html', copy)).catch(() => {});
-          return res;
-        })
-        .catch(() => caches.match('/index.html').then((r) => r || caches.match('/')))
-    );
+self.addEventListener('message', event => {
+  if (event.data?.type === 'CLEAR_PRIVATE_CACHES') event.waitUntil(caches.keys().then(names => Promise.all(names.filter(name => name.startsWith('smartschool-')).map(name => caches.delete(name)))));
+});
+self.addEventListener('fetch', event => {
+  const request = event.request;
+  const url = new URL(request.url);
+  if (request.method !== 'GET' || url.origin !== self.location.origin || request.headers.has('Authorization') || /^\/(?:api|auth)(?:\/|$)/.test(url.pathname)) return;
+  if (request.mode === 'navigate') {
+    event.respondWith(fetch(request).then(response => {
+      if (response.ok && response.headers.get('content-type')?.includes('text/html')) void caches.open(CACHE).then(cache => cache.put('/index.html', response.clone()));
+      return response;
+    }).catch(() => caches.match('/index.html').then(response => response || caches.match('/'))));
     return;
   }
-
-  event.respondWith(
-    caches.match(req).then((cached) => {
-      const network = fetch(req)
-        .then((res) => {
-          if (res && res.status === 200) {
-            const copy = res.clone();
-            caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
-          }
-          return res;
-        })
-        .catch(() => cached);
-      return cached || network;
-    })
-  );
+  // XHR/fetch requests have no destination and must always use the network.
+  if (!['script', 'style', 'image', 'font', 'manifest'].includes(request.destination)) return;
+  event.respondWith(caches.match(request).then(cached => {
+    const network = fetch(request).then(response => {
+      if (response.ok) void caches.open(CACHE).then(cache => cache.put(request, response.clone()));
+      return response;
+    }).catch(() => cached || Response.error());
+    return cached || network;
+  }));
 });
+

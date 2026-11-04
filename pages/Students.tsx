@@ -8,6 +8,7 @@ import { ToastContainer } from '../components/Toast';
 import { useToast } from '../src/utils/useToast';
 import { Search, Filter, MoreHorizontal, Plus, ArrowUp, ArrowDown, ArrowUpDown, Calendar, Crown, X, UserCheck, CheckCircle2, Trash2, Edit, BookOpen, Upload, Download, Baby, Link, Link2Off, Eye, EyeOff, RefreshCw, Printer } from 'lucide-react';
 import { printReportCard } from '../src/utils/printReportCard';
+import { createCsv, parseCsv } from '../src/utils/csv';
 
 export const Students: React.FC = () => {
   const { user, isCreator, effectiveSchoolId } = useAuth();
@@ -180,52 +181,73 @@ export const Students: React.FC = () => {
   // ── CSV template download ─────────────────────────────────────────────────
 
   const downloadTemplate = () => {
-    const csv = 'Name,Gender,Class,Field\nAda Obi,Female,JSS2A,science\nMusa Bello,Male,JSS2A,science\n';
+    const csv = createCsv([
+      ['Name', 'Gender', 'Class', 'Field'],
+      ['Ada Obi', 'Female', 'JSS2A', 'science'],
+      ['Musa Bello', 'Male', 'JSS2A', 'science'],
+    ]);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
+    const url = URL.createObjectURL(blob);
+    link.href = url;
     link.download = 'students_import_template.csv';
     link.click();
+    URL.revokeObjectURL(url);
   };
 
   // ── CSV import ────────────────────────────────────────────────────────────
 
-  const parseCsvLine = (line: string): string[] => {
-    const out: string[] = []; let cur = ''; let q = false;
-    for (let i = 0; i < line.length; i++) {
-      const c = line[i];
-      if (c === '"') q = !q;
-      else if (c === ',' && !q) { out.push(cur); cur = ''; }
-      else cur += c;
-    }
-    out.push(cur);
-    return out.map(s => s.trim().replace(/^"|"$/g, ''));
-  };
-
   const handleImportCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !effectiveSchoolId) return;
+    const input = e.target;
+    const file = input.files?.[0];
+    if (!file) return;
+    if (!effectiveSchoolId) {
+      toast.error('Select a school before importing students.');
+      input.value = '';
+      return;
+    }
     setImportLoading(true);
     try {
-      const text = await file.text();
-      const lines = text.split(/\r?\n/).filter(l => l.trim());
-      if (lines.length < 2) { toast.error('CSV has no data rows.'); return; }
-      const headers = parseCsvLine(lines[0]).map(h => h.toLowerCase());
+      const records = parseCsv(await file.text());
+      const headerIndex = records.findIndex(record => record.some(value => value));
+      if (headerIndex < 0) { toast.error('CSV has no data rows.'); return; }
+      const headers = records[headerIndex].map(h => h.toLowerCase());
       const findCol = (names: string[]) => { for (const n of names) { const i = headers.indexOf(n); if (i >= 0) return i; } return -1; };
       const nameIdx = findCol(['name', 'full name', 'student name']);
       const genderIdx = findCol(['gender', 'sex']);
       const classIdx = findCol(['class', 'grade', 'classroom']);
       const fieldIdx = findCol(['field', 'department', 'stream']);
-      if (nameIdx < 0) { toast.error('CSV must include a "name" column.'); return; }
-
-      const rows = lines.slice(1).map(parseCsvLine).map(cols => ({
-        name: cols[nameIdx] || '',
-        gender: genderIdx >= 0 ? cols[genderIdx] : '',
-        className: classIdx >= 0 ? cols[classIdx] : '',
-        field: fieldIdx >= 0 ? cols[fieldIdx] : '',
-      })).filter(r => r.name);
-
-      if (rows.length === 0) { toast.error('No valid rows found.'); return; }
+      if (nameIdx < 0 || genderIdx < 0 || classIdx < 0) {
+        toast.error('CSV must include Name, Gender, and Class columns.');
+        return;
+      }
+      const rows: Array<{ name: string; gender: 'Male' | 'Female'; className: string; field: string }> = [];
+      for (let index = headerIndex + 1; index < records.length; index++) {
+        const columns = records[index];
+        if (!columns.some(value => value)) continue;
+        const name = columns[nameIdx] || '';
+        const gender = (columns[genderIdx] || '').toLowerCase();
+        const className = columns[classIdx] || '';
+        if (columns.length !== headers.length) {
+          toast.error(`CSV row ${index + 1}: expected ${headers.length} columns; found ${columns.length}.`);
+          return;
+        }
+        if (!name || !className || !gender) {
+          toast.error(`CSV row ${index + 1}: Name, Gender, and Class are required.`);
+          return;
+        }
+        if (gender !== 'male' && gender !== 'female') {
+          toast.error(`CSV row ${index + 1}: Gender must be Male or Female.`);
+          return;
+        }
+        if (name.length > 120 || className.length > 50) {
+          toast.error(`CSV row ${index + 1}: Name must be at most 120 characters and Class at most 50.`);
+          return;
+        }
+        rows.push({ name, gender: gender === 'male' ? 'Male' : 'Female', className, field: fieldIdx >= 0 ? columns[fieldIdx] || 'general' : 'general' });
+      }
+      if (!rows.length) { toast.error('CSV has no data rows.'); return; }
+      if (rows.length > 2000) { toast.error('Import at most 2,000 students per CSV file.'); return; }
 
       // One efficient bulk request — auto-creates missing classes, returns per-row errors.
       const res = await api.importStudents(rows, effectiveSchoolId);
@@ -238,9 +260,11 @@ export const Students: React.FC = () => {
       }
       const refreshed = await api.getStudents(effectiveSchoolId);
       if (refreshed.ok) setStudents(refreshed.data);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not read the CSV file.');
     } finally {
       setImportLoading(false);
-      e.target.value = '';
+      input.value = '';
     }
   };
 

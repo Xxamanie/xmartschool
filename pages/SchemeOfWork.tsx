@@ -17,6 +17,7 @@ export const SchemeOfWork: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [uploadError, setUploadError] = useState('');
   const [history, setHistory] = useState<SchemeSubmission[]>([]);
   
   // Form State
@@ -114,6 +115,7 @@ export const SchemeOfWork: React.FC = () => {
   const handleUpload = async () => {
     if (!file || !selectedSubject) return;
     setUploading(true);
+    setUploadError('');
     try {
       const currentYear = new Date().getFullYear().toString();
       const result = await api.uploadScheme(file, { term: selectedTerm, year: currentYear, subject: selectedSubject });
@@ -131,7 +133,7 @@ export const SchemeOfWork: React.FC = () => {
 
       setFile(null);
     } catch (e) {
-      console.error(e);
+      setUploadError(e instanceof Error ? e.message : 'Could not upload the scheme. Please retry.');
     } finally {
       setUploading(false);
     }
@@ -330,6 +332,7 @@ export const SchemeOfWork: React.FC = () => {
                 {uploading ? 'Uploading...' : 'Submit Scheme'}
               </button>
             </form>
+            {uploadError && <p role="alert" className="text-sm text-red-600">{uploadError}</p>}
             {success && (
               <div className="mt-4 p-3 bg-green-50 text-green-700 rounded-lg text-sm flex items-center gap-2">
                 <CheckCircle2 size={16} /> Upload successful!

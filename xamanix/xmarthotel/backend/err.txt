@@ -1,0 +1,1 @@
+bash: line 5: /sessions/jolly-ecstatic-heisenberg/mnt/xmartschool/xamanix/xmarthotel/frontend/node_modules/.bin/esbuild: No such file or directory

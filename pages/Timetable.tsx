@@ -6,6 +6,7 @@ import { Grid3x3, Download, Printer, Wand2, Trash2, Pencil, Eye, Plus, Lock } fr
 import { colorForString } from '../src/utils/colorHash';
 import { ToastContainer } from '../components/Toast';
 import { useToast } from '../src/utils/useToast';
+import { createCsv } from '../src/utils/csv';
 
 type ClassAssignment = TeacherAssignment & { teacherName?: string };
 
@@ -22,6 +23,9 @@ const COLORS = [
   'bg-teal-100 text-teal-800 border-teal-200',
 ];
 const colorFor = (name: string) => colorForString(name || '', COLORS);
+const escapeHtml = (value: string): string => value.replace(/[&<>"']/g, character => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+}[character] || character));
 
 export const Timetable: React.FC = () => {
   const { effectiveSchoolId, user } = useAuth();
@@ -153,12 +157,12 @@ export const Timetable: React.FC = () => {
     const rows = days.map((day, di) => {
       const cells = periods.map(p => {
         const slot = byClassSlot.get(`${selectedClass}|${di}|${p}`);
-        return `<td style="border:1px solid #ddd;padding:8px;text-align:center;font-size:12px;min-width:90px">${slot ? `<strong>${slot.subjectName}</strong><br><span style="color:#666;font-size:10px">${slot.teacherName || ''}</span>` : '<span style="color:#ccc">—</span>'}</td>`;
+        return `<td style="border:1px solid #ddd;padding:8px;text-align:center;font-size:12px;min-width:90px">${slot ? `<strong>${escapeHtml(slot.subjectName)}</strong><br><span style="color:#666;font-size:10px">${escapeHtml(slot.teacherName || '')}</span><br><span style="color:#666;font-size:10px">Room: ${escapeHtml(slot.room || 'Not set')}</span>` : '<span style="color:#ccc">—</span>'}</td>`;
       }).join('');
       return `<tr><td style="border:1px solid #ddd;padding:8px;font-weight:600;font-size:12px;white-space:nowrap">${day}</td>${cells}</tr>`;
     }).join('');
-    w.document.write(`<html><head><title>Timetable — ${className}</title></head><body style="font-family:sans-serif;padding:24px">
-      <h2 style="margin-bottom:4px">Class Timetable — ${className}</h2>
+    w.document.write(`<html><head><title>Timetable — ${escapeHtml(className)}</title></head><body style="font-family:sans-serif;padding:24px">
+      <h2 style="margin-bottom:4px">Class Timetable — ${escapeHtml(className)}</h2>
       <p style="color:#888;font-size:12px;margin-bottom:16px">Generated ${new Date().toLocaleDateString()}</p>
       <table style="border-collapse:collapse;width:100%">
         <thead><tr><th style="border:1px solid #ddd;padding:8px;text-align:left;font-size:12px">Day</th>${periods.map(p => `<th style="border:1px solid #ddd;padding:8px;font-size:12px">Period ${p + 1}</th>`).join('')}</tr></thead>
@@ -169,19 +173,20 @@ export const Timetable: React.FC = () => {
   };
 
   const exportCSV = () => {
-    const header = ['Day', ...periods.map(p => `Period ${p + 1}`)].join(',') + '\n';
     const rows = days.map((day, di) => {
       const cells = periods.map(p => {
         const s = byClassSlot.get(`${selectedClass}|${di}|${p}`);
-        return s ? `"${s.subjectName} (${s.teacherName || ''})"` : '""';
+        return s ? `${s.subjectName} (${s.teacherName || ''}) - Room: ${s.room || 'Not set'}` : '';
       });
-      return [day, ...cells].join(',');
-    }).join('\n');
-    const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8;' });
+      return [day, ...cells];
+    });
+    const csv = createCsv([['Day', ...periods.map(p => `Period ${p + 1}`)], ...rows]);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = `timetable_${className.replace(/\s+/g, '_')}.csv`;
     link.click();
+    URL.revokeObjectURL(link.href);
   };
 
   if (!effectiveSchoolId) {
@@ -305,6 +310,7 @@ export const Timetable: React.FC = () => {
                               <option value="">— Free —</option>
                               {classSubjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                             </select>
+                            {slot && <span className="block mt-1 text-[10px] text-gray-500">Room: {slot.room || 'Not set'}</span>}
                           </td>
                         );
                       }
@@ -314,6 +320,7 @@ export const Timetable: React.FC = () => {
                             <div className={`inline-flex flex-col items-center px-2 py-1.5 rounded-lg border text-xs w-full ${colorFor(slot.subjectName)}`}>
                               <span className="font-semibold leading-tight">{slot.subjectName}</span>
                               <span className="text-[10px] opacity-70 truncate max-w-[110px]">{slot.teacherName || '—'}</span>
+                              <span className="text-[10px] opacity-70" title={slot.room}>Room: {slot.room || 'Not set'}</span>
                             </div>
                           ) : <span className="text-gray-200 text-lg">·</span>}
                         </td>
@@ -365,6 +372,7 @@ export const Timetable: React.FC = () => {
                           <div className={`inline-flex flex-col items-center px-2 py-1.5 rounded-lg border text-xs w-full ${colorFor(slot.subjectName)}`}>
                             <span className="font-semibold leading-tight">{slot.subjectName}</span>
                             <span className="text-[10px] opacity-70 truncate max-w-[110px]">{slot.className}</span>
+                            <span className="text-[10px] opacity-70" title={slot.room}>Room: {slot.room || 'Not set'}</span>
                           </div>
                         ) : <span className="text-gray-200 text-lg">·</span>}
                       </td>

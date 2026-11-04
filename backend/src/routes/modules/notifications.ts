@@ -41,8 +41,10 @@ router.get(
       : req.auth?.schoolId;
     const response = await appService.previewNotificationRecipients({
       audience,
-      schoolId: audience === 'class_students' ? classId : effectiveSchoolId,
+      schoolId: effectiveSchoolId,
+      classId,
       senderId: req.auth?.userId as string,
+      senderRole: req.auth?.role as UserRole,
     });
     res.json(response);
   }),
@@ -67,9 +69,8 @@ router.post(
       title: payload.title,
       message: payload.message,
       audience: payload.audience,
-      userIds: payload.audience === 'class_students' && payload.classId
-        ? [payload.classId]
-        : payload.userIds,
+      userIds: payload.userIds,
+      classId: payload.classId,
       schoolId: effectiveSchoolId,
       source: payload.source,
       senderId: req.auth?.userId as string,

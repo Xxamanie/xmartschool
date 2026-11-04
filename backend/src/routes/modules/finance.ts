@@ -8,7 +8,8 @@ import { appService } from '../../services/appService';
 import { getEffectiveSchoolId, enforceTenantQuery } from '../../utils/tenant';
 import { UserRole } from '../../types';
 import { env } from '../../config/env';
-import { initializeTransaction, paystackConfigured } from '../../services/paystackService';
+import { initializeTransaction, paystackConfigured, verifyTransaction } from '../../services/paystackService';
+import { toKobo } from '../../utils/money';
 
 const router = Router();
 
@@ -18,6 +19,59 @@ const initPaymentSchema = z.object({
   email: z.string().email(),
   amount: z.number().positive().optional(),
 });
+
+const donationSchema = z.object({
+  amount: z.number().positive(),
+  email: z.string().email(),
+  donorName: z.string().trim().min(1).optional(),
+  message: z.string().trim().max(250).optional(),
+  schoolId: z.string().trim().min(1).optional(),
+});
+
+router.post(
+  '/donations/initialize',
+  asyncHandler(async (req, res) => {
+    if (!paystackConfigured()) {
+      res.status(503).json({ ok: false, data: null, message: 'Online donations are not configured on this server.' });
+      return;
+    }
+
+    const { amount, email, donorName, message, schoolId } = donationSchema.parse(req.body);
+    const reference = `donation_${Date.now()}_${crypto.randomBytes(6).toString('hex')}`;
+    const data = await initializeTransaction({
+      email,
+      amountKobo: Math.round(amount * 100),
+      reference,
+      metadata: {
+        donation: true,
+        donorName: donorName || 'SmartSchool supporter',
+        donorEmail: email,
+        schoolId: schoolId || req.auth?.schoolId || 'general',
+        message: message || 'School donation',
+        actorUserId: req.auth?.userId,
+      },
+      callbackUrl: env.frontendUrl,
+    });
+
+    res.json({ ok: true, data });
+  }),
+);
+
+router.get(
+  '/donations/verify/:reference',
+  asyncHandler(async (req, res) => {
+    const { reference } = z.object({ reference: z.string().min(1) }).parse(req.params);
+    const verified = await verifyTransaction(reference);
+    res.json({
+      ok: true,
+      data: {
+        recorded: verified.status === 'success',
+        reference,
+        verified: verified.status === 'success',
+      },
+    });
+  }),
+);
 
 // Start a Paystack checkout for a single fee line; returns the URL to redirect to.
 router.post(
@@ -38,21 +92,29 @@ router.post(
       res.status(404).json({ ok: false, data: null, message: 'Fee item not found' });
       return;
     }
-    const paid = item.payments.reduce((s: number, p: any) => s + p.amount, 0);
-    const outstanding = Math.max(0, item.payableAmount - paid);
-    const payAmount = amount ?? outstanding;
-    if (payAmount <= 0) {
+    const canPay = req.auth!.role === UserRole.PARENT
+      ? await prisma.parentStudent.count({ where: { parentId: req.auth!.userId, studentId: item.ledger.studentId } }) > 0
+      : req.auth!.role === UserRole.SUPER_ADMIN || item.ledger.schoolId === req.auth!.schoolId;
+    if (!canPay) {
+      res.status(403).json({ ok: false, data: null, message: 'Fee item is not accessible' });
+      return;
+    }
+    const payableKobo = toKobo(item.payableAmount);
+    const paidKobo = item.payments.reduce((sum: number, payment: { amount: number | string | { toString(): string } }) => sum + toKobo(payment.amount), 0);
+    const outstandingKobo = Math.max(0, payableKobo - paidKobo);
+    const payAmountKobo = amount === undefined ? outstandingKobo : toKobo(amount);
+    if (payAmountKobo <= 0) {
       res.status(400).json({ ok: false, data: null, message: 'This fee line is already fully paid.' });
       return;
     }
-    if (payAmount > outstanding) {
+    if (payAmountKobo > outstandingKobo) {
       res.status(400).json({ ok: false, data: null, message: 'Amount exceeds the outstanding balance.' });
       return;
     }
     const reference = `xss_${ledgerItemId.slice(0, 8)}_${crypto.randomBytes(6).toString('hex')}`;
     const data = await initializeTransaction({
       email,
-      amountKobo: Math.round(payAmount * 100),
+      amountKobo: payAmountKobo,
       reference,
       metadata: {
         ledgerItemId,
@@ -247,6 +309,17 @@ router.get(
       studentId: z.string().optional(),
     });
     const params = querySchema.parse(req.query);
+    if (req.auth?.role === UserRole.PARENT) {
+      const child = params.studentId && await prisma.parentStudent.findFirst({
+        where: { parentId: req.auth.userId, studentId: params.studentId }, include: { student: { select: { schoolId: true } } },
+      });
+      if (!child) {
+        res.status(403).json({ ok: false, data: [], message: 'Select one of your linked children' });
+        return;
+      }
+      res.json(await appService.getLedgers({ ...params, schoolId: child.student.schoolId }));
+      return;
+    }
     const effectiveSchoolId = getEffectiveSchoolId(req) ?? params.schoolId;
     if (!effectiveSchoolId) {
       res.status(400).json({ ok: false, data: null, message: 'School context required' });
@@ -264,7 +337,7 @@ const paymentSchema = z.object({
   amount: z.number().positive(),
   method: z.string().optional(),
   paymentRef: z.string().optional(),
-  clientRef: z.string().optional(),
+  clientRef: z.string().trim().min(1).max(128).optional(),
   schoolId: z.string().optional(),
 });
 

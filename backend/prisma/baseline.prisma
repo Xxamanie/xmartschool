@@ -1,0 +1,654 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  TEACHER
+  STUDENT
+  PARENT
+}
+
+enum SchoolStatus {
+  Active
+  Inactive
+}
+
+enum StudentStatus {
+  Active
+  Inactive
+  Suspended
+}
+
+enum ExamStatus {
+  scheduled
+  active
+  ended
+}
+
+enum AttendanceStatus {
+  Present
+  Absent
+  Late
+  Excused
+}
+
+enum SchemeStatus {
+  Pending
+  Approved
+  Rejected
+}
+
+enum TargetAudience {
+  all
+  teachers
+  students
+}
+
+enum NotificationAudience {
+  all
+  school
+  admins
+  teachers
+  staff
+  students
+  class_students
+  teacher_students
+  specific_users
+}
+
+
+// A SchoolGroup represents a multi-branch owner's portfolio. Schools may
+// can view/manage every school in it from one account.
+
+
+model School {
+  id           String        @id @default(cuid())
+  name         String
+  code         String?       @unique
+  region       String?
+  adminName    String?
+  status       SchoolStatus  @default(Active)
+  studentCount Int           @default(0)
+  motto        String        @default("")
+  logoUrl      String        @default("")
+  address      String        @default("")
+  contact      String        @default("")
+  gradingSystem String       @default("nigeria")
+  themeColor   String        @default("#059669")
+  principalName String       @default("")
+  principalSignatureUrl String @default("")
+  schoolStampUrl String      @default("")
+  users        User[]
+  students     Student[]
+  subjects     Subject[]
+  classes      SchoolClass[]
+  feeTemplates FeeTemplate[]
+  feeLedgers   StudentFeeLedger[]
+  terms        SchoolTerm[]
+}
+
+
+model User {
+id          String   @id @default(cuid())
+name        String
+email       String?  @unique
+password    String
+role        UserRole
+avatar      String?
+schoolId    String?
+school      School?  @relation(fields: [schoolId], references: [id])
+gender      String?
+phone       String?
+bio         String?
+subjects    Subject[] @relation("SubjectTeacher")
+exams       Exam[]    @relation("ExamTeacher")
+classMasters ClassMaster[]
+liveClasses LiveClass[] @relation("LiveClassTeacher")
+teacherAssignments TeacherAssignment[]
+
+notificationRecipients NotificationRecipient[]
+parentLinks   ParentStudent[] @relation("ParentLinks")
+}
+
+model Student {
+  id             String           @id @default(uuid())
+  name           String
+  gender         String
+  grade          String
+  enrollmentDate DateTime
+  status         StudentStatus    @default(Active)
+  gpa            Float            @default(0)
+  attendance     Int              @default(0)
+  accessCode     String           @unique
+  avatar         String           @default("")
+  enrolledSubjects String[]        @default([])
+  schoolId       String
+  school         School           @relation(fields: [schoolId], references: [id])
+
+  schoolClassId String?
+  schoolClass   SchoolClass?     @relation(fields: [schoolClassId], references: [id])
+
+  /// Academic field: science | arts | business | general
+  field         String           @default("general")
+
+  /// System-generated 8-char alphanumeric PIN issued when all fees are cleared.
+  /// null = fees not yet cleared. Parent receives this in their payment receipt.
+
+  assessments    Assessment[]
+  results        Result[]
+  examSessions   ExamSession[]
+  attendanceLogs AttendanceRecord[]
+  feeLedgers     StudentFeeLedger[]
+  parents        ParentStudent[]    @relation("StudentParents")
+}
+
+
+model Subject {
+  id          String            @id @default(cuid())
+  name        String
+  teacherId   String?
+  teacher     User?             @relation("SubjectTeacher", fields: [teacherId], references: [id])
+  schedule    String?
+  room        String?
+  schoolId    String?
+  school      School?           @relation(fields: [schoolId], references: [id])
+  assessments Assessment[]
+  results     Result[]
+  exams       Exam[]
+  schemes     SchemeSubmission[]
+  liveClasses LiveClass[]
+  teacherAssignments TeacherAssignment[]
+}
+
+model Assessment {
+  id        String   @id @default(cuid())
+  studentId String
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subjectId String
+  subject   Subject  @relation(fields: [subjectId], references: [id])
+  term      String
+  ca1       Float    @default(0)
+  ca2       Float    @default(0)
+  ca3       Float    @default(0)
+  exam      Float    @default(0)
+}
+
+model Result {
+  id          String   @id @default(cuid())
+  studentId   String
+  student     Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subjectId   String?
+  subject     Subject? @relation(fields: [subjectId], references: [id])
+  subjectName String
+  term        String   @default("current")
+  average     Float
+  grade       String
+  status      String
+  remarks     String?
+  details     Json?
+
+  @@unique([studentId, subjectName, term])
+}
+
+model SchemeSubmission {
+  id          String       @id @default(cuid())
+  subjectId   String?
+  subject     Subject?     @relation(fields: [subjectId], references: [id])
+  subjectName String
+  term        String
+  uploadDate  DateTime     @default(now())
+  status      SchemeStatus @default(Pending)
+  fileName    String
+}
+
+model Announcement {
+  id             String          @id @default(cuid())
+  title          String
+  message        String
+  targetAudience TargetAudience
+  source         String
+  createdAt      DateTime        @default(now())
+}
+
+
+
+
+// Private, recipient-scoped notifications.
+// Author sends; backend assigns recipients via NotificationRecipient rows.
+// This avoids exposing sensitive info to users outside their allowed scope.
+model Notification {
+  id          String   @id @default(cuid())
+  title       String
+  message     String
+
+  // Who the sender intends to reach (backend enforces exact recipients via NotificationRecipient).
+  audience    NotificationAudience
+
+  sourceRole  UserRole
+  schoolId    String?  // used when audience is "school" or school-scoped audiences
+  createdAt   DateTime  @default(now())
+
+  recipients  NotificationRecipient[]
+
+  @@index([schoolId])
+}
+
+// Join-table: which user(s) can see a notification.
+model NotificationRecipient {
+  id              String        @id @default(cuid())
+  notificationId  String
+  notification    Notification  @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  userId          String
+  user            User?         @relation(fields: [userId], references: [id])
+
+  readAt          DateTime?
+  createdAt       DateTime     @default(now())
+
+  @@unique([notificationId, userId])
+  @@index([userId])
+}
+
+// Student <-> Teacher private questions (1 thread per student+teacher per subject).
+// Rule: teacher can only message students enrolled in their subjects.
+model PrivateConversation {
+  id          String   @id @default(cuid())
+  schoolId    String
+  studentId   String
+  teacherId   String
+  subjectId   String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  messages    PrivateConversationMessage[]
+
+  @@unique([studentId, teacherId, subjectId])
+  @@index([schoolId])
+  @@index([studentId])
+  @@index([teacherId])
+}
+
+// Messages inside a private conversation.
+model PrivateConversationMessage {
+  id            String   @id @default(cuid())
+  conversationId String
+  conversation  PrivateConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  senderId      String
+  content       String
+  createdAt     DateTime @default(now())
+
+  @@index([conversationId])
+  @@index([senderId])
+}
+
+model LiveClass {
+  id             String       @id @default(cuid())
+  subjectId      String?
+  teacherId      String?
+  schoolClassId  String
+
+  scheduledTime    DateTime
+  meetingLink      String           // participant / embed URL (Whereby roomUrl or Jitsi URL)
+  hostMeetingLink  String?          // teacher-only Whereby hostRoomUrl (includes room key)
+  videoProvider    String?          // "whereby" | "jitsi" — for UI adaptation
+  status           String           @default("scheduled")
+  recording      LiveClassRecording?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  subject        Subject?     @relation(fields: [subjectId], references: [id])
+  teacher        User?        @relation("LiveClassTeacher", fields: [teacherId], references: [id])
+  schoolClass    SchoolClass @relation(fields: [schoolClassId], references: [id])
+
+  participants   LiveClassParticipant[]
+  messages       LiveClassMessage[]
+}
+
+
+
+
+model LiveClassParticipant {
+  id            String       @id @default(cuid())
+  liveClassId   String
+  liveClass     LiveClass    @relation(fields: [liveClassId], references: [id], onDelete: Cascade)
+  userId        String
+  joinedAt      DateTime     @default(now())
+  leftAt        DateTime?
+  cameraOn      Boolean      @default(false)
+  microphoneOn  Boolean      @default(false)
+  handRaised    Boolean      @default(false)
+
+  @@unique([liveClassId, userId])
+}
+
+model LiveClassMessage {
+  id            String       @id @default(cuid())
+  liveClassId   String
+  liveClass     LiveClass    @relation(fields: [liveClassId], references: [id], onDelete: Cascade)
+  userId        String
+  message       String
+  createdAt     DateTime     @default(now())
+}
+
+model LiveClassRecording {
+  id            String       @id @default(cuid())
+  liveClassId   String       @unique
+  liveClass     LiveClass    @relation(fields: [liveClassId], references: [id], onDelete: Cascade)
+  recordingUrl  String
+  duration      Int          @default(0)
+  createdAt     DateTime     @default(now())
+}
+
+model Exam {
+  id        String     @id @default(cuid())
+  title     String
+  status    ExamStatus @default(scheduled)
+  duration  Int        @default(60)
+  teacherId String?
+  teacher   User?      @relation("ExamTeacher", fields: [teacherId], references: [id])
+  subjectId String?
+  subject   Subject?   @relation(fields: [subjectId], references: [id])
+  questions ExamQuestion[]
+  sessions  ExamSession[]
+}
+
+model ExamQuestion {
+  id            String   @id @default(cuid())
+  examId        String
+  exam          Exam     @relation(fields: [examId], references: [id])
+  type          String
+  text          String
+  options       Json?
+  correctAnswer String
+  points        Int      @default(1)
+}
+
+model ExamSession {
+  id         String    @id @default(cuid())
+  examId     String
+  exam       Exam      @relation(fields: [examId], references: [id])
+  studentId  String
+  student    Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  status     String    @default("in-progress")
+  progress   Int       @default(0)
+  score      Float?
+  startTime  DateTime? @default(now())
+  endTime    DateTime?
+  answers    Json?
+
+  @@unique([examId, studentId])
+}
+
+model AttendanceRecord {
+  id        String           @id @default(cuid())
+  studentId String
+  student   Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  status    AttendanceStatus
+  date      DateTime
+
+  @@unique([studentId, date])
+}
+
+model ClassMaster {
+  id        String @id @default(cuid())
+  grade     String
+  teacherId String
+  teacher   User   @relation(fields: [teacherId], references: [id])
+
+  @@unique([grade])
+}
+
+model SchoolClass {
+  id              String             @id @default(cuid())
+  schoolId        String
+  school          School             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  name            String
+  createdAt       DateTime           @default(now())
+  students        Student[]
+  liveClasses     LiveClass[]
+  teacherAssignments TeacherAssignment[]
+
+  @@unique([schoolId, name])
+}
+
+model TeacherAssignment {
+  id            String      @id @default(cuid())
+  teacherId     String
+  teacher       User        @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  subjectId     String
+  subject       Subject     @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  schoolClassId String
+  schoolClass   SchoolClass @relation(fields: [schoolClassId], references: [id], onDelete: Cascade)
+
+  @@unique([teacherId, subjectId, schoolClassId])
+}
+
+// One scheduled lesson in a school's weekly timetable.
+// day: 0=Mon … 4=Fri ; period: 0-based lesson period index.
+// Relation-light (ids only) to keep the model self-contained.
+model TimetableEntry {
+  id            String   @id @default(cuid())
+  schoolId      String
+  schoolClassId String
+  day           Int
+  period        Int
+  subjectId     String
+  subjectName   String   // denormalized for fast, join-free rendering
+  teacherId     String?
+  teacherName   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([schoolClassId, day, period])
+  @@index([schoolId])
+  @@index([teacherId])
+}
+
+enum StaffMessageType {
+  text
+  image
+  video
+  audio
+}
+
+model StaffMessage {
+  id        String           @id @default(cuid())
+  schoolId  String
+  userId    String
+  type      StaffMessageType @default(text)
+  content   String
+  mediaUrl  String?
+  createdAt DateTime         @default(now())
+}
+
+// =====================
+// Finance / Fee Module
+// =====================
+
+// Fee templates are admin-configured lists of fee lines (titles + order).
+// Templates are scoped to a school and a term, and may be applied to either:
+// - a SchoolClass (scopeType = 'schoolClass')
+// - a ClassMaster/grade (scopeType = 'classMaster')
+// The ledger generation endpoint computes payable/payed/outstanding from ledger + payments.
+model FeeTemplate {
+  id          String   @id @default(cuid())
+  schoolId    String
+  school      School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  term        String
+  name        String   // admin-facing template name
+
+  // Optional default scope. If set, ledger generation can default to it.
+  scopeType   String?  // 'schoolClass' | 'classMaster'
+  scopeId     String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  lines       FeeTemplateLine[]
+  ledgers     StudentFeeLedger[]
+
+  @@index([schoolId, term])
+}
+
+model FeeTemplateLine {
+  id           String  @id @default(cuid())
+  templateId   String
+  template     FeeTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  // Human title (column header)
+  title        String
+
+  // Stable key used for dynamic column mapping; generated client-side.
+  key          String
+  order        Int     @default(0)
+
+  // Default amount configured by admin; ledger generation will set payable.
+  defaultAmount Float @default(0)
+
+  createdAt    DateTime @default(now())
+
+  @@unique([templateId, key])
+  ledgerItems StudentFeeLedgerItem[]
+
+  @@index([templateId, order])
+}
+
+model StudentFeeLedger {
+  id          String   @id @default(cuid())
+  schoolId    String
+  school      School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  studentId   String
+  student     Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  term        String
+
+  // Scope can be either a SchoolClass or a ClassMaster/grade.
+  scopeType   String   // 'schoolClass' | 'classMaster'
+  scopeId     String
+
+  // Template applied when ledger generated.
+  templateId  String
+  template    FeeTemplate @relation(fields: [templateId], references: [id])
+
+  createdAt   DateTime @default(now())
+
+  lineItems   StudentFeeLedgerItem[]
+
+  @@unique([schoolId, term, studentId, scopeType, scopeId])
+  @@index([schoolId, term, scopeType, scopeId])
+}
+
+model StudentFeeLedgerItem {
+  id          String  @id @default(cuid())
+  ledgerId    String
+  ledger      StudentFeeLedger @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
+
+  // Maps to a template line.
+  templateLineId String
+  templateLine   FeeTemplateLine @relation(fields: [templateLineId], references: [id])
+
+  title       String
+  key         String
+
+  // Payable computed at ledger generation.
+  payableAmount Float
+
+  // Derived from payments; can also be computed by aggregations.
+  createdAt   DateTime @default(now())
+
+  payments    StudentFeePayment[]
+
+  @@unique([ledgerId, templateLineId])
+  @@index([ledgerId])
+}
+
+model StudentFeePayment {
+  id          String   @id @default(cuid())
+
+  ledgerItemId String
+  ledgerItem   StudentFeeLedgerItem @relation(fields: [ledgerItemId], references: [id], onDelete: Cascade)
+
+  // Payment amount for this ledger item.
+  amount      Float
+  paymentRef  String? // optional admin reference
+
+  method      String? // 'cash' | 'transfer' etc.
+
+  createdAt   DateTime @default(now())
+
+  @@index([ledgerItemId, createdAt])
+}
+
+// =====================
+// Audit Log
+// =====================
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  schoolId  String?
+  userId    String?
+  action    String   // e.g. CREATE_STUDENT, PUBLISH_RESULTS, MARK_ATTENDANCE
+  entity    String   // e.g. Student, Result, AttendanceRecord
+  entityId  String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([schoolId, createdAt])
+  @@index([userId, createdAt])
+}
+
+// =====================
+// Academic Term / Session
+// =====================
+
+model SchoolTerm {
+  id        String   @id @default(cuid())
+  schoolId  String
+  school    School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  name      String   // display name, e.g. "First Term 2024/2025"
+  session   String   // academic year, e.g. "2024/2025"
+  term      String   // "first" | "second" | "third"
+  startDate DateTime
+  endDate   DateTime
+  isCurrent Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@unique([schoolId, session, term])
+  @@index([schoolId, isCurrent])
+}
+
+// =====================
+// Parent Portal
+// =====================
+
+// A parent account is a User with role = PARENT.
+// They are linked to one or more students via this table.
+// Admins create parent accounts and link them to students.
+// Flexible role membership: lets one user hold roles across many schools or a
+// with children in different schools). Additive — existing single-school
+// top by getAccessibleSchoolIds.
+
+
+model ParentStudent {
+  id        String  @id @default(cuid())
+  parentId  String  // User.id (role = PARENT)
+  parent    User    @relation("ParentLinks", fields: [parentId], references: [id], onDelete: Cascade)
+  studentId String
+  student   Student @relation("StudentParents", fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([parentId, studentId])
+  @@index([parentId])
+  @@index([studentId])
+}
+

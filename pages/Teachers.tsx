@@ -532,6 +532,11 @@ export const Teachers: React.FC = () => {
                             >
                               <Edit size={16} />
                             </button>
+                            <button className="text-xs text-primary-600" onClick={async () => {
+                              const response = await api.resetUserPassword(teacher.id);
+                              if (response.ok) window.alert(`Temporary password for ${teacher.name}: ${response.data.temporaryPassword}`);
+                              else window.alert(response.message || 'Could not reset password');
+                            }}>Reset password</button>
                             <button 
                               onClick={() => setDeleteConfirm(teacher)}
                               className="text-red-600 hover:text-red-800"

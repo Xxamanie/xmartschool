@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import {
   GraduationCap, TrendingUp, DollarSign, CalendarCheck, ChevronDown, ChevronUp,
   BookOpen, Award, AlertTriangle, CheckCircle2, Clock, CreditCard, Loader2,
@@ -37,6 +37,27 @@ const tryParseReceipt = (message: string): PaymentReceipt | null => {
 
 const fmt = (n: number) => `₦${n.toLocaleString()}`;
 const fmtDate = (iso: string) => new Date(iso).toLocaleString('en-NG', { dateStyle: 'medium', timeStyle: 'short' });
+
+const returnedPaymentReference = (): string | null => {
+  const query = new URLSearchParams(window.location.search);
+  const hashQuery = new URLSearchParams(window.location.hash.split('?')[1] || '');
+  const reference = query.get('reference') || query.get('trxref') || hashQuery.get('reference') || hashQuery.get('trxref');
+  return reference?.startsWith('xss_') ? reference : null;
+};
+
+const clearReturnedPaymentReference = () => {
+  const url = new URL(window.location.href);
+  url.searchParams.delete('reference');
+  url.searchParams.delete('trxref');
+  const [hashPath, hashSearch] = url.hash.split('?');
+  if (hashSearch) {
+    const query = new URLSearchParams(hashSearch);
+    query.delete('reference');
+    query.delete('trxref');
+    url.hash = `${hashPath}${query.size ? `?${query.toString()}` : ''}`;
+  }
+  window.history.replaceState(window.history.state, '', url.href);
+};
 
 // ── Receipt Card ──────────────────────────────────────────────────────────────
 
@@ -241,10 +262,58 @@ const ResultsCard: React.FC<{ results: ResultData[] }> = ({ results }) => {
   );
 };
 
-const FinanceCard: React.FC<{ ledgers: StudentFeeLedger[] }> = ({ ledgers }) => {
+const FinanceCard: React.FC<{ ledgers: StudentFeeLedger[]; studentId: string; paymentChecking: boolean }> = ({ ledgers, studentId, paymentChecking }) => {
+  const { user } = useAuth();
+  const [payerEmail, setPayerEmail] = useState(user?.email || '');
+  const [amounts, setAmounts] = useState<Record<string, string>>({});
+  const [startingItemId, setStartingItemId] = useState<string | null>(null);
+  const [paymentError, setPaymentError] = useState('');
+  const checkoutInFlight = useRef(false);
+  useEffect(() => {
+    const resume = () => { checkoutInFlight.current = false; setStartingItemId(null); };
+    window.addEventListener('pageshow', resume);
+    return () => window.removeEventListener('pageshow', resume);
+  }, []);
   const totalPayable = ledgers.reduce((s, l) => s + l.totalPayable, 0);
   const totalPaid = ledgers.reduce((s, l) => s + l.totalPaid, 0);
-  const outstanding = totalPayable - totalPaid;
+  const outstanding = ledgers.reduce((sum, ledger) => sum + Math.max(0, ledger.outstanding), 0);
+
+  const handlePay = async (ledgerItemId: string, balance: number) => {
+    if (checkoutInFlight.current || paymentChecking) return;
+    const email = payerEmail.trim();
+    const amount = Number(amounts[ledgerItemId] ?? balance);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setPaymentError('Enter a valid payer email for the payment receipt.');
+      return;
+    }
+    if (!Number.isFinite(amount) || amount < 0.01 || amount > balance || Math.abs(amount * 100 - Math.round(amount * 100)) > 0.000001) {
+      setPaymentError(`Enter an amount from ₦0.01 to ${fmt(balance)}, with at most two decimal places.`);
+      return;
+    }
+    checkoutInFlight.current = true;
+    setStartingItemId(ledgerItemId);
+    setPaymentError('');
+    let redirecting = false;
+    try {
+      const response = await api.initializeFeePayment({ ledgerItemId, email, amount });
+      if (!response.ok || !response.data.authorizationUrl) {
+        throw new Error(response.message || 'Could not start payment. Please try again.');
+      }
+      const checkoutUrl = new URL(response.data.authorizationUrl);
+      if (checkoutUrl.protocol !== 'https:' || checkoutUrl.hostname !== 'checkout.paystack.com' || checkoutUrl.username || checkoutUrl.password || checkoutUrl.port) {
+        throw new Error('The payment provider returned an invalid checkout URL.');
+      }
+      window.location.assign(checkoutUrl.href);
+      redirecting = true;
+    } catch (error) {
+      setPaymentError(error instanceof Error ? error.message : 'Could not start payment. Please try again.');
+    } finally {
+      if (!redirecting) {
+        checkoutInFlight.current = false;
+        setStartingItemId(null);
+      }
+    }
+  };
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
@@ -264,11 +333,59 @@ const FinanceCard: React.FC<{ ledgers: StudentFeeLedger[] }> = ({ ledgers }) => 
         ))}
       </div>
       {outstanding > 0 && (
-        <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-          <AlertTriangle size={13} />
-          Outstanding balance — please contact the school bursary
+        <div className="space-y-2">
+          <p className="text-xs text-gray-500">Pay part or all of an outstanding fee through Paystack.</p>
+          <label htmlFor={`payer-email-${studentId}`} className="block text-xs font-medium text-gray-600">Payer email</label>
+          <input
+            id={`payer-email-${studentId}`} type="email" autoComplete="email" value={payerEmail}
+            onChange={event => setPayerEmail(event.target.value)} disabled={startingItemId !== null || paymentChecking}
+            placeholder="parent@example.com"
+            className="w-full rounded-lg border border-gray-300 p-2 text-sm disabled:opacity-50"
+          />
         </div>
       )}
+      {paymentError && <p role="alert" className="text-xs text-red-600">{paymentError}</p>}
+      {ledgers.map(ledger => (
+        <div key={ledger.id} className="space-y-2 border-t border-gray-100 pt-3">
+          <p className="text-xs font-semibold text-gray-700">{ledger.term}</p>
+          {ledger.lineItems.map(item => {
+            const balance = Math.max(0, item.payableAmount - item.totalPaid);
+            return (
+              <div key={item.id} className="rounded-lg bg-gray-50 p-3 space-y-2">
+                <div className="flex items-start justify-between gap-2 text-xs">
+                  <div>
+                    <p className="font-medium text-gray-800">{item.title}</p>
+                    <p className="text-gray-500">Paid {fmt(item.totalPaid)} of {fmt(item.payableAmount)}</p>
+                  </div>
+                  <span className={balance > 0 ? 'font-semibold text-red-600' : 'font-semibold text-emerald-600'}>
+                    {balance > 0 ? `${fmt(balance)} due` : 'Paid'}
+                  </span>
+                </div>
+                {balance > 0 && (
+                  <div className="flex items-end gap-2">
+                    <div className="min-w-0 flex-1">
+                      <label htmlFor={`fee-amount-${item.id}`} className="mb-1 block text-[11px] text-gray-500">Amount (₦)</label>
+                      <input
+                        id={`fee-amount-${item.id}`} type="number" min="0.01" max={balance} step="0.01"
+                        value={amounts[item.id] ?? balance} disabled={startingItemId !== null || paymentChecking}
+                        onChange={event => setAmounts(previous => ({ ...previous, [item.id]: event.target.value }))}
+                        className="w-full rounded-lg border border-gray-300 p-2 text-xs disabled:opacity-50"
+                      />
+                    </div>
+                    <button
+                      onClick={() => void handlePay(item.id, balance)} disabled={startingItemId !== null || paymentChecking}
+                      className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                    >
+                      {startingItemId === item.id ? <Loader2 size={13} className="animate-spin" /> : <CreditCard size={13} />}
+                      {startingItemId === item.id ? 'Opening…' : 'Pay'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ))}
       {ledgers.length === 0 && (
         <p className="text-sm text-gray-400 text-center py-2">No fee records yet</p>
       )}
@@ -278,7 +395,7 @@ const FinanceCard: React.FC<{ ledgers: StudentFeeLedger[] }> = ({ ledgers }) => 
 
 // ── Child Card ─────────────────────────────────────────────────────────────
 
-const ChildCard: React.FC<{ data: ChildData }> = ({ data }) => {
+const ChildCard: React.FC<{ data: ChildData; paymentChecking: boolean }> = ({ data, paymentChecking }) => {
   const { student, results, attendance, ledgers } = data;
   const [open, setOpen] = useState(true);
 
@@ -314,7 +431,7 @@ const ChildCard: React.FC<{ data: ChildData }> = ({ data }) => {
         <div className="px-5 pb-5 grid grid-cols-1 md:grid-cols-3 gap-4">
           <AttendanceCard summary={attendance} />
           <ResultsCard results={results} />
-          <FinanceCard ledgers={ledgers} />
+          <FinanceCard ledgers={ledgers} studentId={student.id} paymentChecking={paymentChecking} />
         </div>
       )}
     </div>
@@ -328,13 +445,21 @@ export const ParentPortal: React.FC = () => {
   const [children, setChildren] = useState<ChildData[]>([]);
   const [loading, setLoading] = useState(true);
   const [receipts, setReceipts] = useState<Array<{ id: string; receipt: PaymentReceipt }>>([]);
+  const [returnReference, setReturnReference] = useState(returnedPaymentReference);
+  const [verificationBusy, setVerificationBusy] = useState(false);
+  const [verificationError, setVerificationError] = useState('');
+  const [verificationMessage, setVerificationMessage] = useState('');
+  const verificationInFlight = useRef(false);
+  const loadSequence = useRef(0);
 
-  useEffect(() => {
-    const load = async () => {
+  const loadPortalData = useCallback(async () => {
+    const sequence = ++loadSequence.current;
+    try {
       const [childRes, notifRes] = await Promise.all([
         api.getParentChildren(),
         api.getNotifications(),
       ]);
+      if (sequence !== loadSequence.current) return;
       if (childRes.ok) setChildren(childRes.data);
       if (notifRes.ok) {
         const parsed = (notifRes.data as any[])
@@ -342,13 +467,51 @@ export const ParentPortal: React.FC = () => {
           .filter((n): n is { id: string; receipt: PaymentReceipt } => n.receipt !== null);
         setReceipts(parsed);
       }
-      setLoading(false);
+    } finally {
+      if (sequence === loadSequence.current) setLoading(false);
+    }
+  }, [user?.id]);
+
+  const verifyReturnedPayment = useCallback(async (reference: string) => {
+    if (verificationInFlight.current) return;
+    verificationInFlight.current = true;
+    setVerificationBusy(true);
+    setVerificationError('');
+    setVerificationMessage('');
+    try {
+      const response = await api.verifyFeePayment(reference);
+      if (!response.ok || !response.data.recorded) {
+        setVerificationError(response.message || 'Payment has not been confirmed. Complete checkout, then check again.');
+        return;
+      }
+      clearReturnedPaymentReference();
+      setReturnReference(null);
+      setVerificationMessage('Payment confirmed. Your child’s fee balance has been updated.');
+      await loadPortalData();
+    } catch (error) {
+      setVerificationError(error instanceof Error ? error.message : 'Could not check payment. Please try again.');
+    } finally {
+      verificationInFlight.current = false;
+      setVerificationBusy(false);
+    }
+  }, [loadPortalData]);
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      await loadPortalData();
+      const reference = returnedPaymentReference();
+      if (active && reference) {
+        setReturnReference(reference);
+        await verifyReturnedPayment(reference);
+      }
     };
-    load();
-  }, []);
+    void load();
+    return () => { active = false; };
+  }, [loadPortalData, verifyReturnedPayment]);
 
   const totalOutstanding = useMemo(() =>
-    children.reduce((s, c) => s + c.ledgers.reduce((ls, l) => ls + (l.totalPayable - l.totalPaid), 0), 0),
+    children.reduce((s, c) => s + c.ledgers.reduce((ls, l) => ls + Math.max(0, l.outstanding), 0), 0),
     [children],
   );
 
@@ -369,6 +532,25 @@ export const ParentPortal: React.FC = () => {
           </div>
         )}
       </div>
+
+      {(returnReference || verificationMessage || verificationError) && (
+        <div role={verificationError ? 'alert' : 'status'} className={`rounded-xl border p-4 text-sm ${
+          verificationError ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+        }`}>
+          <div className="flex items-center justify-between gap-3">
+            <p>{verificationBusy ? 'Checking your payment…' : verificationError || verificationMessage || 'Checking payment status…'}</p>
+            {returnReference && (
+              <button
+                onClick={() => void verifyReturnedPayment(returnReference)} disabled={verificationBusy}
+                className="flex shrink-0 items-center gap-1 rounded-lg border border-current px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
+              >
+                {verificationBusy && <Loader2 size={13} className="animate-spin" />}
+                {verificationBusy ? 'Checking…' : 'Check payment again'}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Quick stats */}
       {!loading && children.length > 0 && (
@@ -447,7 +629,7 @@ export const ParentPortal: React.FC = () => {
       )}
 
       {!loading && children.map(c => (
-        <ChildCard key={c.student.id} data={c} />
+        <ChildCard key={c.student.id} data={c} paymentChecking={verificationBusy} />
       ))}
     </div>
   );

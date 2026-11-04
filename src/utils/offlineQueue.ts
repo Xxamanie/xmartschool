@@ -1,61 +1,60 @@
-/**
- * Offline write-queue. When a write fails because the device is offline, the
- * operation is stored in localStorage and replayed automatically on reconnect.
- * Used for the no-signal classroom case (attendance, score entry).
- */
-const KEY = 'xss_offline_queue';
+﻿import { getApiSession } from './sessionState';
 
-type Op = { id: string; method: 'post' | 'put'; url: string; data: any; label: string; ts: number };
-
-const load = (): Op[] => {
-  try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch { return []; }
+export type QueuedOperation = { id: string; method: 'post' | 'put'; url: string; data: unknown; label: string; ts: number; error?: string };
+const PREFIX = 'xss_offline_queue_v2:';
+const keyFor = (userId?: string, schoolId?: string) => userId && schoolId ? PREFIX + encodeURIComponent(userId) + ':' + encodeURIComponent(schoolId) : null;
+const key = () => { const s = getApiSession(); return keyFor(s.userId, s.schoolId); };
+const load = (storageKey = key()): QueuedOperation[] => {
+  if (!storageKey) return [];
+  try { const value = JSON.parse(localStorage.getItem(storageKey) || '[]'); return Array.isArray(value) ? value.filter(op => op && typeof op.id === 'string' && ['post', 'put'].includes(op.method) && typeof op.url === 'string') : []; }
+  catch { return []; }
 };
-const persist = (ops: Op[]) => {
-  localStorage.setItem(KEY, JSON.stringify(ops));
-  if (typeof window !== 'undefined') window.dispatchEvent(new Event('xss-queue-changed'));
+const persist = (storageKey: string, operations: QueuedOperation[]) => {
+  localStorage.setItem(storageKey, JSON.stringify(operations));
+  window.dispatchEvent(new Event('xss-queue-changed'));
 };
-
-export const queuedCount = (): number => load().length;
-
-export const enqueue = (op: { method: 'post' | 'put'; url: string; data: any; label: string }) => {
-  const ops = load();
-  ops.push({ ...op, id: `${Date.now()}_${Math.random().toString(36).slice(2)}`, ts: Date.now() });
-  persist(ops);
+export const queuedCount = () => load().length;
+export const queuedError = () => load().find(op => op.error)?.error;
+export const enqueue = (operation: { method: 'post' | 'put'; url: string; data: unknown; label: string }) => {
+  const storageKey = key();
+  if (!storageKey) throw new Error('Sign in and select a school before saving offline.');
+  // Only overwrite/upsert endpoints can safely replay an ambiguous network result.
+  if (!(operation.method === 'post' && operation.url === '/attendance/batch') && !(operation.method === 'put' && operation.url === '/assessments')) throw new Error('This operation requires an online connection.');
+  persist(storageKey, [...load(storageKey), { ...operation, id: crypto.randomUUID(), ts: Date.now() }]);
 };
-
-let flushing = false;
-
-export const flushQueue = async (): Promise<{ flushed: number; remaining: number }> => {
-  if (flushing) return { flushed: 0, remaining: queuedCount() };
-  flushing = true;
+const running = new Set<string>();
+export const flushQueue = async (): Promise<{ flushed: number; remaining: number; error?: string }> => {
+  const scope = getApiSession();
+  const storageKey = keyFor(scope.userId, scope.schoolId);
+  if (!storageKey || running.has(storageKey)) return { flushed: 0, remaining: queuedCount() };
+  running.add(storageKey);
   let flushed = 0;
   try {
-    const { default: apiClient } = await import('./api');
-    let ops = load();
-    for (const op of [...ops]) {
+    const { default: client } = await import('./api');
+    for (const operation of load(storageKey)) {
+      if (getApiSession().generation !== scope.generation) break;
       try {
-        await (apiClient as any)[op.method](op.url, op.data);
-        ops = ops.filter((o) => o.id !== op.id);
-        persist(ops);
+        const result = await client.request({
+          method: operation.method, url: operation.url, data: operation.data,
+          headers: { 'Idempotency-Key': operation.id },
+          ...{ __expectedSessionGeneration: scope.generation },
+        });
+        if (result.data?.ok === false) throw new Error(result.data.message || 'The server rejected this change.');
+        // Remove only this ID from the current queue; preserve concurrent enqueues.
+        persist(storageKey, load(storageKey).filter(op => op.id !== operation.id));
         flushed++;
-      } catch (err: any) {
-        if (err?.response) {
-          // Server rejected it (4xx/5xx) — drop so the queue doesn't stall forever.
-          ops = ops.filter((o) => o.id !== op.id);
-          persist(ops);
-          continue;
-        }
-        // Still offline / network error — stop and try again on next reconnect.
+      } catch (error: any) {
+        const message = error.response?.data?.message || error.message || 'Could not sync this change.';
+        persist(storageKey, load(storageKey).map(op => op.id === operation.id ? { ...op, error: message } : op));
         break;
       }
     }
-    return { flushed, remaining: ops.length };
-  } finally {
-    flushing = false;
-  }
+    return { flushed, remaining: load(storageKey).length, error: load(storageKey).find(op => op.error)?.error };
+  } finally { running.delete(storageKey); }
 };
-
-// Auto-flush whenever the browser comes back online.
 if (typeof window !== 'undefined') {
-  window.addEventListener('online', () => { flushQueue(); });
+  const sync = () => { if (navigator.onLine && getApiSession().userId) void flushQueue(); };
+  window.addEventListener('online', sync);
+  window.addEventListener('xss-session-changed', () => { window.dispatchEvent(new Event('xss-queue-changed')); setTimeout(sync, 0); });
 }
+

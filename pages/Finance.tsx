@@ -1,13 +1,41 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import {
   DollarSign, TrendingUp, AlertCircle, Users, Plus, ChevronDown,
   Loader2, CheckCircle2, CreditCard, BookOpen, Trash2, X, Download, Printer,
 } from 'lucide-react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { SchoolTerm, StudentFeeLedger, UserRole, FeeTemplate } from '../types';
+import { SchoolTerm, StudentFeeLedger, StudentFeePayment, UserRole, FeeTemplate } from '../types';
 import { ToastContainer } from '../components/Toast';
 import { useToast } from '../src/utils/useToast';
+import { createCsv } from '../src/utils/csv';
+
+const escapeHtml = (value: unknown): string => String(value ?? '').replace(/[&<>"']/g, character => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+}[character]!));
+
+const readPaymentAttempts = (storageKey: string): Map<string, string> => {
+  const attempts = new Map<string, string>();
+  try {
+    const saved: unknown = JSON.parse(window.sessionStorage.getItem(storageKey) || '[]');
+    if (Array.isArray(saved)) {
+      for (const entry of saved) {
+        if (Array.isArray(entry) && entry.length === 2 && typeof entry[0] === 'string' &&
+          typeof entry[1] === 'string' && /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i.test(entry[1])) {
+          attempts.set(entry[0], entry[1]);
+        }
+      }
+    }
+  } catch { /* Keep retries in memory when browser storage is unavailable or malformed. */ }
+  return attempts;
+};
+
+const persistPaymentAttempts = (storageKey: string, attempts: Map<string, string>) => {
+  try {
+    if (attempts.size) window.sessionStorage.setItem(storageKey, JSON.stringify([...attempts]));
+    else window.sessionStorage.removeItem(storageKey);
+  } catch { /* The current page still retains its pending retry identities. */ }
+};
 
 export const Finance: React.FC = () => {
   const { user, effectiveSchoolId } = useAuth();
@@ -47,6 +75,10 @@ export const Finance: React.FC = () => {
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [paymentRef, setPaymentRef] = useState('');
   const [paymentSaving, setPaymentSaving] = useState(false);
+  const paymentAttempts = useRef<{ storageKey: string; attempts: Map<string, string> } | null>(null);
+  const paymentInFlight = useRef(false);
+  const paymentContext = useRef({ userId: user?.id, schoolId: effectiveSchoolId, modal: paymentModal, term: selectedTerm });
+  paymentContext.current = { userId: user?.id, schoolId: effectiveSchoolId, modal: paymentModal, term: selectedTerm };
   // Online (Paystack) payment
   const [payEmail, setPayEmail] = useState('');
   const [pendingRef, setPendingRef] = useState<string | null>(null);
@@ -161,36 +193,44 @@ export const Finance: React.FC = () => {
   // ── Ledger CSV export ─────────────────────────────────────────────────────
 
   const exportLedgersCSV = () => {
-    const header = 'Student,Term,Payable (₦),Paid (₦),Outstanding (₦),Status\n';
-    const rows = ledgers.map(l =>
-      `"${l.studentName || l.studentId}","${l.term}",${l.totalPayable},${l.totalPaid},${l.outstanding},${l.outstanding === 0 ? 'Paid' : 'Owing'}`
-    ).join('\n');
-    const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8;' });
+    const csv = createCsv([
+      ['Student', 'Term', 'Payable (₦)', 'Paid (₦)', 'Outstanding (₦)', 'Status'],
+      ...ledgers.map(ledger => [
+        ledger.studentName || ledger.studentId, ledger.term, ledger.totalPayable,
+        ledger.totalPaid, ledger.outstanding, ledger.outstanding === 0 ? 'Paid' : 'Owing',
+      ]),
+    ]);
+    const blob = new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
+    const url = URL.createObjectURL(blob);
+    link.href = url;
     link.download = `fee_ledger_${selectedTerm || 'all'}.csv`;
     link.click();
+    URL.revokeObjectURL(url);
   };
 
   // ── Print receipt for a payment ──────────────────────────────────────────
 
-  const printReceipt = (ledger: typeof ledgers[0], item: typeof ledgers[0]['lineItems'][0]) => {
+  const printReceipt = (ledger: StudentFeeLedger, item: StudentFeeLedger['lineItems'][number], payment: StudentFeePayment) => {
     const w = window.open('', '_blank', 'width=600,height=700');
-    if (!w) return;
+    if (!w) { toast.error('Allow pop-ups to print payment receipts.'); return; }
+    w.opener = null;
     w.document.write(`
-      <html><head><title>Payment Receipt</title>
+      <!doctype html><html><head><meta charset="utf-8"><title>Payment Receipt</title>
       <style>body{font-family:sans-serif;padding:32px;color:#111}h1{font-size:18px;margin-bottom:4px}
       .sub{color:#666;font-size:13px;margin-bottom:24px}.row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee;font-size:14px}
       .bold{font-weight:700}.footer{margin-top:32px;font-size:11px;color:#999;text-align:center}</style>
       </head><body>
       <h1>Payment Receipt</h1>
-      <div class="sub">Generated ${new Date().toLocaleString()}</div>
-      <div class="row"><span>Student</span><span class="bold">${ledger.studentName || ledger.studentId}</span></div>
-      <div class="row"><span>Fee Item</span><span class="bold">${item.title}</span></div>
-      <div class="row"><span>Term</span><span>${ledger.term}</span></div>
-      <div class="row"><span>Total Payable</span><span>₦${item.payableAmount.toLocaleString()}</span></div>
-      <div class="row"><span>Total Paid</span><span class="bold" style="color:#059669">₦${item.totalPaid.toLocaleString()}</span></div>
-      <div class="row"><span>Outstanding</span><span style="color:${item.payableAmount - item.totalPaid > 0 ? '#dc2626' : '#059669'}">${item.payableAmount - item.totalPaid > 0 ? '₦' + (item.payableAmount - item.totalPaid).toLocaleString() : 'NIL'}</span></div>
+      <div class="sub">Generated ${escapeHtml(new Date().toLocaleString())}</div>
+      <div class="row"><span>Receipt ID</span><span>${escapeHtml(payment.id)}</span></div>
+      <div class="row"><span>Payment Date</span><span>${escapeHtml(new Date(payment.createdAt).toLocaleString())}</span></div>
+      <div class="row"><span>Student</span><span class="bold">${escapeHtml(ledger.studentName || ledger.studentId)}</span></div>
+      <div class="row"><span>Fee Item</span><span class="bold">${escapeHtml(item.title)}</span></div>
+      <div class="row"><span>Term</span><span>${escapeHtml(ledger.term)}</span></div>
+      <div class="row"><span>Amount Paid</span><span class="bold" style="color:#059669">₦${escapeHtml(payment.amount.toLocaleString())}</span></div>
+      <div class="row"><span>Payment Method</span><span>${escapeHtml(payment.method || 'Not specified')}</span></div>
+      <div class="row"><span>Transaction Reference</span><span>${escapeHtml(payment.paymentRef || '—')}</span></div>
       <div class="footer">SmartSchool Finance — Keep this receipt for your records</div>
       <script>window.onload=()=>window.print()</script>
       </body></html>`);
@@ -200,32 +240,67 @@ export const Finance: React.FC = () => {
   // ── Payment recording ─────────────────────────────────────────────────────
 
   const handleRecordPayment = async () => {
-    if (!paymentModal || !effectiveSchoolId) return;
+    if (!paymentModal || !effectiveSchoolId || !user?.id || paymentInFlight.current) return;
     const amount = parseFloat(paymentAmount);
-    if (isNaN(amount) || amount <= 0) { toast.error('Enter a valid payment amount.'); return; }
-    setPaymentSaving(true);
-    const res = await api.recordPayment({
-      ledgerItemId: paymentModal.itemId,
-      amount,
-      method: paymentMethod,
-      paymentRef: paymentRef.trim() || undefined,
-      schoolId: effectiveSchoolId,
-    });
-    if (res.ok) {
-      toast.success('Payment recorded.');
-      setPaymentModal(null);
-      setPaymentAmount('');
-      setPaymentRef('');
-      // Refresh ledgers
-      const refreshed = await api.getLedgers({ schoolId: effectiveSchoolId, term: selectedTerm || undefined });
-      if (refreshed.ok) setLedgers(refreshed.data);
-      // Refresh summary
-      const sumRes = await api.getFinanceSummary(effectiveSchoolId, selectedTerm || undefined);
-      if (sumRes.ok) setSummary(sumRes.data);
-    } else {
-      toast.error(res.message || 'Failed to record payment.');
+    if (!Number.isFinite(amount) || amount <= 0) { toast.error('Enter a valid payment amount.'); return; }
+    const modal = paymentModal;
+    const schoolId = effectiveSchoolId;
+    const userId = user.id;
+    const term = selectedTerm;
+    const signature = JSON.stringify([modal.itemId, amount, paymentMethod, paymentRef.trim()]);
+    const storageKey = `smartschool_pending_fee_payments:${encodeURIComponent(userId)}:${encodeURIComponent(schoolId)}`;
+    if (paymentAttempts.current?.storageKey !== storageKey) {
+      paymentAttempts.current = { storageKey, attempts: readPaymentAttempts(storageKey) };
     }
-    setPaymentSaving(false);
+    const attempts = paymentAttempts.current.attempts;
+    paymentInFlight.current = true;
+    setPaymentSaving(true);
+    let confirmed = false;
+    const isCurrentContext = () => paymentContext.current.userId === userId &&
+      paymentContext.current.schoolId === schoolId && paymentContext.current.term === term;
+    try {
+      let clientRef = attempts.get(signature);
+      if (!clientRef) {
+        clientRef = crypto.randomUUID();
+        attempts.set(signature, clientRef);
+        persistPaymentAttempts(storageKey, attempts);
+      }
+      const res = await api.recordPayment({
+        clientRef,
+        ledgerItemId: modal.itemId,
+        amount,
+        method: paymentMethod,
+        paymentRef: paymentRef.trim() || undefined,
+        schoolId,
+      });
+      if (!res.ok) {
+        toast.error(res.message || 'Failed to record payment.');
+        return;
+      }
+      confirmed = true;
+      attempts.delete(signature);
+      persistPaymentAttempts(storageKey, attempts);
+      if (isCurrentContext() && paymentContext.current.modal === modal) {
+        toast.success('Payment recorded.');
+        setPaymentModal(null);
+        setPaymentAmount('');
+        setPaymentRef('');
+      }
+      const [refreshed, sumRes] = await Promise.all([
+        api.getLedgers({ schoolId, term: term || undefined }),
+        api.getFinanceSummary(schoolId, term || undefined),
+      ]);
+      if (isCurrentContext()) {
+        if (refreshed.ok) setLedgers(refreshed.data);
+        if (sumRes.ok) setSummary(sumRes.data);
+      }
+    } catch (error) {
+      toast.error(confirmed ? 'Payment recorded, but balances could not refresh.' :
+        error instanceof Error ? error.message : 'Payment could not be confirmed. Retry with the same details.');
+    } finally {
+      paymentInFlight.current = false;
+      setPaymentSaving(false);
+    }
   };
 
   const refreshLedgersAndSummary = async () => {
@@ -508,7 +583,8 @@ export const Finance: React.FC = () => {
                             </td>
                           </tr>
                           {isAdmin && ledger.lineItems.map((item) => (
-                            <tr key={item.id} className="bg-gray-50/40 text-xs text-gray-500">
+                            <React.Fragment key={item.id}>
+                            <tr className="bg-gray-50/40 text-xs text-gray-500">
                               <td className="py-1.5 pl-6 pr-4 text-gray-400">{item.title}</td>
                               <td />
                               <td className="py-1.5 pr-4 text-right">₦{item.payableAmount.toLocaleString()}</td>
@@ -528,18 +604,30 @@ export const Finance: React.FC = () => {
                                       <CreditCard size={11} /> Pay
                                     </button>
                                   )}
-                                  {item.totalPaid > 0 && (
-                                    <button
-                                      onClick={() => printReceipt(ledger, item)}
-                                      className="flex items-center gap-1 text-[10px] font-medium text-gray-500 hover:text-gray-700"
-                                      title="Print receipt"
-                                    >
-                                      <Printer size={11} /> Receipt
-                                    </button>
-                                  )}
                                 </div>
                               </td>
                             </tr>
+                            {item.payments.map(payment => (
+                              <tr key={payment.id} className="bg-gray-50/20 text-xs text-gray-500">
+                                <td colSpan={2} className="py-1.5 pl-8 pr-4">
+                                  <span className="block">Payment · {new Date(payment.createdAt).toLocaleString()}</span>
+                                  <span className="text-gray-400">{payment.method || 'Not specified'}{payment.paymentRef ? ` · ${payment.paymentRef}` : ''}</span>
+                                </td>
+                                <td />
+                                <td className="py-1.5 pr-4 text-right text-emerald-600">₦{payment.amount.toLocaleString()}</td>
+                                <td />
+                                <td className="py-1.5">
+                                  <button
+                                    onClick={() => printReceipt(ledger, item, payment)}
+                                    className="flex items-center gap-1 text-[10px] font-medium text-gray-500 hover:text-gray-700"
+                                    title={`Print receipt for payment ${payment.id}`}
+                                  >
+                                    <Printer size={11} /> Print Receipt
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                            </React.Fragment>
                           ))}
                         </React.Fragment>
                       ))}
@@ -681,7 +769,7 @@ export const Finance: React.FC = () => {
           <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm mx-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-base font-semibold text-gray-900">Record Payment</h3>
-              <button onClick={() => setPaymentModal(null)} className="text-gray-400 hover:text-gray-600">
+              <button disabled={paymentSaving} onClick={() => { if (!paymentInFlight.current) setPaymentModal(null); }} className="text-gray-400 hover:text-gray-600 disabled:opacity-50">
                 <X size={18} />
               </button>
             </div>
@@ -692,13 +780,13 @@ export const Finance: React.FC = () => {
             <div className="space-y-3">
               <div>
                 <label htmlFor="payment-amount" className="block text-xs font-medium text-gray-600 mb-1">Amount (₦)</label>
-                <input id="payment-amount" name="payment-amount" type="number" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)}
+                <input id="payment-amount" name="payment-amount" type="number" disabled={paymentSaving} value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)}
                   placeholder={`Max ₦${paymentModal.payable.toLocaleString()}`}
                   className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary-500" />
               </div>
               <div>
                 <label htmlFor="payment-method" className="block text-xs font-medium text-gray-600 mb-1">Payment Method</label>
-                <select id="payment-method" name="payment-method" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}
+                <select id="payment-method" name="payment-method" disabled={paymentSaving} value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}
                   className="w-full border border-gray-300 rounded-lg p-2.5 text-sm">
                   <option value="cash">Cash</option>
                   <option value="transfer">Bank Transfer</option>
@@ -708,7 +796,7 @@ export const Finance: React.FC = () => {
               </div>
               <div>
                 <label htmlFor="payment-ref" className="block text-xs font-medium text-gray-600 mb-1">Reference (optional)</label>
-                <input id="payment-ref" name="payment-ref" type="text" value={paymentRef} onChange={(e) => setPaymentRef(e.target.value)}
+                <input id="payment-ref" name="payment-ref" type="text" disabled={paymentSaving} value={paymentRef} onChange={(e) => setPaymentRef(e.target.value)}
                   placeholder="Receipt / transaction ref"
                   className="w-full border border-gray-300 rounded-lg p-2.5 text-sm" />
               </div>
@@ -724,8 +812,8 @@ export const Finance: React.FC = () => {
                 className="flex-1 py-2.5 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-60">
                 {paymentSaving ? 'Saving…' : 'Record Payment'}
               </button>
-              <button onClick={() => setPaymentModal(null)}
-                className="flex-1 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50">
+              <button disabled={paymentSaving} onClick={() => { if (!paymentInFlight.current) setPaymentModal(null); }}
+                className="flex-1 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50">
                 Cancel
               </button>
             </div>
@@ -733,7 +821,7 @@ export const Finance: React.FC = () => {
             {/* Online payment (Paystack) */}
             <div className="mt-4 pt-4 border-t border-gray-100">
               {!pendingRef ? (
-                <button onClick={handlePayOnline} disabled={payOnlineBusy}
+                <button onClick={handlePayOnline} disabled={payOnlineBusy || paymentSaving}
                   className="w-full py-2.5 bg-emerald-600 text-white rounded-lg text-sm font-bold hover:bg-emerald-700 disabled:opacity-60 flex items-center justify-center gap-2">
                   <CreditCard size={15} /> {payOnlineBusy ? 'Starting…' : 'Pay online (Card / Transfer / USSD)'}
                 </button>

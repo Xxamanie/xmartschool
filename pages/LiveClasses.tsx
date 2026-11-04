@@ -84,12 +84,11 @@ export const LiveClasses: React.FC = () => {
     setSaving(true);
     try {
       const enrolledSubject = subjects.find(s => s.name === form.subjectName);
-      const link = form.meetingLink || `https://meet.jit.si/class-${form.subjectName.replace(/\s+/g, '-').toLowerCase() || 'general'}-${Date.now()}`;
       const res = await api.createLiveClass({
         subjectId: enrolledSubject?.id,
         schoolClassId: form.schoolClassId,
-        scheduledTime: form.scheduledTime,
-        meetingLink: link,
+        scheduledTime: new Date(form.scheduledTime).toISOString(),
+        meetingLink: form.meetingLink.trim(),
         teacherId: user?.id,
       });
 

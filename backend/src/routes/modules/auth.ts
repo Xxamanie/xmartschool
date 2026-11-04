@@ -7,6 +7,10 @@ import { authRateLimiter, bruteForceRateLimiter } from '../../middleware/rateLim
 import { UserRole } from '../../types';
 
 const router = Router();
+router.get('/me', requireAuth, asyncHandler(async (req, res) => {
+  const response = await appService.getAuthenticatedProfile(req.auth!.userId, req.auth!.role);
+  res.status(response.ok ? 200 : 401).json(response);
+}));
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -20,7 +24,7 @@ router.post(
   asyncHandler(async (req, res) => {
     const { email, password } = loginSchema.parse(req.body);
     const response = await appService.login(email, password);
-    res.json(response);
+    res.status(response.ok ? 200 : 401).json(response);
   }),
 );
 
@@ -35,7 +39,7 @@ router.post(
   asyncHandler(async (req, res) => {
     const { schoolCode, studentCode } = studentSchema.parse(req.body);
     const response = await appService.verifyStudent(schoolCode, studentCode);
-    res.json(response);
+    res.status(response.ok ? 200 : 401).json(response);
   }),
 );
 

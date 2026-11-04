@@ -3,6 +3,7 @@ import { UserRole } from '../types';
 import { verifySessionToken } from '../utils/session';
 import { supabaseAdmin } from '../lib/supabase';
 import { prisma } from '../lib/prisma';
+import { canAccessSchool } from '../utils/tenant';
 
 const extractBearerToken = (authorization?: string): string | null => {
   if (!authorization) {
@@ -20,11 +21,26 @@ const extractBearerToken = (authorization?: string): string | null => {
 const resolveRequestAuth = async (token: string) => {
   const legacySession = verifySessionToken(token);
   if (legacySession) {
+    const identity = legacySession.role === UserRole.STUDENT
+      ? await prisma.student.findUnique({ where: { id: legacySession.sub }, include: { school: true } })
+      : await prisma.user.findUnique({ where: { id: legacySession.sub }, include: { school: true } });
+    if (!identity || identity.sessionVersion !== legacySession.version) return null;
+    if ('status' in identity ? identity.status !== 'Active' : !identity.active) return null;
+    if (identity.school && (identity.school.status !== 'Active' || identity.school.deletedAt)) return null;
+    const role = 'role' in identity ? identity.role as UserRole : UserRole.STUDENT;
+    const groupId = 'groupId' in identity ? identity.groupId ?? undefined : undefined;
+    if (role !== legacySession.role || identity.schoolId !== (legacySession.schoolId ?? null) || groupId !== legacySession.groupId) return null;
+    if (legacySession.impersonatedBy) {
+      const actor = await prisma.user.findUnique({ where: { id: legacySession.impersonatedBy } });
+      if (!actor?.active || actor.sessionVersion !== legacySession.impersonatorVersion ||
+        ![UserRole.SUPER_ADMIN, UserRole.GROUP_OWNER].includes(actor.role as UserRole) ||
+        (actor.role === UserRole.GROUP_OWNER && (!identity.school || actor.groupId !== identity.school.groupId))) return null;
+    }
     return {
-      userId: legacySession.sub,
-      role: legacySession.role,
-      schoolId: legacySession.schoolId,
-      groupId: legacySession.groupId,
+      userId: identity.id,
+      role,
+      schoolId: identity.schoolId ?? undefined,
+      groupId,
       provider: 'legacy-session' as const,
       impersonatedBy: legacySession.impersonatedBy,
     };
@@ -46,29 +62,29 @@ const resolveRequestAuth = async (token: string) => {
     return null;
   }
 
-  const metadata = data.user.user_metadata ?? {};
   const normalizedEmail = data.user.email?.toLowerCase();
-  const mappedUser = normalizedEmail
-    ? await prisma.user.findFirst({
-        where: { email: normalizedEmail },
-        select: { id: true, role: true, schoolId: true, groupId: true, email: true },
-      })
-    : null;
-
-  const role = mappedUser?.role ?? metadata.role;
-  if (!role || !Object.values(UserRole).includes(role as UserRole)) {
-    return null;
+  let mappedUser = await prisma.user.findUnique({ where: { supabaseUserId: data.user.id }, include: { school: true } });
+  if (!mappedUser && normalizedEmail && data.user.email_confirmed_at) {
+    // Existing installations bind a verified email once; all subsequent requests use the stable provider ID.
+    const candidate = await prisma.user.findFirst({ where: { email: normalizedEmail, supabaseUserId: null, active: true } });
+    if (candidate) {
+      await prisma.user.updateMany({ where: { id: candidate.id, supabaseUserId: null, active: true }, data: { supabaseUserId: data.user.id } });
+      mappedUser = await prisma.user.findUnique({ where: { supabaseUserId: data.user.id }, include: { school: true } });
+    }
   }
-
-  const schoolId = mappedUser?.schoolId ?? metadata.schoolId;
-  const groupId = mappedUser?.groupId ?? metadata.groupId;
+  if (!mappedUser?.active || !Object.values(UserRole).includes(mappedUser.role as UserRole)) return null;
+  if (mappedUser.school && (mappedUser.school.status !== 'Active' || mappedUser.school.deletedAt)) return null;
+  // getUser has authenticated this JWT; administrator-managed token metadata versions revoke old sessions.
+  let providerVersion = 0;
+  try { providerVersion = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8')).app_metadata?.sessionVersion ?? 0; } catch { return null; }
+  if (providerVersion !== mappedUser.sessionVersion) return null;
 
   return {
-    userId: mappedUser?.id ?? data.user.id,
-    role: role as UserRole,
-    schoolId: typeof schoolId === 'string' ? schoolId : undefined,
-    groupId: typeof groupId === 'string' ? groupId : undefined,
-    email: mappedUser?.email ?? data.user.email ?? undefined,
+    userId: mappedUser.id,
+    role: mappedUser.role as UserRole,
+    schoolId: mappedUser.schoolId ?? undefined,
+    groupId: mappedUser.groupId ?? undefined,
+    email: mappedUser.email ?? undefined,
     provider: 'supabase' as const,
   };
 };
@@ -110,14 +126,26 @@ export const requireRole = (...roles: UserRole[]) => {
   };
 };
 
-export const requireSchoolContext = (req: Request, res: Response, next: NextFunction) => {
+export const requireSchoolContext = async (req: Request, res: Response, next: NextFunction) => {
   if (!req.auth) {
     res.status(401).json({ ok: false, data: null, message: 'Authentication required' });
     return;
   }
 
-  // SUPER_ADMIN and GROUP_OWNER operate across schools (no single schoolId);
-  // PARENT accounts are linked to students directly — none need a schoolId here.
+  const selected = typeof req.query.schoolId === 'string' ? req.query.schoolId : undefined;
+  if (selected) {
+    if (!await canAccessSchool(req.auth, selected)) {
+      res.status(403).json({ ok: false, data: null, message: 'Cannot access this school' });
+      return;
+    }
+    const school = await prisma.school.findFirst({ where: { id: selected, status: 'Active', deletedAt: null }, select: { id: true } });
+    if (!school) { res.status(403).json({ ok: false, data: null, message: 'School is inactive or unavailable' }); return; }
+    req.auth.schoolId = selected;
+  }
+  if (req.auth.role === UserRole.GROUP_OWNER && !req.auth.schoolId && !/^\/schools(?:\/|$)/.test(req.path)) {
+    res.status(400).json({ ok: false, data: null, message: 'Select an accessible school for this operation' });
+    return;
+  }
   if (
     req.auth.role !== UserRole.SUPER_ADMIN &&
     req.auth.role !== UserRole.GROUP_OWNER &&

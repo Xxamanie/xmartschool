@@ -6,6 +6,7 @@ import { appService } from '../../services/appService';
 import { requireAuth, requireRole, requireSchoolContext } from '../../middleware/auth';
 import { prisma } from '../../lib/prisma';
 import { UserRole } from '../../types';
+import { createNotificationRecipients } from '../../services/notificationRecipients';
 
 const router = Router();
 
@@ -130,6 +131,7 @@ router.get(
 
 const createSchema = z.object({
   name: z.string().trim().min(1).max(120),
+  email: z.union([z.string().trim().email(), z.literal('')]).optional(),
   gender: z.enum(['Male', 'Female']),
   grade: z.string().trim().min(1).max(50),
   status: z.enum(['Active', 'Inactive', 'Suspended']).optional(),
@@ -309,10 +311,7 @@ router.post(
             schoolId: schoolId ?? null,
           },
         });
-        await prisma.notificationRecipient.createMany({
-          data: parentLinks.map((link: any) => ({ notificationId: notification.id, userId: link.parent.id })),
-          skipDuplicates: true,
-        });
+        await createNotificationRecipients(notification.id, parentLinks.map((link: { parent: { id: string } }) => link.parent.id), schoolId);
       }
     } catch (err) {
       console.error('[RegeneratePin] Parent notification failed:', err);
